@@ -1,0 +1,291 @@
+{
+  "schemaVersion": 1,
+  "id": "finance",
+  "name": "财务工作台",
+  "jobTitle": "AI 财务专员",
+  "description": "从原始单据整理收支记录，保留出处，供人员复核与分析。",
+  "fields": [
+    {
+      "key": "date",
+      "label": "日期",
+      "type": "date",
+      "required": true,
+      "aliases": [
+        "交易日期",
+        "发生日期",
+        "date"
+      ]
+    },
+    {
+      "key": "direction",
+      "label": "收支",
+      "type": "select",
+      "required": true,
+      "aliases": [
+        "方向",
+        "收支类型",
+        "direction"
+      ],
+      "options": [
+        "收入",
+        "支出"
+      ]
+    },
+    {
+      "key": "counterparty",
+      "label": "交易对方",
+      "type": "text",
+      "required": true,
+      "aliases": [
+        "对方",
+        "单位",
+        "counterparty"
+      ]
+    },
+    {
+      "key": "amount",
+      "label": "金额",
+      "type": "money",
+      "required": true,
+      "aliases": [
+        "金额（元）",
+        "金额(元)",
+        "amount"
+      ]
+    },
+    {
+      "key": "invoice",
+      "label": "发票",
+      "type": "text",
+      "required": false,
+      "aliases": [
+        "发票号",
+        "票据",
+        "invoice"
+      ]
+    },
+    {
+      "key": "category",
+      "label": "分类",
+      "type": "text",
+      "required": false,
+      "aliases": [
+        "科目",
+        "类别",
+        "业务分类",
+        "category"
+      ]
+    },
+    {
+      "key": "contract",
+      "label": "合同",
+      "type": "text",
+      "required": false,
+      "aliases": [
+        "合同编号",
+        "contract"
+      ]
+    },
+    {
+      "key": "description",
+      "label": "说明",
+      "type": "text",
+      "required": false,
+      "aliases": [
+        "备注",
+        "摘要",
+        "description"
+      ]
+    }
+  ],
+  "agent": {
+    "prompt": "你是公司的财务助理。依据获准读取的标准记录和原始来源回答。区分事实、人工更正和推测。提供计算口径与来源编号。适用法律或税务规则未核实时，明确说明需要复核。不得虚构凭证，不得替用户确认或提交账目。",
+    "skills": [
+      {
+        "id": "finance-review",
+        "title": "财务复核",
+        "content": "检查金额、日期、交易对方与发票关联。指出缺失项和可能重复项。保留原始来源。更改标准记录前给出建议并等待用户确认。"
+      }
+    ],
+    "sop": "读取任务与公司配置；检查来源和缺失项；给出有依据的分析；生成草稿；由负责人员复核后确认写入。",
+    "tools": []
+  },
+  "ui": {
+    "accentColor": "#00A884",
+    "logoText": "财",
+    "css": ".role-summary { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); } .role-summary h3 { font-size: 12px; } .role-summary p { font-size: 24px; font-weight: 600; }",
+    "html": "<section class=\"role-summary\"><div><h3>收入</h3><p>{{income}}</p></div><div><h3>支出</h3><p>{{expense}}</p></div><div><h3>收支净额</h3><p>{{net}}</p></div></section>",
+    "dashboard": {
+      "id": "dashboard",
+      "title": "Dashboard",
+      "html": "<section class=\"role-summary\"><div><h3>收入</h3><p>{{income}}</p></div><div><h3>支出</h3><p>{{expense}}</p></div><div><h3>收支净额</h3><p>{{net}}</p></div></section><h2>当前收支</h2><div data-binding=\"recent\"></div>",
+      "css": ".role-summary { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); } .role-summary h3 { font-size: 12px; } .role-summary p { font-size: 24px; font-weight: 600; }",
+      "bindings": [
+        {
+          "id": "income",
+          "kind": "sum",
+          "field": "amount",
+          "filters": [
+            {
+              "field": "direction",
+              "operator": "eq",
+              "value": "收入"
+            }
+          ]
+        },
+        {
+          "id": "expense",
+          "kind": "sum",
+          "field": "amount",
+          "filters": [
+            {
+              "field": "direction",
+              "operator": "eq",
+              "value": "支出"
+            }
+          ]
+        },
+        {
+          "id": "net",
+          "kind": "difference",
+          "left": "income",
+          "right": "expense"
+        },
+        {
+          "id": "recent",
+          "kind": "records",
+          "columns": [
+            "date",
+            "direction",
+            "counterparty",
+            "amount",
+            "invoice"
+          ]
+        }
+      ]
+    },
+    "pages": [
+      {
+        "id": "income-board",
+        "title": "收入管理",
+        "html": "<h2>收入管理</h2><p>收入合计 {{total}}</p><div data-binding=\"entries\"></div>",
+        "css": "",
+        "bindings": [
+          {
+            "id": "total",
+            "kind": "sum",
+            "field": "amount",
+            "filters": [
+              {
+                "field": "direction",
+                "operator": "eq",
+                "value": "收入"
+              }
+            ]
+          },
+          {
+            "id": "entries",
+            "kind": "records",
+            "columns": [
+              "date",
+              "counterparty",
+              "amount",
+              "category",
+              "contract"
+            ],
+            "filters": [
+              {
+                "field": "direction",
+                "operator": "eq",
+                "value": "收入"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "expense-board",
+        "title": "支出管理",
+        "html": "<h2>支出管理</h2><p>支出合计 {{total}}</p><div data-binding=\"entries\"></div>",
+        "css": "",
+        "bindings": [
+          {
+            "id": "total",
+            "kind": "sum",
+            "field": "amount",
+            "filters": [
+              {
+                "field": "direction",
+                "operator": "eq",
+                "value": "支出"
+              }
+            ]
+          },
+          {
+            "id": "entries",
+            "kind": "records",
+            "columns": [
+              "date",
+              "counterparty",
+              "amount",
+              "category",
+              "invoice"
+            ],
+            "filters": [
+              {
+                "field": "direction",
+                "operator": "eq",
+                "value": "支出"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "id": "invoice-board",
+        "title": "发票核对",
+        "html": "<h2>发票核对</h2><p>待核对支出 {{missing}}</p><div data-binding=\"entries\"></div>",
+        "css": "",
+        "bindings": [
+          {
+            "id": "missing",
+            "kind": "count",
+            "filters": [
+              {
+                "field": "direction",
+                "operator": "eq",
+                "value": "支出"
+              },
+              {
+                "field": "invoice",
+                "operator": "empty"
+              }
+            ]
+          },
+          {
+            "id": "entries",
+            "kind": "records",
+            "columns": [
+              "date",
+              "counterparty",
+              "amount",
+              "invoice",
+              "contract"
+            ],
+            "filters": [
+              {
+                "field": "direction",
+                "operator": "eq",
+                "value": "支出"
+              },
+              {
+                "field": "invoice",
+                "operator": "empty"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

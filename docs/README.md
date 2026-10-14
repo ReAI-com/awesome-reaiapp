@@ -26,6 +26,8 @@
 | [插件语言包规范 v1](plugin-i18n-v1.md) | 包内中英文 JSON、App 语言联动、完整覆盖与发布验收；明确当前能力和平台缺口 |
 | [插件上架打包与提交规范](plugin-submission-v1.md) | Team / OAuth Client / Product 身份、最终包预检、图片归集与提交重试边界 |
 | [插件设置页、版本与关于入口规范 v1](plugin-settings-and-release-notes-v1.md) | 所有插件设置页底部的版本 / 关于入口、逐版本更新日志、每次送审自动撰写版本介绍，以及开放平台地址与文档迁移目标；新产品要求，实施状态分别验收 |
+| [AI 员工范式 v2](ai-employee-pattern-v2.md) | 第一阶段设计稿与范式合同：A-B / A-B-C / A-B-D 三种范式、主题看板、10 个通用岗位、C 签字与 D 检查、可信动作与错误恢复；未实现、未送审 |
+| [AI 员工三阶段插件最佳实践](ai-employee-pattern-v1.md) | 原始事实、可编辑标准记录与岗位 Agent；提供财务、人事 Demo、开发模式配置和新岗位插件生成器 |
 | [Driver V2 插件接口参考 v1](plugin-api-reference-v1.md) | 当前 SDK、Manifest 前置声明、返回值、错误码、权限和限额 |
 | [Driver V2 皮肤插件开发规范（Skin v1）](skin-development-v1.md) | 独立皮肤包的 Manifest、结构布局参数、明暗 token、开放边界、构建安装与 App Store 约定 |
 | [插件服务与 Agent / DSH 扩展规范 vNext](agent-service-extension-v1.md) | **目标规范，尚未实现**：插件间类型化 Service、插件定义 Agent Scene、动态 Tool、按需安装与同会话人工续跑；当前开发不能把其中字段写入 Manifest |

@@ -1,0 +1,213 @@
+{
+  "manifestVersion": "1.1",
+  "appId": "com.example.ai-employee",
+  "version": "0.2.0",
+  "publisherId": "example",
+  "name": "AI 员工工作台",
+  "description": "支持岗位 HTML 看板、资料整理与 Agent 对话的 AI 员工应用模板",
+  "icon": "assets/icon.png",
+  "storeListing": {
+    "category": "Productivity",
+    "tagline": "可配置岗位和工作看板的 AI 员工模板",
+    "longDescription": "本地开发 Demo：按岗位整理原始资料与标准记录，使用 HTML 看板查看数据，与侧边 Agent 安排任务和新增页面。预览使用规则演示；真实平台 Agent 接入需另行能力批准，尚未上架。",
+    "capabilities": [
+      {
+        "label": "资料与记录",
+        "detail": "本地保存原件和修订记录"
+      },
+      {
+        "label": "岗位模板",
+        "detail": "可配置数据结构、HTML 看板和 Agent 工作要求"
+      },
+      {
+        "label": "演示分析",
+        "detail": "规则计算与报表，不调用大模型"
+      }
+    ],
+    "screenshots": [
+      {
+        "gradient": "linear-gradient(135deg,#ececf5,#ffffff)",
+        "caption": "AI 员工的工作看板和对话界面",
+        "hasVideo": false
+      }
+    ]
+  },
+  "targets": [
+    {
+      "platform": "macos",
+      "architectures": [
+        "aarch64",
+        "x86_64"
+      ]
+    },
+    {
+      "platform": "windows",
+      "architectures": [
+        "aarch64",
+        "x86_64"
+      ]
+    }
+  ],
+  "hostApi": {
+    "range": ">=1.20.0 <2.0.0"
+  },
+  "requires": {
+    "hostCapabilities": [
+      "surface.main@1",
+      "sidebar.item@1",
+      "storage.kv@1",
+      "commands@1",
+      "apps.intent@1",
+      "apps.service@1",
+      "titlebar.action@1"
+    ],
+    "hardwareServices": [],
+    "appIntents": [],
+    "services": [
+      {
+        "id": "com.reai.voice/request-text@1",
+        "version": "^1.0.0",
+        "required": false,
+        "purpose": "为岗位 Agent 输入获取语音文字"
+      }
+    ]
+  },
+  "runtime": {
+    "components": [
+      {
+        "id": "ui",
+        "kind": "web-surface",
+        "protocol": "web-surface@1",
+        "required": true,
+        "headless": false,
+        "activation": "on-demand",
+        "entry": "dist/app.js",
+        "dependsOn": [],
+        "lifecycle": {
+          "activate": "default.activate",
+          "deactivate": "default.deactivate"
+        }
+      }
+    ]
+  },
+  "permissions": [],
+  "requirementsVersion": "1.1",
+  "requirements": [],
+  "network": {
+    "policyVersion": 1,
+    "endpoints": []
+  },
+  "billing": {
+    "mode": "none"
+  },
+  "data": {
+    "privateStores": [
+      {
+        "id": "employee",
+        "schemaVersion": 1
+      }
+    ],
+    "imports": [],
+    "exports": []
+  },
+  "dataCompatibility": {
+    "rollbackFloor": "0.2.0"
+  },
+  "contributes": {
+    "surfaces": [
+      {
+        "id": "main",
+        "componentId": "ui",
+        "location": "app.main",
+        "title": "AI 员工工作台"
+      }
+    ],
+    "sidebarItems": [
+      {
+        "id": "employee",
+        "label": "AI 员工",
+        "icon": "assets/icon.png",
+        "opens": "surface:main"
+      }
+    ],
+    "titlebarActions": [
+      {
+        "id": "settings",
+        "label": "设置",
+        "icon": "settings",
+        "showOnTitlebarHover": true,
+        "intent": {
+          "type": "open-settings"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "id": "com.example.ai-employee.open",
+        "componentId": "ui",
+        "title": "打开 AI 员工工作台",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "ok"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "timeoutMs": 5000,
+        "supportsCancellation": true,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host",
+          "user"
+        ]
+      },
+      {
+        "id": "com.example.ai-employee.agent.voice",
+        "componentId": "ui",
+        "title": "向 AI 员工语音提问",
+        "bindingPickerTitle": "AI 员工语音输入",
+        "inputSchema": { "type": "object", "additionalProperties": false },
+        "outputSchema": {
+          "type": "object",
+          "properties": { "status": { "const": "ok" } },
+          "required": ["status"],
+          "additionalProperties": false
+        },
+        "timeoutMs": 5000,
+        "supportsCancellation": true,
+        "concurrency": "serial",
+        "idempotency": "not-idempotent",
+        "callers": ["host", "user"]
+      }
+    ],
+    "intents": [
+      {
+        "id": "open-settings",
+        "version": "1.0.0",
+        "componentId": "ui",
+        "opens": "surface:main",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      },
+      {
+        "id": "agent-voice",
+        "version": "1.0.0",
+        "componentId": "ui",
+        "opens": "surface:main",
+        "inputSchema": { "type": "object", "additionalProperties": false }
+      }
+    ]
+  }
+}
