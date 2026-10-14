@@ -1913,7 +1913,7 @@ function pageWorkflow() {
   const local = `<div class="card-flat"><div class="sec-head li"><h2>${ic('play')}本地规则（演示）</h2><span class="sub">在插件内运行，产生本地运行记录</span></div><div class="list">${rules.map((x) => `<div class="li"><span class="ico">${ic(x.kind.startsWith('D') ? 'shield' : x.kind.startsWith('B') ? 'pen' : 'workflow')}</span><span class="body"><span class="t">${esc(x.name)}</span><span class="d">${esc(x.kind)} · <span class="mono">${esc(x.id)}@${esc(x.ver)}</span></span></span>${btn(rs.wfBusy === x.id ? '运行中…' : '运行', 'wf-run', { id: x.id, sm: true, busy: rs.wfBusy === x.id, disabled: !!rs.wfBusy, icon: 'play' })}</div>`).join('')}</div></div>`;
   const runs = rs.wfRuns.length ? `<div class="tbl-wrap"><table class="tbl"><thead><tr><th>运行 ID</th><th>规则</th><th>触发</th><th>时间</th><th class="num">耗时</th><th>结果</th></tr></thead><tbody>${rs.wfRuns.map((x) => `<tr><td><button type="button" class="link mono" data-act="open-wfrun" data-id="${esc(x.id)}">${esc(x.id)}</button></td><td class="mono">${esc(x.rule)}</td><td>${badge(x.trigger || '手动', x.trigger === '自动' ? 'b-accent' : 'b-mute')}</td><td class="mono">${esc(x.at)}</td><td class="num">${esc(x.dur)}</td><td>${badge('完成', 'b-ok')}</td></tr>`).join('')}</tbody></table></div>` : emptyBox('clock', '还没有本地运行记录', '点上方任一规则的「运行」，会在这里留下步骤、输入输出摘要与耗时。');
   const cloud = `<div class="grid2">${cloudFlows().map((f) => `<div class="card stack"><div class="row">${ic('cloud')}<b class="mono">${esc(f.n)}</b><span class="spacer"></span>${badge('未开通', 'b-warn')}</div><p class="small muted">${esc(f.desc)}</p>${kv([['逻辑名', mono(f.n)], ['期望快照', '待核实（逻辑名 → 不可变快照映射未开放）'], ['回执版本证明', '待核实'], ['运行日志', '插件侧暂无历史 runlog 查询']])}<div class="btns">${btn('查看缺口说明', 'cloud-info', { sm: true, icon: 'info' })}</div>${diag({ code: 'FLOW_SCOPE_UNAVAILABLE', step: `flow.invoke/${f.n}`, extra: 'retry=none' })}</div>`).join('')}</div>`;
-  return head('工作流', '开发者视角：清洗 A→B、生成 B→C、规则 D 都是工作流。普通员工不进入本页，整理、检查、生成在使用中自动触发（运行记录里标「自动」）。外脑工作流发布即快照，改动发新版本；插件当前只能用本地规则演示。')
+  return head('工作流', '开发者视角：清洗 A→B、生成 B→C、规则 D 都是工作流。普通员工不进入本页；资料上传或回流后自动整理（运行记录里标「自动」），交付生成与检查由看板按钮发起。外脑工作流发布即快照，改动发新版本；插件当前只能用本地规则演示。')
     + offBanner() + noticeHtml()
     + dataState('工作流', 'read:workflow', () => `${local}<div class="section"><div class="sec-head"><h2>${ic('clock')}本地运行记录</h2></div>${runs}</div>
       <div class="section"><div class="sec-head"><h2>${ic('cloud')}外脑工作流</h2><span class="sub">经 ctx.flowApi 调用；当前返回 FLOW_SCOPE_UNAVAILABLE，没有运行按钮</span></div>${cloud}</div>`);
@@ -3288,7 +3288,7 @@ const ACT = {
   },
   'dev-unlock': () => { const d = RS().dev; if (d.pw === DEV_PASSWORD) { d.unlocked = true; d.err = ''; d.pw = ''; toast('开发模式已解锁（不是访问权限）'); } else { d.err = '密码不正确，配置未解锁。演示密码为 0000。'; } render(); },
   'dev-lock': () => { RS().dev.unlocked = false; render(); },
-  'host-agent-config': () => toast('演示：将打开 Host「设置 › 插件 Agent 配置」（system.tasks@1 的 agent-config 入口）'),
+  'host-agent-config': () => toast(T('演示：将打开 Host「设置 › 插件 Agent 配置」（system.tasks@1 的 agent-config 入口）', '演示：将打开系统中的插件 Agent 设置')),
   'copy-diag': (id, t) => {
     const pre = t.closest('.diag') && t.closest('.diag').querySelector('pre'); if (!pre) return;
     const text = pre.textContent;
@@ -3320,8 +3320,10 @@ document.addEventListener('click', (e) => {
     return;
   }
   if (S.demoMenu && !t.closest('[id="demobar"]')) { S.demoMenu = false; renderDemobar(); }
-  const h = ACT[t.dataset.act];
+  const h = ACT[t.dataset.act], drawerBefore = S.drawer;
   if (h) h(t.dataset.id, t, t.dataset.id2, e);
+  /* 从菜单打开的抽屉：菜单项已被移除，关闭后应回到原「⋯」按钮 */
+  if (fromMenu && menuKey && S.drawer && S.drawer !== drawerBefore && !drawerBefore) S.drawer.returnKey = menuKey;
   /* 菜单项执行后（S1）：动作自己安排了焦点（确认卡首个选项、抽屉关闭钮等）就不动；否则回到触发按钮，按钮已不在则回到内容区 */
   if (fromMenu) requestAnimationFrame(() => {
     const a = document.activeElement;
