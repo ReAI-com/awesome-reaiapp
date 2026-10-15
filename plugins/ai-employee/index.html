@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="AI 员工插件开发入口：对比通用 v2 范式、巴奴岗位版与餐饮 v2.1。">
+  <title>AI 员工 · 版本导航</title>
+  <style>
+    :root{font-family:Inter,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;color:#24382f;background:#f6f6f2;font-synthesis:none;--paper:#fff;--green:#435d4c;--muted:#667267;--line:#e1e7dd;--soft:#eef3e9}
+    *{box-sizing:border-box}body{margin:0}a{color:inherit}a:focus-visible{outline:3px solid var(--green);outline-offset:5px}svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex:none}h1,h2,p{margin:0}
+    .top{border-bottom:1px solid var(--line);background:#fbfcf9}.top-inner{max-width:1180px;margin:auto;padding:22px 28px;display:flex;align-items:center;gap:12px}.mark{display:grid;place-items:center;width:36px;height:36px;background:#24382f;color:#fff;border-radius:10px}.brand{font-size:16px;font-weight:650}.brand small{font-size:11px;font-weight:400;color:var(--muted);margin-left:12px}.tag{margin-left:auto;background:#edf2e8;color:var(--green);border:1px solid #dce5d6;border-radius:4px;padding:5px 8px;font-size:11px;white-space:nowrap}
+    main{max-width:1180px;margin:auto;padding:60px 28px 40px}.eyebrow{font-size:10px;font-weight:600;letter-spacing:2px;color:var(--muted);margin-bottom:17px}h1{font-size:34px;line-height:1.45;letter-spacing:-1px;font-weight:550}.intro{font-size:14px;line-height:1.9;color:var(--muted);margin-top:15px;max-width:700px}.hint{margin:30px 0 17px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:7px}.hint svg{width:15px;height:15px}
+    .versions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.version{display:flex;flex-direction:column;text-decoration:none;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:25px;min-width:0;transition:border-color .16s,box-shadow .16s,transform .16s}.version:hover{border-color:#a8bca2;box-shadow:0 8px 24px #24382f09;transform:translateY(-2px)}.version.recommended{border-color:#a8bca2}.card-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:24px}.icon{width:40px;height:40px;border-radius:9px;background:var(--soft);display:grid;place-items:center;color:var(--green)}.number{font-size:11px;color:var(--muted);letter-spacing:.8px}.label{font-size:11px;color:var(--green);background:var(--soft);padding:4px 7px;border-radius:4px}h2{font-size:21px;line-height:1.45;font-weight:550;letter-spacing:-.4px}.purpose{font-size:13px;line-height:1.85;color:var(--muted);margin-top:12px;min-height:72px}.facts{display:flex;gap:7px;flex-wrap:wrap;margin:22px 0 20px}.facts span{font-size:11px;color:#566a58;background:#f2f5ef;border:1px solid #e5ebe0;border-radius:4px;padding:5px 7px}.behavior{font-size:11px;line-height:1.7;color:var(--muted);padding-top:17px;border-top:1px solid var(--line)}.action{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:22px;font-size:13px;font-weight:550;color:var(--green)}.action svg{width:17px;height:17px}
+    .notes{margin-top:28px;padding:18px 21px;border:1px solid var(--line);border-radius:8px;background:#f0f3ed;font-size:12px;line-height:1.9;color:var(--muted)}.notes strong{color:var(--green);font-weight:550}.footer{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;margin-top:30px;font-size:12px;color:var(--muted)}.footer a{text-underline-offset:4px}.footer span{margin-left:auto;font-size:11px}
+    @media(prefers-reduced-motion:reduce){.version{transition:none}.version:hover{transform:none}}@media(max-width:850px){.versions{grid-template-columns:1fr}.purpose{min-height:0}.card-top{margin-bottom:18px}.version{padding:23px}.facts{margin:17px 0}.top-inner{padding:17px 21px}main{padding:36px 21px}.intro{max-width:580px}.footer span{width:100%;margin-left:0}}@media(max-width:460px){h1{font-size:29px}.brand small{display:block;margin:3px 0 0}.tag{font-size:10px}.top-inner{gap:9px}.mark{width:32px;height:32px}}
+  </style>
+</head>
+<body>
+  <header class="top"><div class="top-inner"><span class="mark" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><div class="brand">AI 员工<small>插件开发 · 版本导航</small></div><span class="tag">本地演示空间</span></div></header>
+  <main>
+    <div class="eyebrow">EMPLOYEE WORKSPACE / DEVELOPMENT</div>
+    <h1>三个版本，一个开发入口。</h1>
+    <p class="intro">查看通用工作范式，回顾原岗位需求，继续迭代餐饮工作台。<br>各版本保持独立，便于讨论界面和比较交互。</p>
+    <p class="hint"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3l-9 9"/><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"/></svg>点击卡片，在新标签页打开</p>
+    <div class="versions">
+      <a class="version" href="./design/paradigm-v2.html" target="_blank" rel="noopener" aria-labelledby="generic-title">
+        <div class="card-top"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/></svg></span><span class="number">01 / 范式基准</span></div>
+        <h2 id="generic-title">通用 v2 范式</h2>
+        <p class="purpose">理解资料、记录、交付和检查的关系，查看主题看板与 Agent 的基础交互。</p>
+        <div class="facts"><span>10 个通用岗位</span><span>交互合同</span><span>四档视角</span></div>
+        <p class="behavior">页面内存演示，刷新后重置。</p>
+        <span class="action">打开通用 v2<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></span>
+      </a>
+      <a class="version" href="./showcase.html#/" target="_blank" rel="noopener" aria-labelledby="showcase-title">
+        <div class="card-top"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M3 10h18M5 10v10h14V10M3 10l2-6h14l2 6M9 20v-6h6v6"/></svg></span><span class="number">02 / 需求探索</span></div>
+        <h2 id="showcase-title">原巴奴岗位版</h2>
+        <p class="purpose">逐岗回看客户工作内容、专属业务看板和演示资料，保留原版的视觉与保存行为。</p>
+        <div class="facts"><span>17 个岗位</span><span>83 个内置看板</span><span>332 条初始样例</span></div>
+        <p class="behavior">按岗位保存在当前浏览器；既有演示资料保留。</p>
+        <span class="action">打开巴奴岗位版<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></span>
+      </a>
+      <a class="version recommended" href="./design/restaurant-v2.1.html" target="_blank" rel="noopener" aria-labelledby="restaurant-title">
+        <div class="card-top"><span class="icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M9 9v11m4-7h4m-4 3h3"/></svg></span><span class="label">当前迭代</span></div>
+        <h2 id="restaurant-title">餐饮 v2.1</h2>
+        <p class="purpose">沿用巴奴风格，把岗位需求接入 v2 范式，讨论资料复核、候选签字、回流和检查。</p>
+        <div class="facts"><span>17 个岗位</span><span>58 个主题</span><span>保留原 83 看板内容</span></div>
+        <p class="behavior">独立内存原型，刷新后重置；不读写旧版资料。</p>
+        <span class="action">继续开发餐饮 v2.1<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-5-5 5 5-5 5"/></svg></span>
+      </a>
+    </div>
+    <aside class="notes"><strong>后续开发：</strong>以通用 v2 核对交互范式，以原巴奴版核对岗位需求，在餐饮 v2.1 中讨论和迭代。<br>以上为 UI/UX 演示；业务数据、候选和外部操作均为样例，不代表真实业务系统已接入。</aside>
+    <footer class="footer"><a href="./preview.html" target="_blank" rel="noopener">原始 v1 运行模板 ↗</a><a href="https://github.com/kongkang/awesome-reaiapp/blob/main/plugins/ai-employee/VERSIONS.md" target="_blank" rel="noopener">开发与构建说明 ↗</a><a href="https://github.com/kongkang/awesome-reaiapp/blob/main/plugins/ai-employee/RESTAURANT-V2.1.md" target="_blank" rel="noopener">餐饮 v2.1 缺口与岗位映射 ↗</a><span>各版本源码与原入口均保留</span></footer>
+  </main>
+</body>
+</html>
