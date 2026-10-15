@@ -196,7 +196,5 @@
     "@reai/app-test/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
 
     "@reai/app-test/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", {}],
-
-    "@reai/app-test/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", {}],
   }
 }
