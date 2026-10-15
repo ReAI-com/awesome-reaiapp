@@ -6,11 +6,19 @@ function restaurantScopeNote() {
 }
 
 function restaurantHome() {
-  const groups = [...new Set(ROLES.map(r => r.department))];
-  return `<section class="restaurant-hero"><div class="restaurant-eyebrow">RESTAURANT / AI EMPLOYEES</div><h1>让每个岗位，都有自己的工作台</h1><p>从门店训练到供应调度，把资料、交付和复核放进同一条工作链。选择岗位，查看它的待办、业务看板与协作 Agent。</p><div class="btns">${btn('查看需求与功能缺口', 'restaurant-gap', {kind:'btn',icon:'list'})}${btn('进入当前岗位', 'go', {id:'dashboard',icon:'arrow-right'})}</div><div class="restaurant-stats"><div><b>17</b><span>岗位场景 · 来自 18 条需求</span></div><div><b>58</b><span>主题 · 保留原 83 看板</span></div><div><b>332</b><span>原有虚构记录 · 口径保留</span></div></div></section>
-    <div class="note warn">${ic('info')}<span>餐饮 v2.1 独立原型 · 全部虚构 · 仅内存运行，刷新后重置。未连接真实模型、业务系统或电子签，不发送通知、不下单、不改变人员权益。权限视角仅模拟显示范围。</span></div>
-    ${groups.map(dep => `<h2 class="restaurant-group-head">${esc(dep)}<small>${ROLES.filter(r => r.department === dep).length} 个岗位</small></h2><div class="restaurant-roles">${ROLES.filter(r => r.department === dep).map(r => `<button type="button" class="restaurant-role" data-act="restaurant-role" data-id="${esc(r.id)}" aria-label="打开${esc(r.name)}工作台"><span class="top">${ic(r.icon,20)}${esc(r.name)}</span><p>${esc(r.boards.map(b => b.title).join(' / '))}</p><span class="bottom">${badge(r.scopeUncertain ? '范围待确认' : '交互样例',r.scopeUncertain ? 'b-warn' : 'b-accent')}<span>${r.boards.length} 个主题</span><span>${r.rows.length} 条记录</span><span class="arrow">${ic('arrow-right',14)}</span></span></button>`).join('')}</div>`).join('')}
-    <div class="restaurant-compare"><a href="/design/paradigm-v2.html" target="_blank" rel="noopener">对比 main v2 范式</a><a href="/showcase.html#/" target="_blank" rel="noopener">对比原 17 岗位看板</a><a href="/preview.html" target="_blank" rel="noopener">查看原始模板</a></div>`;
+  return `<div class="restaurant-home-inner"><section class="restaurant-hero"><div class="restaurant-welcome"><div class="restaurant-eyebrow">BANU · EMPLOYEE WORKSPACE</div><h1>让每一个岗位，<br>都有自己的 AI 工作台。</h1><p>从日常待办开始，在看板里核对资料、讨论方案、确认下一步。</p><div class="restaurant-welcome-note">${badge('演示数据','b-warn')}<span>沿用巴奴场景 · 业务记录均为虚构样例</span></div></div><div class="restaurant-summary"><div class="restaurant-summary-head">工作空间概览<span>餐饮 v2.1</span></div><div class="restaurant-stats"><div><b>17</b><span>岗位员工</span></div><div><b>58</b><span>工作主题</span></div><div><b>332</b><span>原有样例记录</span></div></div><div class="restaurant-summary-foot">${ic('shield',14)}18 条需求 · 保留原 83 看板 · 5 个范围待确认岗位</div></div></section>
+    <div class="restaurant-today"><span class="restaurant-today-title">${ic('clock',20)}今日工作示例<small>选择岗位，查看虚构待办</small></span>${[['training','课程资源待确认'],['supply','在途到货待核对'],['legal','事务证据待复核']].map(([id,label])=>`<button type="button" data-act="restaurant-role" data-id="${id}"><span class="dot warn"></span><span>${label}<small>${esc(roleById(id).name)}</small></span>${ic('arrow-right',14)}</button>`).join('')}</div>
+    <div class="restaurant-directory-head"><div><h2>我的 AI 员工 <small>17</small></h2><p>沿用统一工作范式，保留每个岗位的业务语言。</p></div>${btn('需求与功能缺口','restaurant-gap',{icon:'list',sm:true})}</div>
+    <div class="restaurant-home-note">${ic('info',14)}全部虚构 · 仅内存运行，刷新重置。未连接真实模型或业务系统；签字、检查和通知均为演示。</div>
+    <div class="restaurant-roles">${ROLES.map(restaurantRoleCard).join('')}</div>
+    <div class="restaurant-compare"><a href="/design/paradigm-v2.html" target="_blank" rel="noopener">对比 main v2 范式</a><a href="/showcase.html#/" target="_blank" rel="noopener">对比原 17 岗位看板</a><a href="/preview.html" target="_blank" rel="noopener">查看原始模板</a></div></div>`;
+}
+
+function restaurantRoleCard(r) {
+  const topicIndex=r.fields.findIndex(f=>f[0]==='topic');
+  const counts=r.boards.map(b=>r.rows.filter(row=>b.sections.some(section=>section.topic===row[topicIndex])).length);
+  const max=Math.max(1,...counts);
+  return `<button type="button" class="restaurant-role" data-act="restaurant-role" data-id="${esc(r.id)}" aria-label="打开${esc(r.name)}工作台"><span class="restaurant-card-top"><span class="restaurant-role-icon">${ic(r.icon,20)}</span>${badge(r.priorities.join(' / '),'b-mute')}</span><span class="top">${esc(r.name)}</span><span class="restaurant-role-dept">${esc(r.department)}</span><p>${esc(r.summary)}</p><span class="restaurant-mini"><span class="restaurant-mini-title">主题记录分布 · 初始样例</span>${r.boards.map((b,i)=>`<span class="restaurant-mini-row"><span>${esc(b.title)}</span><span class="restaurant-mini-track"><i class="level-${Math.ceil(counts[i]/max*5)}"></i></span><small>${counts[i]}</small></span>`).join('')}</span><span class="bottom"><span>${r.scopeUncertain?'范围待确认':r.legacyTasks.length+' 项岗位任务'}</span><span class="arrow">进入工作台 ${ic('arrow-right',14)}</span></span></button>`;
 }
 
 function restaurantThemeRecords(b, records = recList()) {
@@ -118,3 +126,6 @@ srcStatusCell = function(s, detail) { return s.fpBasis === 'meta' ? '<span class
 
 ACT['restaurant-gap'] = (id,t) => openDrawer({kind:'restaurant-gap'},t);
 ACT['restaurant-role'] = id => { switchRole(id); if (!isMobile()) S.agentOpen = true; go('dashboard'); };
+
+const restaurantRenderContent = renderContent;
+renderContent = function(reset) { document.documentElement.dataset.restaurantHome=String(S.route.page==='restaurant-home'); restaurantRenderContent(reset); };

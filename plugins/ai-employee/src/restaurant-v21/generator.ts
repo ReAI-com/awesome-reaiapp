@@ -45,15 +45,16 @@ export function generateRestaurantV21(baseHtml: string): string {
     { id: 'restaurant-public-scope', cat: '演示说明', name: '餐饮员工场景与演示边界.md', dept: '演示资料', at: '2026-10-15', preview: '本页是基于客户需求整理的 UI/UX 原型，记录、候选、检查结论全部是虚构样例。\n未连接业务系统、真实模型、CAD、OCR、音视频分析或云流程。签字仅生成内存中的演示回执；不发送通知、不下单、不调整薪资。刷新后重置。' },
     { id: 'restaurant-public-flow', cat: '讨论稿', name: '岗位交接假设.md', dept: '演示资料', at: '2026-10-15', preview: '培训→阅卷→运营→培训；供应链↔调度；招聘→人事→组织→绩效。以上仅用于讨论界面与交接对象，尚未确认实际职责、授权或系统接口。四位高层不预设分工。' },
   ])};`);
-  html = replaceOnce(html, "const PLUGIN = { version: '0.2.0-design', hostVersion: '演示：未读取', company: 'XX 科技有限公司', appPrefix: 'xx.ai-employee' };", `const PLUGIN = { version: ${json(manifest.version)}, hostVersion: '演示：未读取', company: '餐饮集团 · 虚构演示', appPrefix: 'restaurant.ai-employee' };`);
+  html = replaceOnce(html, "const PLUGIN = { version: '0.2.0-design', hostVersion: '演示：未读取', company: 'XX 科技有限公司', appPrefix: 'xx.ai-employee' };", `const PLUGIN = { version: ${json(manifest.version)}, hostVersion: '演示：未读取', company: '巴奴 · 虚构演示', appPrefix: 'restaurant.ai-employee' };`);
   html = replaceOnce(html, "roleId: 'finance', theme:", "roleId: 'training', theme:");
   html = replaceOnce(html, 'function nowStr() { const d = new Date(); return `2026-10-14 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }', 'function nowStr() { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }');
   html = replaceOnce(html, "route: { page: 'dashboard' }, agentOpen: true", "route: { page: 'restaurant-home' }, agentOpen: false");
-  html = replaceOnce(html, '<title>AI 员工范式 v2 · 交互设计稿</title>', '<title>餐饮 AI 员工 v2.1 · 独立交互原型</title>');
+  html = replaceOnce(html, '<title>AI 员工范式 v2 · 交互设计稿</title>', '<title>巴奴 · 餐饮 AI 员工 v2.1</title>');
   html = replaceOnce(html, /<meta name="description" content="[^"]*">/, '<meta name="description" content="餐饮 AI 员工 v2.1 独立 UI/UX 原型：17 岗位、58 主题，资料复核、候选签字和冻结检查。全部虚构、仅内存、刷新重置。">');
   html = replaceOnce(html, '</style>', `${restaurantStyles}\n</style>`);
-  html = replaceOnce(html, '<span>AI 员工范式 v2<span class="full"> · 交互设计稿</span></span><span class="badge b-mute">演示外壳</span>', '<span>餐饮 AI 员工 v2.1<span class="full"> · UI/UX 原型</span></span><span class="badge b-warn">全部虚构 · 刷新重置</span><button type="button" class="btn-2 btn-sm" data-act="restaurant-gap">需求与缺口</button>');
+  html = replaceOnce(html, '<span>AI 员工范式 v2<span class="full"> · 交互设计稿</span></span><span class="badge b-mute">演示外壳</span>', '<span class="restaurant-brand-mark">${ic(\'sparkles\',20)}</span><span class="restaurant-brand-name">巴奴<small>AI 员工工作台</small></span><span class="badge b-warn">v2.1 · 演示</span><button type="button" class="btn-2 btn-sm" data-act="restaurant-gap">需求与缺口</button>');
   html = replaceOnce(html, "const PAGE_NAME = { dashboard:", "const PAGE_NAME = { 'restaurant-home': 'AI 员工首页', dashboard:");
+  html = replaceOnce(html, "['1280', '桌面 1280']", "['1280', '跟随窗口']");
   html = replaceOnce(html, "${navItem('dashboard', 'grid', '工作台')}", "${navItem('restaurant-home', 'grid', 'AI 员工首页')}\n    ${navItem('dashboard', 'grid', '岗位工作台')}");
   html = replaceOnce(html, "const html = p === 'dashboard' ? pageDashboard()", "const html = p === 'restaurant-home' ? restaurantHome() : p === 'dashboard' ? pageDashboard()");
   html = replaceOnce(html, 'function bView(b, o = {}) {\n  const r = role();', 'function bView(b, o = {}) {\n  if (b.sections) return restaurantSectionViews(b, o);\n  const r = role();');

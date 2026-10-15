@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="description" content="餐饮 AI 员工 v2.1 独立 UI/UX 原型：17 岗位、58 主题，资料复核、候选签字和冻结检查。全部虚构、仅内存、刷新重置。">
-<title>餐饮 AI 员工 v2.1 · 独立交互原型</title>
+<title>巴奴 · 餐饮 AI 员工 v2.1</title>
 <style>
 /* ═══════════════════════════════════════════════════════════════════
    【Token】唯一允许出现颜色字面量的区块。
@@ -597,6 +597,30 @@ pre.raw{margin:0;padding:12px;border-radius:10px;background:var(--accent-soft);f
   .stage,.nav,.content,.ag-msgs,.dr-body,.graph-wrap,.ipo-strip,.kanban,.tbl-wrap,pre.raw,.textarea,.db-controls,.diag pre{transition:none}
 }
 
+/* BANU showcase palette; existing v2 state and component contracts stay intact. */
+:root{--ae-font:Inter,-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;--ae-nav-w:220px}
+[data-theme=light]{--bg:#f6f6f2;--card-bg:#fff;--card-border:#e4e8e1;--card-shadow:0 5px 24px #23332d04;--text-primary:#23332d;--text-secondary:#657168;--text-tertiary:#667267;--accent:#435d4c;--accent-soft:#eef3e9;--accent-glow:#435d4c20;--divider:#e4e8e1;--panel-bg:#fcfdf9;--panel-border:#dfe5da;--panel-shadow:0 8px 28px #23332d10;--bound:#5c7957;--bound-soft:#eef3e9;--bound-line:#d9e5d2;--warn:#956741;--warn-soft:#f7f0e5;--warn-line:#e9dcc8;--alert:#a34a3b;--alert-soft:#f8eeeb;--alert-line:#e7c8c2;--scroll-thumb:#435d4c20;--scroll-thumb-hi:#435d4c40;--ae-banu-sidebar:#f0f3ed;--ae-banu-active:#dfe9d7;--ae-banu-brand:#24382f;--ae-banu-summary:#eaf0e7;--ae-banu-summary-foot:#e3ebdf;--ae-banu-mini:#f2f5ee;--ae-banu-bar:#b7c9af}
+[data-theme=dark]{--bg:#18221d;--card-bg:#202d25;--card-border:#34453a;--card-shadow:none;--text-primary:#e5ece4;--text-secondary:#a7b5a6;--text-tertiary:#91a08f;--accent:#a8c5a0;--accent-soft:#2c3e2f;--accent-glow:#a8c5a030;--divider:#34453a;--panel-bg:#202d25;--panel-border:#415446;--panel-shadow:0 8px 28px #0003;--bound:#accda0;--bound-soft:#2c3e2f;--bound-line:#48603f;--warn:#d9b88d;--warn-soft:#3b3226;--warn-line:#66533a;--alert:#e9a698;--alert-soft:#432e28;--alert-line:#744b40;--scroll-thumb:#a8c5a030;--scroll-thumb-hi:#a8c5a060;--ae-on-accent:#1c2d20;--ae-banu-sidebar:#1c2920;--ae-banu-active:#314431;--ae-banu-brand:#d6e6ce;--ae-banu-summary:#27392c;--ae-banu-summary-foot:#2d4130;--ae-banu-mini:#27362a;--ae-banu-bar:#708d66}
+.stage{padding:0}.win{max-width:none;min-height:0;border:0;border-radius:0;box-shadow:none}.titlebar{display:none}
+.demobar{min-height:72px;padding:14px clamp(18px,4vw,64px);background:var(--panel-bg);flex-wrap:nowrap;gap:16px}
+.db-brand{font-size:18px;gap:12px;letter-spacing:1px}.db-brand>.i{display:none}.db-brand .badge{font-size:10px;letter-spacing:.2px}
+.restaurant-brand-mark{width:36px;height:36px;display:grid;place-items:center;background:var(--ae-banu-brand);color:var(--card-bg);border-radius:10px}.restaurant-brand-mark .i{width:24px;height:24px}
+.restaurant-brand-name{display:flex;align-items:center;gap:13px;font-weight:650}.restaurant-brand-name small{font-size:11px;font-weight:400;color:var(--text-secondary);letter-spacing:.3px}
+.db-toggle{display:inline-flex;margin-left:auto}.db-controls{display:none}.db-controls.open{display:flex;position:absolute;top:calc(100% + 8px);right:18px;width:calc(100% - 36px);max-width:1000px;max-height:70vh;overflow:auto;padding:18px;border:1px solid var(--panel-border);border-radius:10px;background:var(--panel-bg);box-shadow:var(--panel-shadow)}
+.nav{background:var(--ae-banu-sidebar);padding:20px 14px 14px}.nav-role{padding:0 5px 22px;border-bottom:1px solid var(--divider);margin-bottom:12px}.nav-role b{font-size:13px;font-weight:600}.nav-role small{font-size:10px;line-height:1.7}.nav-role .avatar{border-radius:9px}
+.nav-item{border-radius:5px;font-size:13px;min-height:38px;padding:8px 10px}.nav-item[aria-current=page]{background:var(--ae-banu-active)}.nav-sec{font-size:11px}
+.content{padding:30px 32px 48px}.page-head h1{font-size:25px;font-weight:550;letter-spacing:-.4px;line-height:1.4}
+.btn,.btn-2,.input,.textarea,.select-wrap select{border-radius:6px}.btn,.btn-2{font-size:13px}.badge{border-radius:4px;font-size:11px}.card,.card-flat,.board-card,.flow-card,.set-card{border-radius:10px;box-shadow:none}
+.metric .v{font-weight:450}.tbl th{background:var(--ae-banu-mini)}.tbl td,.tbl th{font-size:12px}.agent{background:var(--panel-bg)}.ag-head{background:var(--panel-bg)}.ag-msg .bubble{background:var(--ae-banu-mini)}
+[data-restaurant-home=true] .mainbody{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}[data-restaurant-home=true] .nav,[data-restaurant-home=true] .agent,[data-restaurant-home=true] .mhead,[data-restaurant-home=true] .tabbar{display:none!important}[data-restaurant-home=true] .content{grid-column:1;grid-row:1;padding:38px 6% 54px}
+.restaurant-home-inner{max-width:1200px;margin:auto}.restaurant-hero{display:grid!important;grid-template-columns:minmax(0,1fr) 365px;gap:50px;align-items:center;border:0!important;background:transparent!important;padding:0!important;margin:0 0 32px!important}
+.restaurant-welcome h1{font-size:35px!important;font-weight:550;line-height:1.5!important;letter-spacing:-1.2px!important;margin:24px 0 18px!important}.restaurant-welcome p{font-size:13px;margin:0!important}.restaurant-eyebrow{font-size:10px!important;letter-spacing:2px!important;color:var(--text-secondary)!important;font-weight:600!important;margin:0!important}
+.restaurant-welcome-note{display:flex;align-items:center;gap:10px;margin-top:18px;color:var(--text-secondary);font-size:11px}.restaurant-summary{border:1px solid var(--panel-border);background:var(--ae-banu-summary);border-radius:12px;overflow:hidden}
+.restaurant-summary-head{display:flex;justify-content:space-between;margin:22px 25px 0;font-size:12px}.restaurant-summary-head span{font-size:10px;letter-spacing:1px;color:var(--text-secondary)}.restaurant-summary .restaurant-stats{padding:26px 25px;border:0;gap:38px}.restaurant-summary .restaurant-stats b{font-size:32px;font-weight:450}.restaurant-summary .restaurant-stats span{font-size:10px}.restaurant-summary-foot{padding:12px 20px;background:var(--ae-banu-summary-foot);border-top:1px solid var(--panel-border);font-size:10px;color:var(--text-secondary);display:flex;gap:8px;align-items:center}
+.restaurant-today{display:flex;align-items:center;gap:24px;background:var(--card-bg);border:1px solid var(--divider);border-radius:9px;padding:18px 22px;margin:0 0 36px}.restaurant-today-title{font-size:12px;min-width:150px;display:grid;grid-template-columns:24px 1fr;gap:2px 8px}.restaurant-today-title .i{grid-row:span 2;color:var(--text-tertiary)}.restaurant-today-title small{font-size:10px;color:var(--text-tertiary)}.restaurant-today>button{flex:1;border-left:1px solid var(--divider);display:flex;align-items:center;gap:10px;font-size:12px;padding-left:22px}.restaurant-today button small{display:block;font-size:10px;color:var(--text-tertiary);margin-top:3px}.restaurant-today button>.i{margin-left:auto;color:var(--text-tertiary)}.restaurant-today .dot{width:6px;height:6px}
+.restaurant-directory-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.restaurant-directory-head h2{font-size:21px;font-weight:550}.restaurant-directory-head h2 small{font-size:12px;padding:3px 6px;background:var(--accent-soft);border-radius:4px;margin-left:8px;color:var(--text-secondary)}.restaurant-directory-head p{font-size:12px;color:var(--text-secondary);margin-top:8px}.restaurant-home-note{display:flex;gap:7px;font-size:11px;color:var(--text-secondary);margin:18px 0 24px;line-height:1.7}
+.restaurant-card-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}.restaurant-role-icon{width:39px;height:39px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);border-radius:9px}.restaurant-role-dept{font-size:10px;color:var(--text-tertiary);margin-top:-5px}
+.restaurant-mini{display:block;border:1px solid var(--divider);background:var(--ae-banu-mini);border-radius:6px;padding:12px;margin:2px 0 6px;min-height:124px}.restaurant-mini-title{display:block;font-size:10px;color:var(--text-secondary);margin-bottom:8px}.restaurant-mini-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(32px,.7fr) 14px;gap:8px;align-items:center;font-size:10px;line-height:1.7}.restaurant-mini-row>span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.restaurant-mini-row small{font-size:10px;text-align:right;color:var(--text-secondary)}.restaurant-mini-track{height:5px;background:var(--divider);border-radius:1px;overflow:hidden}.restaurant-mini-track i{display:block;height:100%;background:var(--ae-banu-bar)}.restaurant-mini-track .level-1{width:20%}.restaurant-mini-track .level-2{width:40%}.restaurant-mini-track .level-3{width:60%}.restaurant-mini-track .level-4{width:80%}.restaurant-mini-track .level-5{width:100%}
 .restaurant-hero{padding:26px;border:1px solid var(--divider);border-radius:14px;background:var(--card-bg);margin:0 0 20px;position:relative;overflow:hidden}
 .restaurant-eyebrow{font-size:11px;letter-spacing:.12em;color:var(--accent);font-weight:700;margin-bottom:10px}
 .restaurant-hero h1{font-size:27px;line-height:1.35;margin:0 0 10px;letter-spacing:-.6px}
@@ -606,7 +630,7 @@ pre.raw{margin:0;padding:12px;border-radius:10px;background:var(--accent-soft);f
 .restaurant-stats span{font-size:11px;color:var(--text-secondary)}
 .restaurant-roles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:22px}
 .restaurant-role{display:flex;flex-direction:column;gap:12px;text-align:left;background:var(--card-bg);border:1px solid var(--divider);border-radius:12px;padding:17px;color:var(--text-primary);min-width:0}
-.restaurant-role:hover{border-color:var(--accent);box-shadow:0 3px 14px rgb(110 86 207 / .08)}
+.restaurant-role:hover{border-color:var(--accent);box-shadow:var(--card-shadow)}
 .restaurant-role .top{display:flex;align-items:center;gap:10px;font-size:14px;font-weight:650}
 .restaurant-role p{margin:0;color:var(--text-secondary);font-size:12px;line-height:1.65;min-height:38px}
 .restaurant-role .bottom{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--text-secondary);margin-top:auto}
@@ -622,7 +646,11 @@ pre.raw{margin:0;padding:12px;border-radius:10px;background:var(--accent-soft);f
 .restaurant-scope{margin-bottom:16px}.restaurant-gap-list{padding-left:18px;font-size:12px;line-height:1.8}
 .restaurant-compare{display:flex;gap:10px;flex-wrap:wrap}.restaurant-compare a{color:var(--accent);font-size:12px;text-decoration:underline;text-underline-offset:3px}
 .restaurant-disclaimer{font-size:11px;color:var(--text-secondary);line-height:1.7;margin:12px 0}
-@media(max-width:719px){.restaurant-hero{padding:18px}.restaurant-hero h1{font-size:23px}.restaurant-roles{grid-template-columns:1fr}.restaurant-stats{gap:18px}.db-brand .badge{display:none}.db-brand [data-act="restaurant-gap"]{display:none}}
+.restaurant-roles{grid-template-columns:repeat(3,minmax(0,1fr));gap:19px}.restaurant-role{padding:23px;gap:8px;border-radius:10px}.restaurant-role .top{font-size:17px;font-weight:550}.restaurant-role p{line-height:1.8;margin:6px 0 10px;min-height:43px}.restaurant-role .bottom{border-top:1px solid var(--divider);padding-top:12px;font-size:10px}.restaurant-group-head{font-size:12px;color:var(--text-secondary);margin-top:26px}
+@media(max-width:1050px){.restaurant-hero{grid-template-columns:1fr 320px;gap:25px}.restaurant-roles{grid-template-columns:repeat(2,minmax(0,1fr))}.restaurant-today{gap:12px}.restaurant-today-title{min-width:120px}.restaurant-today>button{padding-left:12px}.restaurant-today>button:last-child{display:none}}
+@container win (max-width:1050px){.restaurant-hero{grid-template-columns:1fr 320px;gap:25px}.restaurant-roles{grid-template-columns:repeat(2,minmax(0,1fr))}.restaurant-today{gap:12px}.restaurant-today-title{min-width:120px}.restaurant-today>button{padding-left:12px}.restaurant-today>button:last-child{display:none}}
+@container win (max-width:719px){[data-restaurant-home=true] .content{padding:26px 18px 80px}.restaurant-hero{grid-template-columns:1fr;gap:24px}.restaurant-welcome h1{font-size:29px!important;margin:18px 0 14px!important}.restaurant-summary{max-width:420px}.restaurant-summary .restaurant-stats{justify-content:space-between;gap:18px}.restaurant-today{padding:14px;flex-wrap:wrap;gap:14px}.restaurant-today-title{width:100%}.restaurant-today>button{min-width:120px;padding-left:0;border-left:0}.restaurant-directory-head h2{font-size:20px}.restaurant-directory-head .btn-2{font-size:11px;padding:0 8px}.restaurant-roles{grid-template-columns:1fr}.restaurant-role{padding:21px}.content{padding:22px 18px 80px}}
+@media(max-width:719px){.demobar{min-height:64px;padding:12px 16px;gap:10px}.db-brand{font-size:17px;gap:8px}.restaurant-brand-name small{display:none}.restaurant-brand-mark{width:30px;height:30px;border-radius:8px}.db-brand .badge{display:none}.db-brand [data-act="restaurant-gap"]{display:none}.db-controls.open{padding:14px;right:10px;width:calc(100% - 20px)}[data-restaurant-home=true] .content{padding:26px 18px 80px}.restaurant-hero{grid-template-columns:1fr;gap:24px}.restaurant-welcome h1{font-size:29px!important;margin:18px 0 14px!important}.restaurant-summary{max-width:420px}.restaurant-summary .restaurant-stats{justify-content:space-between}.restaurant-today{padding:14px;flex-wrap:wrap;gap:14px}.restaurant-today-title{width:100%}.restaurant-today>button{min-width:120px;padding-left:0;border-left:0}.restaurant-directory-head h2{font-size:20px}.restaurant-directory-head .btn-2{font-size:11px;padding:0 8px}.restaurant-roles{grid-template-columns:1fr}.restaurant-group-head{margin-top:22px}.restaurant-role{padding:21px}.restaurant-stats{gap:18px}.content{padding:22px 18px 80px}}
 
 </style>
 </head>
@@ -738,7 +766,7 @@ pre.raw{margin:0;padding:12px;border-radius:10px;background:var(--accent-soft);f
    sem：分析语义——分组字段 group、主要指标 metric 及聚合 agg、负责人字段 owner、指标单位 unit
    （金额类字段按金额格式化，不在文案里把工时、阅读量等称作「金额」）；启动时校验字段存在
    ═══════════════════════════════════════════════════════════════════ */
-const PLUGIN = { version: "0.2.0", hostVersion: '演示：未读取', company: '餐饮集团 · 虚构演示', appPrefix: 'restaurant.ai-employee' };
+const PLUGIN = { version: "0.2.0", hostVersion: '演示：未读取', company: '巴奴 · 虚构演示', appPrefix: 'restaurant.ai-employee' };
 const ADJUST_PREFILL = '我想要查看侧边栏增加一个……，我的要求是：';
 const DEV_PASSWORD = '0000';
 
@@ -1066,14 +1094,14 @@ const seg = (key, opts, cur) => opts.map(([v, l]) => `<button type="button" data
 const selectHtml = (id, ch, opts, cur, label) => `<span class="select-wrap"><select id="${id}" data-ch="${ch}"${label ? ` aria-label="${esc(label)}"` : ''}>${opts.map(([v, l]) => `<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(l)}</option>`).join('')}</select><span class="chev">${ic('chevron-down', 14)}</span></span>`;
 function renderDemobar() {
   el('demobar').innerHTML = `
-  <div class="db-brand">${ic('monitor')}<span>餐饮 AI 员工 v2.1<span class="full"> · UI/UX 原型</span></span><span class="badge b-warn">全部虚构 · 刷新重置</span><button type="button" class="btn-2 btn-sm" data-act="restaurant-gap">需求与缺口</button></div>
+  <div class="db-brand">${ic('monitor')}<span class="restaurant-brand-mark">${ic('sparkles',20)}</span><span class="restaurant-brand-name">巴奴<small>AI 员工工作台</small></span><span class="badge b-warn">v2.1 · 演示</span><button type="button" class="btn-2 btn-sm" data-act="restaurant-gap">需求与缺口</button></div>
   <span class="late-pill badge b-warn${S.ignoredLate ? ' show' : ''}" role="status">${ic('info', 14)}已忽略 ${S.ignoredLate} 条切岗前的迟到结果</span>
   <button type="button" class="btn-2 btn-sm db-toggle" data-act="demo-menu" aria-expanded="${S.demoMenu}" aria-controls="dbControls">${ic('sliders')}演示设置</button>
   <div class="db-controls${S.demoMenu ? ' open' : ''}" id="dbControls">
     <div class="db-group"><label for="roleSel">岗位</label>${selectHtml('roleSel', 'role', ROLES.map((x) => [x.id, isDev() ? `${x.name} · ${paradigmText(x)}` : x.name]), S.roleId)}<span class="db-note">仅演示外壳；产品中一岗一实例</span></div>
     <div class="db-group"><span>权限视角</span><div class="seg" role="group" aria-label="权限视角">${seg('view', VIEWS, S.view)}</div></div>
     <div class="db-group"><span>主题</span><div class="seg" role="group" aria-label="明暗主题">${seg('theme', [['light', '浅色'], ['dark', '深色']], S.theme)}</div></div>
-    <div class="db-group"><span>宽度</span><div class="seg" role="group" aria-label="窗口宽度">${seg('width', [['1280', '桌面 1280'], ['960', '紧凑 960'], ['720', '窄 720'], ['390', '手机 390']], S.width)}</div></div>
+    <div class="db-group"><span>宽度</span><div class="seg" role="group" aria-label="窗口宽度">${seg('width', [['1280', '跟随窗口'], ['960', '紧凑 960'], ['720', '窄 720'], ['390', '手机 390']], S.width)}</div></div>
     <div class="db-group"><label for="stateSel">状态</label>${selectHtml('stateSel', 'demo', [['normal', '正常'], ['empty', '空'], ['loading', '加载中'], ['error', '失败'], ['denied', '无权限'], ['off', '未开通']], S.demo)}</div>
   </div>`;
 }
@@ -3144,11 +3172,19 @@ function restaurantScopeNote() {
 }
 
 function restaurantHome() {
-  const groups = [...new Set(ROLES.map(r => r.department))];
-  return `<section class="restaurant-hero"><div class="restaurant-eyebrow">RESTAURANT / AI EMPLOYEES</div><h1>让每个岗位，都有自己的工作台</h1><p>从门店训练到供应调度，把资料、交付和复核放进同一条工作链。选择岗位，查看它的待办、业务看板与协作 Agent。</p><div class="btns">${btn('查看需求与功能缺口', 'restaurant-gap', {kind:'btn',icon:'list'})}${btn('进入当前岗位', 'go', {id:'dashboard',icon:'arrow-right'})}</div><div class="restaurant-stats"><div><b>17</b><span>岗位场景 · 来自 18 条需求</span></div><div><b>58</b><span>主题 · 保留原 83 看板</span></div><div><b>332</b><span>原有虚构记录 · 口径保留</span></div></div></section>
-    <div class="note warn">${ic('info')}<span>餐饮 v2.1 独立原型 · 全部虚构 · 仅内存运行，刷新后重置。未连接真实模型、业务系统或电子签，不发送通知、不下单、不改变人员权益。权限视角仅模拟显示范围。</span></div>
-    ${groups.map(dep => `<h2 class="restaurant-group-head">${esc(dep)}<small>${ROLES.filter(r => r.department === dep).length} 个岗位</small></h2><div class="restaurant-roles">${ROLES.filter(r => r.department === dep).map(r => `<button type="button" class="restaurant-role" data-act="restaurant-role" data-id="${esc(r.id)}" aria-label="打开${esc(r.name)}工作台"><span class="top">${ic(r.icon,20)}${esc(r.name)}</span><p>${esc(r.boards.map(b => b.title).join(' / '))}</p><span class="bottom">${badge(r.scopeUncertain ? '范围待确认' : '交互样例',r.scopeUncertain ? 'b-warn' : 'b-accent')}<span>${r.boards.length} 个主题</span><span>${r.rows.length} 条记录</span><span class="arrow">${ic('arrow-right',14)}</span></span></button>`).join('')}</div>`).join('')}
-    <div class="restaurant-compare"><a href="/design/paradigm-v2.html" target="_blank" rel="noopener">对比 main v2 范式</a><a href="/showcase.html#/" target="_blank" rel="noopener">对比原 17 岗位看板</a><a href="/preview.html" target="_blank" rel="noopener">查看原始模板</a></div>`;
+  return `<div class="restaurant-home-inner"><section class="restaurant-hero"><div class="restaurant-welcome"><div class="restaurant-eyebrow">BANU · EMPLOYEE WORKSPACE</div><h1>让每一个岗位，<br>都有自己的 AI 工作台。</h1><p>从日常待办开始，在看板里核对资料、讨论方案、确认下一步。</p><div class="restaurant-welcome-note">${badge('演示数据','b-warn')}<span>沿用巴奴场景 · 业务记录均为虚构样例</span></div></div><div class="restaurant-summary"><div class="restaurant-summary-head">工作空间概览<span>餐饮 v2.1</span></div><div class="restaurant-stats"><div><b>17</b><span>岗位员工</span></div><div><b>58</b><span>工作主题</span></div><div><b>332</b><span>原有样例记录</span></div></div><div class="restaurant-summary-foot">${ic('shield',14)}18 条需求 · 保留原 83 看板 · 5 个范围待确认岗位</div></div></section>
+    <div class="restaurant-today"><span class="restaurant-today-title">${ic('clock',20)}今日工作示例<small>选择岗位，查看虚构待办</small></span>${[['training','课程资源待确认'],['supply','在途到货待核对'],['legal','事务证据待复核']].map(([id,label])=>`<button type="button" data-act="restaurant-role" data-id="${id}"><span class="dot warn"></span><span>${label}<small>${esc(roleById(id).name)}</small></span>${ic('arrow-right',14)}</button>`).join('')}</div>
+    <div class="restaurant-directory-head"><div><h2>我的 AI 员工 <small>17</small></h2><p>沿用统一工作范式，保留每个岗位的业务语言。</p></div>${btn('需求与功能缺口','restaurant-gap',{icon:'list',sm:true})}</div>
+    <div class="restaurant-home-note">${ic('info',14)}全部虚构 · 仅内存运行，刷新重置。未连接真实模型或业务系统；签字、检查和通知均为演示。</div>
+    <div class="restaurant-roles">${ROLES.map(restaurantRoleCard).join('')}</div>
+    <div class="restaurant-compare"><a href="/design/paradigm-v2.html" target="_blank" rel="noopener">对比 main v2 范式</a><a href="/showcase.html#/" target="_blank" rel="noopener">对比原 17 岗位看板</a><a href="/preview.html" target="_blank" rel="noopener">查看原始模板</a></div></div>`;
+}
+
+function restaurantRoleCard(r) {
+  const topicIndex=r.fields.findIndex(f=>f[0]==='topic');
+  const counts=r.boards.map(b=>r.rows.filter(row=>b.sections.some(section=>section.topic===row[topicIndex])).length);
+  const max=Math.max(1,...counts);
+  return `<button type="button" class="restaurant-role" data-act="restaurant-role" data-id="${esc(r.id)}" aria-label="打开${esc(r.name)}工作台"><span class="restaurant-card-top"><span class="restaurant-role-icon">${ic(r.icon,20)}</span>${badge(r.priorities.join(' / '),'b-mute')}</span><span class="top">${esc(r.name)}</span><span class="restaurant-role-dept">${esc(r.department)}</span><p>${esc(r.summary)}</p><span class="restaurant-mini"><span class="restaurant-mini-title">主题记录分布 · 初始样例</span>${r.boards.map((b,i)=>`<span class="restaurant-mini-row"><span>${esc(b.title)}</span><span class="restaurant-mini-track"><i class="level-${Math.ceil(counts[i]/max*5)}"></i></span><small>${counts[i]}</small></span>`).join('')}</span><span class="bottom"><span>${r.scopeUncertain?'范围待确认':r.legacyTasks.length+' 项岗位任务'}</span><span class="arrow">进入工作台 ${ic('arrow-right',14)}</span></span></button>`;
 }
 
 function restaurantThemeRecords(b, records = recList()) {
@@ -3256,6 +3292,9 @@ srcStatusCell = function(s, detail) { return s.fpBasis === 'meta' ? '<span class
 
 ACT['restaurant-gap'] = (id,t) => openDrawer({kind:'restaurant-gap'},t);
 ACT['restaurant-role'] = id => { switchRole(id); if (!isMobile()) S.agentOpen = true; go('dashboard'); };
+
+const restaurantRenderContent = renderContent;
+renderContent = function(reset) { document.documentElement.dataset.restaurantHome=String(S.route.page==='restaurant-home'); restaurantRenderContent(reset); };
 
 /* ── 启动 ── */
 (function init() {

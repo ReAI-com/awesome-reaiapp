@@ -1,6 +1,8 @@
 # 餐饮 AI 员工 v2.1：岗位整合原型
 
-日期：2026-10-15。本页先对比功能缺口，再记录餐饮岗位的整合方式与演示边界。它是基于 [AI 员工范式 v2](ai-employee-pattern-v2.md) 的场景原型说明，不替换原合同，不改变插件安装包版本，不代表正式产品或平台能力已接入。
+日期：2026-10-15。本页先对比功能缺口，再记录餐饮岗位的整合方式与演示边界。它是基于 [AI 员工范式 v2](../../docs/ai-employee-pattern-v2.md) 的场景原型说明，不替换原合同，不改变插件安装包版本，不代表正式产品或平台能力已接入。
+
+视觉沿用原巴奴岗位版：暖白背景、墨绿主操作、鼠尾草侧栏、白色细边卡片及低饱和概览；首页保留欢迎区、工作概览、示例待办和岗位卡片的设计语言。岗位内继续使用 v2 的资料、交付、检查与 Agent 结构，明暗模式和手机布局保持可用。
 
 ## 功能缺口与整合选择
 
@@ -27,13 +29,13 @@ main v2 提供状态合同和信息架构；17 岗位版提供餐饮工作内容
 
 ## 独立入口与保留范围
 
-新页面：[`plugins/ai-employee/design/restaurant-v2.1.html`](../plugins/ai-employee/design/restaurant-v2.1.html)，本地预览路径 `/design/restaurant-v2.1.html`。
+新页面：[`design/restaurant-v2.1.html`](design/restaurant-v2.1.html)，本地预览路径 `/design/restaurant-v2.1.html`。
 
 同一开发服务保留三个对照入口：
 
-- [`design/paradigm-v2.html`](../plugins/ai-employee/design/paradigm-v2.html)：main 的通用 v2 交互设计稿。
-- [`showcase.html`](../plugins/ai-employee/showcase.html)：原 17 岗位、83 看板的岗位演示。
-- [`preview.html`](../plugins/ai-employee/preview.html)：原 v1 运行模板。
+- [`design/paradigm-v2.html`](design/paradigm-v2.html)：main 的通用 v2 交互设计稿。
+- [`showcase.html`](showcase.html)：原 17 岗位、83 看板的岗位演示。
+- [`preview.html`](preview.html)：原 v1 运行模板。
 
 本次只新增页面、生成代码、测试、构建配置和本文。新 HTML 由 `plugins/ai-employee/scripts/build-restaurant-v21.ts` 读取原 v2 后生成副本，复用原生交互运行时。生成器和餐饮扩展位于 `src/restaurant-v21/`；其中 `catalog.ts` 定义岗位、主题与覆盖关系，`generator.ts` 注入配置，`runtime.js` 和 `runtime-extension.ts` 提供新页的受限交互与样式。不能手改生成 HTML 后把它当成事实源。原页面、Manifest、包脚本、锁文件及旧浏览器存储均保留。
 
