@@ -1,0 +1,11 @@
+/* Preview tokens replace Host injection only in the standalone browser entry. */
+:root {
+  --bg:#f7f7fb;--card-bg:#ffffff;--card-border:#e4e4ed;--card-shadow:0 2px 8px rgba(28,28,46,.04);
+  --divider:#e9e9f1;--text-primary:#1c1c2e;--text-secondary:#64647a;--text-tertiary:#76768d;
+  --accent:#5956d6;--accent-soft:#efedff;--accent-glow:rgba(89,86,214,.15);
+  --alert:#be3047;--alert-soft:#fff0f2;--alert-line:#f0bdc6;--warn:#875800;--warn-soft:#fff8e6;--warn-line:#ebd9aa;
+  --bound:#24734f;--bound-soft:#ebf8f1;--bound-line:#b9dec9;--panel-bg:#ffffff;--panel-border:#e4e4ed;
+  --panel-shadow:0 16px 48px rgba(28,28,46,.14);--scroll-thumb:#d3d3e0;--scroll-thumb-hi:#aaaac0;
+  --reai-plugin-titlebar-safe-top:0px;
+}
+html,body,#app{margin:0;min-height:100%;height:100%;} body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;}

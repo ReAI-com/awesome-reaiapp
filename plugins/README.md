@@ -4,6 +4,8 @@
 
 另有 [AI 员工工作台](ai-employee/README.md) 开发 Demo：以原始事实、可编辑标准记录和岗位 Agent 为三阶段模板，包含财务、人事示例与新岗位插件生成器。它尚未审核、签名或上架，默认使用明确标识的本地规则分析。范式与扩展边界见 [最佳实践](../docs/ai-employee-pattern-v1.md)。
 
+[AI 专利助手](ai-patent-assistant/README.md) 是用该生成器产生的岗位插件 Demo：专利事项台账、九类专利工作看板，以及改编自 handsomestWei/patent-disclosure-skill（MIT）的岗位 Agent 要求。同样未审核、签名或上架，默认使用本地规则分析。
+
 进入相应插件目录运行：
 
 ```bash
