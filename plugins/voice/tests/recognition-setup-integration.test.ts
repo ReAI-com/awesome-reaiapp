@@ -36,7 +36,7 @@ test("ordinary cloud switch shows an invalid saved choice and blocks capture unt
     await until(() => (storage(host).get(key("settings")) as typeof DEFAULT_SETTINGS)?.engine === "cloud");
     const select = surface.root!.querySelector<HTMLSelectElement>(".settings-cloud-model")!;
     expect(select.value).toBe("transcribe-default");
-    expect(select.textContent).toContain("云端选项不可用");
+    expect(select.textContent).toContain("暂无可用选项");
     await host.invokeCommand("com.reai.voice.toggle-input");
     expect(host.voiceInputRequests.filter(r => r.method === "voice.toggle")).toHaveLength(0);
     expect(host.cloudRequests.filter(r => r.method === "ai.audio.transcribe")).toHaveLength(0);
@@ -386,14 +386,14 @@ for (const locale of ["zh", "en"] as const) for (const [code, zh, en] of [["AI_P
   });
 }
 
-for (const [code, needle] of [["AI_NETWORK_ERROR", "network"], ["AI_SUBSCRIPTION_REQUIRED", "subscription"], ["AI_SUBSCRIPTION_UNAVAILABLE", "subscription"], ["AI_UNAVAILABLE", "service"]] as const) {
-  test(`model-list error ${code} reaches task label in English`, async () => {
+for (const code of ["AI_NETWORK_ERROR", "AI_SUBSCRIPTION_REQUIRED", "AI_SUBSCRIPTION_UNAVAILABLE", "AI_UNAVAILABLE"] as const) {
+  test(`initial catalog failure ${code} shows English recovery without diagnostics`, async () => {
     const host = createHost();
   host.setVoiceContextCapture({ sessionEpoch: "setup-test-account" });
     host.setLocale("en");
     storage(host).set(key("recognition-engine-choice-v1"), "local");
     const original = host.bridge.request.bind(host.bridge);
-    let failModels = false;
+    const failModels = true;
     host.bridge.request = async (method, params, options) => {
       if (failModels && method === "ai.models.list") throw Object.assign(new Error("PRIVATE_SENTINEL"), { code });
       return original(method, params, options);
@@ -404,12 +404,13 @@ for (const [code, needle] of [["AI_NETWORK_ERROR", "network"], ["AI_SUBSCRIPTION
       await host.invokeCommand("com.reai.voice.open-settings");
       Array.from(surface.root!.querySelectorAll<HTMLButtonElement>("button"))
         .find(button => button.textContent === "Cloud engine")!.click();
-      await until(() => !!surface.root!.querySelector<HTMLSelectElement>(".settings-cloud-model"));
-      failModels = true;
-      const select = surface.root!.querySelector<HTMLSelectElement>(".settings-cloud-model")!;
-      select.value = "transcribe-paid";
-      select.dispatchEvent(new Event("change"));
-      await until(() => surface.root!.querySelector(".settings-error")?.textContent?.toLowerCase().includes(needle) === true);
+      await until(() => {
+        const select = surface.root!.querySelector<HTMLSelectElement>(".settings-cloud-model");
+        return select?.disabled === true && select.getAttribute("aria-busy") === "false";
+      });
+      expect(surface.root!.textContent).toContain("No options available yet");
+      expect(Array.from(surface.root!.querySelectorAll("button")).some(button => button.textContent === "Refresh options")).toBeTrue();
+      expect(surface.root!.textContent).not.toContain(code);
       expect(surface.root!.textContent).not.toContain("PRIVATE_SENTINEL");
       expect(surface.root!.textContent).not.toContain("未完成");
       expect(host.cloudRequests.filter(request => request.method === "ai.audio.transcribe")).toHaveLength(0);

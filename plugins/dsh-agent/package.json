@@ -1,6 +1,6 @@
 {
   "name": "reai-dsh-transparency",
-  "version": "1.2.8-dev.1",
+  "version": "1.2.8-dev.3",
   "private": true,
   "type": "module",
   "reaiApp": {
@@ -11,10 +11,10 @@
     "typecheck": "tsc --noEmit",
     "build": "reai-app-i18n build .",
     "validate": "reai-app-i18n validate .",
-    "test:contract": "reai-app contract-test . --host-api 1.18",
-    "pack": "reai-app-i18n pack . --out dsh-agent-1.2.8-dev.1.reaiapp",
+    "test:contract": "reai-app contract-test . --host-api 1.25",
+    "pack": "reai-app-i18n pack . --out dsh-agent-1.2.8-dev.3.reaiapp",
     "check:submission": "bun ../../scripts/plugin-submission.ts check .",
-    "pack:submission": "bun ../../scripts/plugin-submission.ts pack . --out dsh-agent-1.2.8-dev.1-submission.reaiapp"
+    "pack:submission": "bun ../../scripts/plugin-submission.ts pack . --out dsh-agent-1.2.8-dev.3-submission.reaiapp"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.0.0",
@@ -31,5 +31,8 @@
     "@reai/app-contract": "file:../../packages/contract",
     "@reai/app-sdk": "file:../../packages/sdk",
     "@reai/app-test": "file:../../packages/test-kit"
+  },
+  "dependencies": {
+    "markdown-it": "15.0.2"
   }
 }

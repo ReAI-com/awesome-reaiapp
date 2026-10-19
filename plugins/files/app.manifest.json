@@ -1,0 +1,124 @@
+{
+  "manifestVersion": "1.1",
+  "appId": "com.reai.files",
+  "version": "1.2.0",
+  "publisherId": "reai",
+  "name": "文件",
+  "description": "浏览、编辑和整理你授权给 ReAI 的本地文件夹与云项目。",
+  "icon": "assets/icon.png",
+  "targets": [
+    {
+      "platform": "macos",
+      "architectures": [
+        "aarch64"
+      ]
+    }
+  ],
+  "hostApi": {
+    "range": ">=1.25.0 <2.0.0"
+  },
+  "requires": {
+    "hostCapabilities": [
+      "surface.main@1",
+      "sidebar.item@1",
+      "metadata.i18n@2",
+      "resources.files@1",
+      "system.tasks@1"
+    ],
+    "hardwareServices": [],
+    "appIntents": []
+  },
+  "runtime": {
+    "components": [
+      {
+        "id": "ui",
+        "kind": "web-surface",
+        "protocol": "web-surface@1",
+        "required": true,
+        "headless": false,
+        "activation": "on-demand",
+        "entry": "dist/app.js",
+        "dependsOn": [],
+        "lifecycle": {
+          "activate": "default.activate",
+          "deactivate": "default.deactivate"
+        }
+      }
+    ]
+  },
+  "permissions": [
+    {
+      "id": "resources.files@1",
+      "purpose": "读写你亲手选择的文件夹和云项目：浏览、打开、保存、新建、重命名、删除，以及在它们之间复制文件",
+      "required": true
+    }
+  ],
+  "requirementsVersion": "1.1",
+  "requirements": [],
+  "network": {
+    "policyVersion": 1,
+    "endpoints": []
+  },
+  "billing": {
+    "mode": "none"
+  },
+  "data": {
+    "privateStores": [],
+    "imports": [],
+    "exports": []
+  },
+  "dataCompatibility": {
+    "rollbackFloor": "1.0.0"
+  },
+  "contributes": {
+    "surfaces": [
+      {
+        "id": "main",
+        "componentId": "ui",
+        "location": "app.main",
+        "title": "文件"
+      }
+    ],
+    "sidebarItems": [
+      {
+        "id": "files",
+        "label": "文件",
+        "icon": "assets/icon.png",
+        "opens": "surface:main"
+      }
+    ],
+    "commands": [],
+    "intents": []
+  },
+  "i18n": {
+    "locales": [
+      "zh",
+      "en"
+    ],
+    "messages": [
+      {
+        "target": "name",
+        "key": "metadata.name"
+      },
+      {
+        "target": "description",
+        "key": "metadata.description"
+      },
+      {
+        "target": "surface.title",
+        "id": "main",
+        "key": "metadata.surface.main"
+      },
+      {
+        "target": "sidebar.label",
+        "id": "files",
+        "key": "metadata.sidebar.main"
+      },
+      {
+        "target": "permission.purpose",
+        "id": "resources.files@1",
+        "key": "metadata.permission.files"
+      }
+    ]
+  }
+}

@@ -1,8 +1,8 @@
 # Pi Agent 面板
 
-ReAI 插件 `com.reai.pi-agent`。当前源码版本为 `1.0.4-dev.2`。按调用插件查看 Host 管理的 Pi Agent 会话、能力和新会话模型设置。数据通过 `pi.management.*` 接口读取。
+ReAI 插件 `com.reai.pi-agent`。当前源码版本为 `1.0.5-dev.2`。按调用插件查看 Host 管理的 Pi Agent 会话、能力和新会话模型设置。数据通过 `pi.management.*` 接口读取。
 
-Manifest 声明可选 `pi-agent-v1` 运行组件。实际安装状态由 Host 判断。语言覆盖见 [I18N.md](I18N.md)。
+Manifest 声明可选 `runtime.pi` 运行组件（Host 注册探针 `pi-agent-v2`）。实际安装状态由 Host 判断。语言覆盖见 [I18N.md](I18N.md)。
 
 ## 本地构建
 

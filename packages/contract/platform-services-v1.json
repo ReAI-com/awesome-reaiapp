@@ -1,0 +1,255 @@
+{
+  "version": 1,
+  "contractHostApi": "1.25.0",
+  "status": "declaration-only",
+  "capabilities": {
+    "surface.navigation@1": {
+      "version": 1,
+      "available": true,
+      "methods": [
+        "surface.navigation.register",
+        "surface.navigation.clear"
+      ],
+      "userPermission": null,
+      "admission": "manifest + platform-approval + user-consent (where required) + live-host-scope"
+    },
+    "surface.escape@1": {
+      "version": 1,
+      "available": true,
+      "implementation": "host-handshake-and-injected-runtime-wired; grant-gated-per-approved-plugin-version",
+      "methods": [
+        "surface.escape.respond"
+      ],
+      "userPermission": null,
+      "admission": "manifest + platform-approval + user-consent (where required) + live-host-scope"
+    },
+    "audio.capture@1": {
+      "version": 1,
+      "available": true,
+      "implementation": "host-consumer-core-sdk-and-bridge-wired; grant-gated-by-capability-review-and-user-consent",
+      "methods": [
+        "audio.consumers.acquire",
+        "audio.consumers.release",
+        "audio.consumers.status"
+      ],
+      "userPermission": "audio.capture@1",
+      "admission": "manifest + platform-approval + user-consent (where required) + live-host-scope"
+    },
+    "audio.clips@1": {
+      "version": 1,
+      "available": true,
+      "methods": [
+        "audio.ranges.start",
+        "audio.ranges.finish",
+        "audio.ranges.cancel",
+        "audio.clips.read",
+        "audio.clips.release",
+        "audio.clips.transcribe",
+        "audio.clips.transcriptionStatus"
+      ],
+      "userPermission": "audio.clips@1",
+      "admission": "manifest + platform-approval + user-consent (where required) + live-host-scope",
+      "implementation": "host-clip-scheduler-sdk-and-bridge-wired; grant-gated-by-capability-review-and-user-consent-with-audio.capture@1"
+    },
+    "tasks.present@1": {
+      "version": 1,
+      "available": true,
+      "methods": [
+        "tasks.present",
+        "tasks.progress",
+        "tasks.finish",
+        "tasks.dismiss",
+        "tasks.conversationOpened",
+        "results.present",
+        "results.continue",
+        "results.dismiss"
+      ],
+      "userPermission": "tasks.present@1",
+      "admission": "manifest + platform-approval + user-consent (where required) + live-host-scope",
+      "implementation": "owned-task-source-barriers-producer-drainer-neutral-result-fifo-wired; grant-gated-by-capability-review-and-user-consent"
+    },
+    "notifications.publish@1": {
+      "version": 1,
+      "available": true,
+      "methods": [
+        "notifications.publish",
+        "notifications.history.list",
+        "notifications.history.markRead"
+      ],
+      "userPermission": "notifications.publish@1",
+      "admission": "manifest + platform-approval + user-consent (where required) + live-host-scope",
+      "implementation": "host-broker-bridge-sdk-and-history-wired; grant-gated-by-capability-review-user-consent-and-scene-decision"
+    },
+    "resources.files@1": {
+      "version": 1,
+      "available": true,
+      "methods": [
+        "resources.roots.list",
+        "resources.roots.pick",
+        "resources.roots.attach",
+        "resources.roots.revoke",
+        "resources.list",
+        "resources.stat",
+        "resources.read",
+        "resources.write.start",
+        "resources.write.chunk",
+        "resources.write.commit",
+        "resources.cancel",
+        "resources.mkdir",
+        "resources.rename",
+        "resources.move",
+        "resources.delete",
+        "resources.createFile"
+      ],
+      "userPermission": "resources.files@1",
+      "admission": "manifest + platform-approval + user-consent (where required) + live-host-scope"
+    }
+  },
+  "limits": {
+    "surface": {
+      "maxBreadcrumbs": 8,
+      "maxMenuItems": 16,
+      "maxLabelChars": 80,
+      "maxIntentBytes": 8192,
+      "maxIntentDepth": 8,
+      "escapeTimeoutMs": 250,
+      "maxEscapeInflightPerMount": 1
+    },
+    "audio": {
+      "sampleRate": 16000,
+      "channels": 1,
+      "maxRangeMs": 600000,
+      "maxClipBytes": 38400000,
+      "maxBytesPerApp": 67108864,
+      "maxBytesGlobal": 268435456,
+      "clipTtlMs": 300000,
+      "maxConsumersPerApp": 8,
+      "maxRangesPerApp": 8,
+      "maxRangesGlobal": 32,
+      "maxClipsPerApp": 8,
+      "maxReadBytes": 262144,
+      "maxSliceConcurrency": 2,
+      "maxSliceQueue": 16,
+      "maxSttConcurrency": 2,
+      "maxSttQueue": 16
+    },
+    "tasks": {
+      "maxActivePerApp": 16,
+      "maxTitleChars": 80,
+      "maxDetailChars": 500,
+      "maxResultBytes": 262144,
+      "maxResultQueue": 16,
+      "maxEntityIdBytes": 128
+    },
+    "notifications": {
+      "maxScenesPerApp": 32,
+      "maxSceneKeyBytes": 80,
+      "maxLabelChars": 80,
+      "maxDescriptionChars": 500,
+      "maxTitleChars": 80,
+      "maxBodyChars": 500,
+      "maxPostsPer10Seconds": 5,
+      "maxHistoryPerAccount": 1000,
+      "retentionDays": 30,
+      "maxPageSize": 100,
+      "maxDedupeKeyBytes": 128,
+      "dedupeWindowMs": 600000,
+      "maxTriggerChars": 500
+    },
+    "resources": {
+      "maxPageSize": 100,
+      "maxReadBytes": 1048576,
+      "maxChunkBytes": 262144,
+      "maxTransferBytes": 52428800,
+      "maxTransfersPerApp": 4,
+      "transferTtlMs": 300000,
+      "maxRelativePathBytes": 4096,
+      "maxRevisionBytes": 128,
+      "maxIdempotencyKeyBytes": 128,
+      "idempotencyRetentionMs": 86400000,
+      "maxNameBytes": 255
+    },
+    "identity": {
+      "maxRequestIdBytes": 128,
+      "maxOpaqueIdBytes": 128
+    }
+  },
+  "errors": {
+    "surface": [
+      "SURFACE_NAV_INVALID",
+      "SURFACE_NAV_COMMAND_UNDECLARED",
+      "SURFACE_SESSION_STALE",
+      "ESC_REQUEST_STALE",
+      "ESC_ALREADY_SETTLED"
+    ],
+    "audio": [
+      "AUDIO_NOT_GRANTED",
+      "AUDIO_PERMISSION_REQUIRED",
+      "AUDIO_PERMISSION_DENIED",
+      "AUDIO_SOURCE_UNAVAILABLE",
+      "AUDIO_CONSUMER_STALE",
+      "AUDIO_RANGE_INVALID",
+      "AUDIO_RANGE_UNAVAILABLE",
+      "AUDIO_CLIP_NOT_FOUND",
+      "AUDIO_CLIP_EXPIRED",
+      "AUDIO_CLIP_FORBIDDEN",
+      "AUDIO_QUEUE_FULL",
+      "AUDIO_BUDGET_EXCEEDED",
+      "AUDIO_CANCELLED"
+    ],
+    "tasks": [
+      "TASK_NOT_GRANTED",
+      "TASK_PERMISSION_REQUIRED",
+      "TASK_PERMISSION_DENIED",
+      "TASK_NOT_FOUND",
+      "TASK_OWNER_MISMATCH",
+      "TASK_SOURCE_STALE",
+      "TASK_RESULT_STALE",
+      "TASK_NAVIGATION_FAILED",
+      "TASK_LIMIT_EXCEEDED",
+      "TASK_INVALID_REQUEST"
+    ],
+    "notifications": [
+      "NOTIFICATION_SCENE_UNDECLARED",
+      "NOTIFICATION_PERMISSION_REQUIRED",
+      "NOTIFICATION_PERMISSION_DENIED",
+      "NOTIFICATION_SOURCE_STALE",
+      "NOTIFICATION_HISTORY_UNAVAILABLE"
+    ],
+    "resources": [
+      "RESOURCE_UNAVAILABLE",
+      "RESOURCE_NOT_FOUND",
+      "RESOURCE_NOT_AUTHORIZED",
+      "RESOURCE_SCOPE_STALE",
+      "RESOURCE_PATH_INVALID",
+      "RESOURCE_REVISION_CONFLICT",
+      "RESOURCE_ALREADY_EXISTS",
+      "RESOURCE_IDEMPOTENCY_CONFLICT",
+      "RESOURCE_LIMIT_EXCEEDED",
+      "RESOURCE_TRANSFER_EXPIRED",
+      "RESOURCE_CANCELLED",
+      "RESOURCE_IO_FAILED",
+      "RESOURCE_PROVIDER_MISMATCH"
+    ]
+  },
+  "network": {
+    "protocols": [
+      "https:"
+    ],
+    "lan": false,
+    "websocket": false,
+    "sse": false,
+    "ordinaryResponseMaxBytes": 1048576,
+    "schemeError": "NETWORK_SCHEME_DENIED",
+    "privateAddressError": "NETWORK_PRIVATE_ADDRESS_DENIED",
+    "redirectError": "NETWORK_REDIRECT_DENIED",
+    "scopeErrors": [
+      "NETWORK_PERMISSION_REQUIRED",
+      "NETWORK_ENDPOINT_NOT_DECLARED",
+      "NETWORK_METHOD_DENIED",
+      "NETWORK_PATH_DENIED",
+      "NETWORK_HEADER_DENIED"
+    ],
+    "note": "production/strict-preview; dedicated file transfers do not widen http.fetch"
+  }
+}

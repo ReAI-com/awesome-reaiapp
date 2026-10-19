@@ -69,7 +69,9 @@ async function mount(options: {
   let emitAgentEvent: Parameters<AppContext["events"]["onLocalAgent"]>[0] | undefined;
   let rejectStart = options.rejectFirstStart ?? false;
   let lostAcks = options.lostAcks ?? 0;
+  const ownedSessions = ["pi-old", ...(options.knownSessions ?? [])];
   const host = new MockHost({
+    ownedConversationOpen: { accountGeneration: "t09-synthetic", packageDigest: "a".repeat(64), admitted: true, decision: "granted", userCeiling: "in_app", sessionIds: ownedSessions },
     manifest: structuredClone(manifest) as never,
     loadApp: async () => {
       const { default: app } = await import("../src/app?agent-scope=" + crypto.randomUUID());
@@ -105,6 +107,7 @@ async function mount(options: {
           createSession: async (config: Config) => {
             configs.push(structuredClone(config));
             const sessionId = `agent2-new-${configs.length}`;
+            ownedSessions.push(sessionId);
             const runtime = config.runtime === "dsh" || config.runtime === "codex" ? config.runtime : "pi";
             runtimeOf.set(sessionId, runtime);
             const scoped = config.tools.some(tool => tool.ref === "command");
@@ -196,6 +199,7 @@ async function mount(options: {
   const root = surface!;
   root.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
   root.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+    await waitForConversationFixture(root);
   const finish = (index: number, result: Partial<AgentTurnResult>) => {
     const start = starts[index]!;
     const turnId = `native-${index + 1}`;
@@ -639,3 +643,9 @@ test("translation historical attachment retry is rejected even when its metadata
     expect(h.root.querySelector(".chat-attach")).toBeNull();
   } finally { await h.close(); }
 });
+
+/** Synthetic fixture waits for the actual asynchronous history/paint boundary. */
+async function waitForConversationFixture(root: Element) {
+ const end=Date.now()+2500; while(!root.querySelector(".main-body.chat-view,.main-body.translation-detail")&&Date.now()<end)await new Promise(r=>setTimeout(r,5));
+ expect(!!root.querySelector(".main-body.chat-view,.main-body.translation-detail")).toBeTrue();
+}

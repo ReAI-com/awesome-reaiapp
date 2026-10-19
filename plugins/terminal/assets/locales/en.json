@@ -116,5 +116,8 @@
     "settings": "Settings"
   },
   "terminalInput": "Terminal input",
-  "terminalOutputLimit": "Too much output to announce. Press any key to resume."
+  "terminalOutputLimit": "Too much output to announce. Press any key to resume.",
+  "navigation": {
+    "settingsCommand": "Open settings"
+  }
 }

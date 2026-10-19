@@ -13,14 +13,15 @@ import { commandOverlayKind } from "./voice-overlay-kind";
 import { createVoiceOverlayStages } from "./voice-overlay-stage";
 import { readVoiceAccountEpoch, isVoiceAccountCurrent, isVoiceRequestInvalidated } from "./voice-account";
 import { assessTranslationOutput, TRANSLATION_LANGUAGES, translationPrompt, translationTurnText } from "./voice-translation";
-import { sanitizeVoiceFeatureSettings } from "./data";
+import { DEFAULT_MODEL_ID, sanitizeVoiceFeatureSettings } from "./data";
 import { t, setVoiceLocale } from "./voice-i18n";
 import { chooseRecognitionEngine, RecognitionSetupRollbackError } from "./recognition-setup";
 import { assertFreeOnlyCloudExecution, preferredCloudOption, cloudSelectionBillingPolicy, selectedCloudOption, validCloudOptionId } from "./cloud-selection";
+import { cloudModelsFailureRetryable, cloudModelsRetryDelay, cloudModelsRetryTiming } from "./cloud-models-retry";
 import { agentReadiness } from "./agent-readiness";
 import { availableConversationBackends, canChangeConversation, conversationKey, conversationMembers, continuationPrompt, createVoiceCommandSessionConfig, scopeUnavailableMessage, visibleConversationContext, type VoiceConversationOptions } from "./agent-conversation";
 import { VOICE_SUMMARY_SYSTEM_PROMPT, noteHostAgentBackendStatuses, withVoiceFeatureRef } from "./agent-features";
-import type { AgentBackend, AgentHistoryItem, ResolvedAgentBackend } from "@reai/app-sdk/v1";
+import type { AgentBackend, AgentHistoryItem, AudioTimelineStatus, CloudModelOption, ResolvedAgentBackend, VoiceInputStatus } from "@reai/app-sdk/v1";
 import { sanitizeAgentUsage } from "./agent-metadata";
 import { LocalModelDownloads } from "./local-model-download";
 import {
@@ -74,7 +75,7 @@ import {
   type VoiceFeatureSettings,
   type VoiceRecordingRef,
 } from "./data";
-import { COMMAND_EVENT_META, mountVoiceView, type VoiceView } from "./voice-view";
+import { COMMAND_EVENT_META, createOwnedConversationOpenController, mountVoiceView, type VoiceSettingsChangeOptions, type VoiceView } from "./voice-view";
 import { plainReply, toolProgressText, trimToolCalls, unresolvedToolFailure, userWaitLabel } from "./voice-agent-presentation";
 import {
   BUILTIN_VOICE_COMMANDS,
@@ -87,6 +88,8 @@ import { VoiceScreenshotConsent, type VoiceScreenshotConsentRecord, type VoiceSc
 import { VoiceRequestAdmission } from "./voice-request-admission";
 import { VoiceRequestTextProvider } from "./voice-request-text";
 import { prepareVoiceRequest } from "./voice-request-permission";
+import { createVoiceConfiguration, withExplicitVoiceSource } from "./voice-configuration";
+import { createVoiceSurfaceNavigation } from "./voice-surface-navigation";
 import { registerVoiceRequestTextService } from "./voice-service-registration";
 import {
   describePolishFailure,
@@ -134,12 +137,14 @@ import {
   withOuterCode,
   type VoiceErrorFields,
 } from "./voice-error-fields";
-import { deliverReasonLabel, hostErrorCode, taskFailureLabel } from "./voice-failure-labels";
+import { deliverReasonLabel, hostErrorCode, knownFailureLabel, taskFailureLabel } from "./voice-failure-labels";
 import { agentTurnFailureCode } from "./agent-failure-codes";
-import { VoiceAppError, commandWireError, constantUserMessage, trustedDiagnosticFields } from "./voice-app-error";
+import { VoiceAppError, commandWireError, composedUserMessage, constantUserMessage, trustedDiagnosticFields } from "./voice-app-error";
+import { inPlainMode, setVoiceDeveloperMode, voiceDeveloperMode } from "./voice-presentation-mode";
 import { HostVersionReader } from "./voice-host-version";
 import { commandStepKey, interruptedLabel, stoppedLabel } from "./voice-stop-copy";
 import { classifyUtterance, shouldTranslateUtterance } from "./voice-utterance";
+import { VoiceClipCapture, type VoiceClipPressToken } from "./voice-audio-clips";
 // 共享对话组件的样式先于插件自己的：voice.css 只通过 --chat-dock-x 变量调它，不覆盖其类规则。
 import "@reai/chat-ui/styles.css";
 import "./voice.css";
@@ -226,6 +231,10 @@ let cancelSavedInputRetries: (() => Promise<void>) | undefined;
 let disposeHostVersion: (() => void) | undefined;
 let cancelActiveVoiceInput: (() => Promise<void>) | undefined;
 let requestTextProviderDeactivate: (() => void) | undefined;
+/** 输入法片段增强（audio.capture@1 + audio.clips@1）；Host 未开放/未批准时恒为不可用。 */
+let voiceClipCapture: VoiceClipCapture | undefined;
+/** 当前 Voice 界面挂载数：SDK 只在恰有一个挂载时允许音频调用。 */
+let voiceSurfaceMounts = 0;
 interface ActiveCommandRun {
   controller: AbortController;
   finished?: Promise<void>;
@@ -356,14 +365,40 @@ let state: VoiceViewState = {
   dayDigests: {},
   screenshotConsent: { enabled: false },
 };
+/**
+ * 片段增强只给键盘连续源（USB Vendor HID / BLE）用：电脑麦按会话开录，不常驻消费者。
+ * 返回值变化（切源、时间线运行态变化）会让协调器换一代消费者。
+ * 不看全天存档开关与存档状态（`continuousRecordingEnabled` / `recordingState`）：常驻收音是给
+ * 按键前后补气口的工程冗余，开关只管要不要长期保存全天转写（2026-10-15 用户拍板），
+ * 拨开关既不能关掉补气口，也不该让消费者换代、丢掉换代前的那段回看。
+ */
+function voiceClipWantKey(current: VoiceViewState): string | undefined {
+  const timeline = current.timeline;
+  if (!timeline) return undefined;
+  if (timeline.route !== "usb_vendor_hid" && timeline.route !== "ble_gatt") return undefined;
+  // 带上时间线运行态：收音断开再恢复时换一代消费者，给上一代被拒的申请一次重来的机会。
+  return `${timeline.route}:${timeline.state}`;
+}
+
+/** Host 片段转写固定用默认本地模型、自动语言、开标点；设置不同就保留 Host 会话结果。 */
+function clipTranscriptionMatches(selection: SavedInputSelection): boolean {
+  return selection.engine === "local" && selection.modelId === DEFAULT_MODEL_ID
+    && selection.language === "auto" && selection.punctEnabled !== false;
+}
+
 export default defineApp({
   async activate(ctx) {
+    const configuration = createVoiceConfiguration(settings => ctx.voiceInput.configure(settings));
     stopVoiceLocale?.();
     setVoiceLocale(ctx.locale?.getSnapshot().locale ?? "zh");
     stopVoiceLocale = ctx.locale?.onChange(({ locale }) => setVoiceLocale(locale));
     if (voiceStatusPoll !== undefined) window.clearInterval(voiceStatusPoll);
     voiceStatusPoll = undefined;
     cancelActiveVoiceInput = () => ctx.voiceInput.cancel(state.sessionId);
+    voiceClipCapture?.dispose();
+    voiceClipCapture = new VoiceClipCapture({ ctx });
+    voiceClipCapture.setMounted(voiceSurfaceMounts === 1);
+    voiceClipCapture.setWanted(voiceClipWantKey(state));
     const repository = new VoiceStateRepository(ctx.storage.private("voice-state"));
     const repositoryStore = ctx.storage.private("voice-state");
     const pendingAdmissions = new PendingAgentRequests(repositoryStore, async () => (await ctx.agent.listSessions({ schemaVersion: 2 })).sessions.map(session => session.sessionId));
@@ -418,7 +453,7 @@ export default defineApp({
         await repository.beginBoardSourceMigration();
         // v2 迁移故意不带 legacySourceMigration：Host v1 已完成时，那个 hint 会保留
         // 旧 SystemDevice，正好违背“默认走键盘私有协议”的产品裁定。
-        await ctx.voiceInput.configure(state.settings);
+        await configuration.apply(state.settings);
         await repository.completeBoardSourceMigration(state.settings);
         state = { ...state, notice: SOURCE_MIGRATION_NOTICE };
       } catch {
@@ -426,11 +461,11 @@ export default defineApp({
       }
     } else if (stored.legacySourceMigration) {
       try {
-        await ctx.voiceInput.configure({
+        await configuration.apply({
           ...state.settings,
           legacySourceMigration: true,
         });
-        await repository.completeSourceMigration();
+        await repository.completeSourceMigration(state.settings);
       } catch {
         // 迁移失败不阻断官方 Voice 激活；marker 保留，下一次激活继续尝试。
       }
@@ -445,15 +480,17 @@ export default defineApp({
           reason: patch.timeline.unavailableReason ?? null, sourceReady: patch.sourceReady,
           route: patch.timeline.route, cacheHealth: patch.timeline.cacheHealth }));
       }
-      const error = Object.getOwnPropertyDescriptor(patch, "error")
-        ?? Object.getOwnPropertyDescriptor(state, "error");
+      // 失败主句按展示时的开发者模式求值：只保留我们显式写的 getter，不凭文字判断身份。
+      const presented = (["error", "statusLoadError", "recognitionSetupError"] as const).map((field) => [field,
+        Object.hasOwn(patch, field) ? Object.getOwnPropertyDescriptor(patch, field) : Object.getOwnPropertyDescriptor(state, field)] as const);
       state = { ...state, ...patch };
-      // Preserve only our explicit presentation getter. Never infer message identity from text.
-      if (error?.get) Object.defineProperty(state, "error", error);
+      for (const [field, descriptor] of presented) if (descriptor?.get) Object.defineProperty(state, field, { ...descriptor, enumerable: true, configurable: true });
       // §6.0：换了 error 却没带 errorDetail 的更新清掉旧诊断，不让它挂到另一条错误上。
       if (Object.hasOwn(patch, "error") && !Object.hasOwn(patch, "errorDetail")) delete state.errorDetail;
       if (Object.hasOwn(patch, "statusLoadError") && !Object.hasOwn(patch, "statusLoadErrorDetail")) delete state.statusLoadErrorDetail;
       if (Object.hasOwn(patch, "recognitionSetupError") && !Object.hasOwn(patch, "recognitionSetupErrorDetail")) delete state.recognitionSetupErrorDetail;
+      // 键盘连续收音时持有采集消费者（片段前补），切到电脑麦或时间线不可读时立即交还；与全天存档开关无关。
+      voiceClipCapture?.setWanted(voiceClipWantKey(state));
       for (const listener of listeners) listener(state);
     };
 
@@ -466,6 +503,39 @@ export default defineApp({
       errorDetail: errorDetailFrom(step, cause,
         trustedDiagnosticFields(cause) ? { fields: trustedDiagnosticFields(cause)! } : {}),
     });
+
+    /**
+     * 全天存档写入代次：开始写、写完（成功或失败）各推进一次。状态读数发出后代次变了，
+     * 或者写入还没确认，读回来的存档位可能是旧的——只沿用当前已确认的存档位，
+     * 时间线其余字段照常采用新读数（旧读数不能把刚确认的开关盖回去）。
+     */
+    let archiveRevision = 0;
+    let archiveDesired: boolean | undefined;
+    let archiveWriting = false;
+    /** 每份状态读数发出时的存档代次；发布前凭它再核一次（调用方读完后可能还要等别的请求）。 */
+    const statusArchiveRevision = new WeakMap<VoiceInputStatus, number>();
+    const withConfirmedArchive = (status: VoiceInputStatus): VoiceInputStatus => {
+      const revision = statusArchiveRevision.get(status);
+      if (revision === undefined || (revision === archiveRevision && !archiveWriting)
+        || !status.timeline || !state.timeline) return status;
+      const reconciled = {
+        ...status,
+        timeline: {
+          ...status.timeline,
+          continuousRecordingEnabled: state.timeline.continuousRecordingEnabled,
+          recordingState: state.timeline.recordingState,
+        },
+      };
+      statusArchiveRevision.set(reconciled, revision);
+      return reconciled;
+    };
+    /** 读 Host 语音状态：返回时先核一次存档代次；发布处用 `withConfirmedArchive` 再核一次。 */
+    const readVoiceStatus = async (sessionId?: string): Promise<VoiceInputStatus> => {
+      const revision = archiveRevision;
+      const status = await ctx.voiceInput.getStatus(sessionId);
+      statusArchiveRevision.set(status, revision);
+      return withConfirmedArchive(status);
+    };
 
     /**
      * 本次运行里历史条目的失败原文表（只在内存，最多 32 条）：给插件界面主动展开用，
@@ -514,9 +584,13 @@ export default defineApp({
 
     // Subscribe only after publish is initialized. Events can arrive while the
     // initial snapshot is in flight; the SDK preserves the newest value.
-    ctx.environment.onChange((environment) => publish({ developerMode: environment.developerMode }));
+    ctx.environment.onChange((environment) => {
+      setVoiceDeveloperMode(environment.developerMode);
+      publish({ developerMode: environment.developerMode });
+    });
     // SDK environment.get() 按 revision 返回最新快照，迟到读取不会覆盖开关事件。
     const environment = await ctx.environment.get().catch(() => ({ developerMode: false }));
+    setVoiceDeveloperMode(environment.developerMode);
     publish({ developerMode: environment.developerMode });
 
 
@@ -1060,6 +1134,8 @@ export default defineApp({
     // 采到的很可能已经是另一个窗口了。存 Promise 而不是结果：采集与说话并行，
     // 不给收尾路径增加等待。
     let pendingContext: Promise<VoiceContextEnvelope | undefined> = Promise.resolve(undefined);
+    // 输入法片段增强：按下那一刻已持有采集消费者时冻结其身份与按下时刻（否则 undefined = 走原流程）。
+    let pendingClipPress: VoiceClipPressToken | undefined;
     /**
      * 写回权限被拒过。
      *
@@ -1276,8 +1352,13 @@ export default defineApp({
       ++cloudModelsReadSequence;
       clearCloudModelsRetry();
     };
-    // Only background reads retry. Explicit saves still validate one fresh snapshot.
+    // Only background reads retry, with a bounded backoff (cloud-models-retry.ts).
     // An empty ASR subset can also be a partial Host catalog during config failure.
+    // With a usable list already shown, rereads are silent: no loading placeholder,
+    // and a failure for the same account keeps that list instead of flashing an error.
+    let cloudModelsEpoch: string | undefined;
+    let lastVisibleCloudRead = 0;
+    const usableCloudModels = () => state.cloudModels.some(model => model.kind === "transcribe" && validCloudOptionId(model.id));
     const loadCloudModels = async (backgroundAttempt?: number) => {
       const sequence = ++cloudModelsReadSequence;
       clearCloudModelsRetry();
@@ -1285,28 +1366,37 @@ export default defineApp({
       let accountEpoch: string | undefined;
       const current = () => !cloudModelsStopped && sequence === cloudModelsReadSequence;
       const retry = () => {
-        const delay = backgroundAttempt === undefined ? undefined : [1000, 3000][backgroundAttempt];
-        if (delay === undefined || !current() || listeners.size === 0) return;
+        if (backgroundAttempt === undefined || !current() || listeners.size === 0) return;
+        const delay = cloudModelsRetryDelay(backgroundAttempt);
+        if (delay === undefined) { publish({ cloudModelsRetryExhausted: true }); return; }
         cloudModelsRetry = setTimeout(() => {
           cloudModelsRetry = undefined;
           if (current() && listeners.size > 0) void loadCloudModels(backgroundAttempt! + 1).catch(() => undefined);
         }, delay);
       };
-      if (current()) publish({ cloudModelsLoading: true });
+      const silent = usableCloudModels() && !state.cloudModelsUnavailable;
+      if (current()) {
+        publish(silent ? { cloudModelsRefreshing: true }
+          : { cloudModelsLoading: true, ...(backgroundAttempt === undefined || backgroundAttempt === 0 ? { cloudModelsRetryExhausted: false } : {}) });
+      }
       try {
         accountEpoch = await readVoiceAccountEpoch(ctx.voiceContext).catch(() => undefined);
         const models = (await ctx.aiApi.listModels()).filter(model => model.kind === "transcribe" && validCloudOptionId(model.id));
         if (!current()) return [];
         if (accountEpoch && !await isVoiceAccountCurrent(ctx.voiceContext, accountEpoch)) {
-          publish({ cloudModels: [], cloudModelsUnavailable: true, cloudModelsLoading: false });
+          publish({ cloudModels: [], cloudModelsUnavailable: true, cloudModelsLoading: false, cloudModelsRefreshing: false });
           return [];
         }
         if (current()) {
+          cloudModelsEpoch = models.length > 0 ? accountEpoch : undefined;
           // Host 回了空列表不是异常：诊断写「列表为空」，不编错误码。
           publish({
             cloudModels: models,
             cloudModelsUnavailable: models.length === 0,
             cloudModelsLoading: false,
+            cloudModelsRefreshing: false,
+            cloudModelsFailureCode: undefined,
+            ...(models.length > 0 ? { cloudModelsRetryExhausted: false } : {}),
             // 空列表没有码也没有原文：诊断「说明」写「列表为空」（视图按无码补固定说明）。
             cloudModelsErrorDetail: models.length === 0
               ? { step: "cloudModels", at: new Date().toISOString(), noteKey: "diagnostics.cloudModelsEmpty" } : undefined,
@@ -1336,12 +1426,21 @@ export default defineApp({
         }
         return models;
       } catch (cause) {
-        // Unavailable does not delete or rewrite the user's saved selection.
-        if (current()) publish({ cloudModels: [], cloudModelsUnavailable: true, cloudModelsLoading: false, cloudModelsErrorDetail: errorDetailFrom("cloudModels", cause) });
         const code = normalizedError(cause).code;
         const reason = voiceRequestFailureReason(cause);
-        if (["unknown", "network", "timeout", "service", "subscriptionUnavailable"].includes(reason)
-          && !["AI_NOT_GRANTED", "AI_PERMISSION_REQUIRED", "AI_PERMISSION_DENIED", "AI_DISABLED", "AI_INVALID_REQUEST"].includes(code)) retry();
+        // Unavailable does not delete or rewrite the user's saved selection.
+        // The same account's last good list stays usable; another account's never does.
+        // 需要用户动作的失败（未授权、能力被关…）不保留旧列表：清空后如实提示。
+        const keep = silent && cloudModelsFailureRetryable(code, reason) && accountEpoch !== undefined && accountEpoch === cloudModelsEpoch
+          && await isVoiceAccountCurrent(ctx.voiceContext, accountEpoch).catch(() => false);
+        if (current()) {
+          publish(keep
+            ? { cloudModelsRefreshing: false, cloudModelsLoading: false, cloudModelsFailureCode: code }
+            : { cloudModels: [], cloudModelsUnavailable: true, cloudModelsLoading: false, cloudModelsRefreshing: false,
+              cloudModelsFailureCode: code, cloudModelsErrorDetail: errorDetailFrom("cloudModels", cause) });
+        }
+        if (cloudModelsFailureRetryable(code, reason)) retry();
+        else if (current() && backgroundAttempt !== undefined) publish({ cloudModelsRetryExhausted: true });
         throw new VoiceAppError({
           code,
           get userMessage() {
@@ -1356,10 +1455,33 @@ export default defineApp({
         }, undefined, { constantMessage: true });
       }
     };
+    /** 界面重新可见：云端引擎下列表不可用时重读一轮（重获退避预算），有最小间隔、不叠在途读取。 */
+    const rereadCloudModelsWhenVisible = () => {
+      if (state.settings.engine !== "cloud" || !state.commandLoggedIn) return;
+      if (state.cloudModelsLoading || state.cloudModelsRefreshing) return;
+      if (usableCloudModels() && !state.cloudModelsUnavailable) return;
+      const now = Date.now();
+      if (now - lastVisibleCloudRead < cloudModelsRetryTiming.minVisibleIntervalMs) return;
+      lastVisibleCloudRead = now;
+      void loadCloudModels(0).catch(() => undefined);
+    };
+    /**
+     * 切换模型、切到云端时用已读到的列表；没有列表才等一次读取。
+     * `background`：在保存链之外调用（选引擎）时，这次读取带后台退避，失败后照常自动重试；
+     * 在保存链之内调用（切模型）不能带——后台修复也排在保存链上，会互相等待。
+     */
+    const cloudModelsForSelection = async (background = false): Promise<CloudModelOption[]> => {
+      if (usableCloudModels() && !state.cloudModelsUnavailable) {
+        return state.cloudModels.filter(model => model.kind === "transcribe" && validCloudOptionId(model.id));
+      }
+      return background ? loadCloudModels(0) : loadCloudModels();
+    };
     const selectedCloudModel = async (snapshot?: SavedInputSelection) => {
       await settingsSaveChain;
       const model = snapshot ? snapshot.modelId : state.featureSettings.cloudModelId;
       if (!validCloudOptionId(model)) {
+        // 选择还没定下（列表没读到）：本次照旧拒绝，同时补读一次，读到后由后台规则选定免费默认。
+        if (!state.cloudModelsLoading && !state.cloudModelsRefreshing) void loadCloudModels(0).catch(() => undefined);
         throw new VoiceAppError({
           code: "com.reai.voice/CLOUD_MODEL_SELECTION_REQUIRED",
           get userMessage() { return t("app.chooseCloudModelBeforeTranscribing"); },
@@ -1475,7 +1597,7 @@ export default defineApp({
           await withVoiceRefreshDeadline(async () => {
             await refreshScreenshotConsent();
             return Promise.all([
-            ctx.voiceInput.getStatus(expectedSessionId),
+            readVoiceStatus(expectedSessionId),
             localDownloads.refresh(),
             ctx.voiceInput.checkPermissions(),
             // `account.status@1` 是可选权限：用户拒绝时本地识别仍必须可用，不能让
@@ -1503,7 +1625,10 @@ export default defineApp({
           commandConfigured: true,
           commandLoggedIn: accountStatus.loggedIn,
           // Model refresh publishes through its revision-checked coordinator.
-          permissions,
+          // audioSources 属于来源版本域：刷新途中用户刚选过档，旧读数不能盖掉新档位。
+          permissions: sourceSettingsRevision === expectedSourceRevision
+            ? permissions
+            : { ...permissions, audioSources: state.permissions.audioSources },
           recordings: recordings.items,
           recordingsTotal: recordings.total,
           // 用户刚切换窗口上下文时，设置保存路径会发布一次针对新设置的真实探测；
@@ -1520,7 +1645,7 @@ export default defineApp({
           return;
         }
         const sourcePatch = {
-          ...voiceSourceStatusPatch(status),
+          ...voiceSourceStatusPatch(withConfirmedArchive(status)),
           systemInputs,
         };
         const authoritative = reconcileAuthoritativeVoiceStatus(state, status, expectedSessionId);
@@ -1566,15 +1691,15 @@ export default defineApp({
           || state.sessionId !== expectedSessionId
           || sourceSettingsRevision !== expectedSourceRevision
         ) return;
-        const message = cause instanceof Error && cause.message === "VOICE_STATUS_REFRESH_TIMEOUT"
+        const message = () => cause instanceof Error && cause.message === "VOICE_STATUS_REFRESH_TIMEOUT"
           ? t("app.voiceStatusCheckTimedOut", { seconds: VOICE_REFRESH_TIMEOUT_MS / 1000 }) : readableError(cause);
         // 8 秒超时的 cause 是 Error("VOICE_STATUS_REFRESH_TIMEOUT")：诊断取到的码就是它本身。
         const statusLoadErrorDetail = errorDetailFrom("statusLoad", cause);
         publish({
           statusLoad: "failed",
-          statusLoadError: message,
+          get statusLoadError() { return message(); },
           statusLoadErrorDetail,
-          get error() { return message; },
+          get error() { return message(); },
           errorDetail: statusLoadErrorDetail,
         });
       }
@@ -1626,7 +1751,7 @@ export default defineApp({
     ): Promise<string> => {
       let cloudResult: { text: string };
       try {
-        if (!selection) throw new Error(t("app.cloudOptionRequired"));
+        if (!selection) throw cloudOptionRequiredError();
         await validateFreeOnlySelection(selection);
         cloudResult = await ctx.aiApi.transcribe({
           invocationId: crypto.randomUUID(),
@@ -1654,7 +1779,7 @@ export default defineApp({
             ? t("app.cloudRecognitionPermissionIsNotEnabledIn")
             : t("app.cloudRecognitionFailedValue", { value0: voiceCloudFailureMessage(cause) ?? readableError(cause) }); },
           retryable: true,
-        }, withOuterCode(collectErrorFields(cause), "com.reai.voice/CLOUD_TRANSCRIBE_FAILED"));
+        }, withOuterCode(collectErrorFields(cause), "com.reai.voice/CLOUD_TRANSCRIBE_FAILED"), { composedMessage: true });
       }
       return cloudResult.text.trim();
     };
@@ -1952,7 +2077,7 @@ export default defineApp({
           // 云端模型没选/失效要在采集前拦住：Host 对 retainAudio 不查本地模型，
           // 起跑后才失败就只剩一段谁也转写不了的音频。
           if (pendingDictationSelection.engine === "cloud") await selectedCloudModel(pendingDictationSelection);
-          await ctx.voiceInput.configure(state.settings);
+          await configuration.prepare(state.settings);
         } else {
           publish({ dictationPhase: "recognizing" });
         }
@@ -2059,7 +2184,10 @@ export default defineApp({
         serviceSettings = state.settings;
         serviceCloudSelection = serviceSettings.engine === "cloud"
           ? await requireCloudSelection(serviceSettings) : undefined;
-        return prepareVoiceRequest(ctx.voiceInput, serviceSettings, signal, reportWaitingPermission, {
+        return prepareVoiceRequest({
+          configure: configuration.prepare,
+          checkPermissions: () => ctx.voiceInput.checkPermissions(),
+        }, serviceSettings, signal, reportWaitingPermission, {
           cancelled: t("app.dictationWasCancelled"),
           upgrade: t("service.hostUpgradeRequired"),
           microphone: t("service.microphoneRequired"),
@@ -2096,7 +2224,7 @@ export default defineApp({
         await ctx.voiceInput.acknowledgeResult(sessionId);
       },
       readStatus: async (sessionId) => {
-        const status = await ctx.voiceInput.getStatus(sessionId);
+        const status = await readVoiceStatus(sessionId);
         if (status.phase === "recognizing") publish({ phase: "recognizing" });
         return status;
       },
@@ -2108,7 +2236,7 @@ export default defineApp({
           // 落下的录音仍要按 replayClip.id 回写转写结果（成功与失败都回写），否则一直「处理中」。
           const audio = result.audio;
           transcript = await settleCloudTranscription(savedReplayClip(result), async () => {
-            if (!serviceCloudSelection) throw new Error(t("app.cloudOptionRequired"));
+            if (!serviceCloudSelection) throw cloudOptionRequiredError();
             await validateFreeOnlySelection(serviceCloudSelection);
             const cloud = await ctx.aiApi.transcribe({
               invocationId: crypto.randomUUID(),
@@ -2213,7 +2341,7 @@ export default defineApp({
           const settings = { ...state.settings };
           pendingInputSelection = snapshotVoiceSelection();
           if (pendingInputSelection.engine === "cloud") await awaitVoicePreparation(signal, () => selectedCloudModel(pendingInputSelection!));
-          await awaitVoicePreparation(signal, () => ctx.voiceInput.configure(settings));
+          await awaitVoicePreparation(signal, () => configuration.prepare(settings));
         }
         throwIfAborted(signal);
         const useCloud = pendingInputSelection?.engine === "cloud";
@@ -2221,6 +2349,8 @@ export default defineApp({
         // 识别与插入解耦（Host API 1.22）：Host 一律只出文本，润色之后由插件经
         // delivery.commit 写回（`deliverRecognizedText`）。Host 若先把识别原文打进去，
         // 润色稿再打一遍，用户会看到同一句话出现两次。
+        // 调用前的时刻：开始时即按下时刻，结束时即松开时刻（片段增强用）。
+        const callAt = Date.now();
         const result = finishSessionId ? await ctx.voiceInput.finish(finishSessionId) : await (startOnly
           ? (options: Parameters<typeof ctx.voiceInput.toggle>[0]) => startOwnedCapture(signal, options ?? {})
           : ctx.voiceInput.toggle)({
@@ -2244,6 +2374,9 @@ export default defineApp({
           pendingDeliveryTarget = result.deliveryTarget;
           pendingInsertText = insertText;
           pendingPolish = polish;
+          // 片段增强只用于与 Host 片段转写参数一致的本地识别设置；其余沿用原链路。
+          pendingClipPress = pendingInputSelection && clipTranscriptionMatches(pendingInputSelection)
+            ? voiceClipCapture?.press(callAt) : undefined;
           // 「触发语音瞬间焦点窗口」——现在采，不是等说完再采。等说完的话，
           // 焦点很可能已经换了窗口，采到的是另一个应用里的文字。
           // 与说话并行进行，收尾时直接拿结果，不给关键路径加等待。
@@ -2265,6 +2398,8 @@ export default defineApp({
         pendingInsertText = undefined;
         pendingPolish = "raw";
         pendingContext = Promise.resolve(undefined);
+        const clipPress = pendingClipPress;
+        pendingClipPress = undefined;
 
         if (result.audio) {
           return await finishCloudTranscript(
@@ -2278,7 +2413,19 @@ export default defineApp({
           );
         }
 
-        const localTranscript = result.transcript?.trim() ?? "";
+        // 片段增强（audio.clips@1）：键盘持续收音补按下前的话、松开后顺延 1.5 秒。只在 Host
+        // 已正常识别出文字时才替换（取消、没听到都保持原样，片段不能复活一次已结束的录音）；
+        // 不可用 / 失败 / 超时 / 为空一律退回 Host 会话自己的识别结果（与旧版一致）。
+        const hostTranscript = result.transcript?.trim() ?? "";
+        const enhanceClip = clipPress !== undefined && hostTranscript !== "" && result.outcome !== "cancelled";
+        const clipTranscript = !enhanceClip ? undefined : await voiceClipCapture?.enhance({
+          token: clipPress,
+          releasedAtMs: callAt,
+          boardRoute: true,
+        }).catch(() => undefined);
+        // 只有真的等过片段才复核取消；没走片段时保持旧版行为不变。
+        if (enhanceClip) throwIfAborted(signal);
+        const localTranscript = clipTranscript ?? hostTranscript;
         if (localTranscript) {
           // 本地与云端识别走同一条收尾：润色（仅输入法）→ commit → 失败弹取回卡 → 落历史。
           return await deliverRecognizedText({
@@ -2370,8 +2517,7 @@ export default defineApp({
       const expectedSessionId = state.sessionId;
       const expectedSourceRevision = sourceSettingsRevision;
       statusPollInFlight = true;
-      void ctx.voiceInput
-        .getStatus(expectedSessionId)
+      void readVoiceStatus(expectedSessionId)
         .then((status) => {
           if (toggleInFlight || state.sessionId !== expectedSessionId || sourceSettingsRevision !== expectedSourceRevision) return;
           const authoritative = reconcileAuthoritativeVoiceStatus(
@@ -2380,7 +2526,7 @@ export default defineApp({
             expectedSessionId,
           );
           if (authoritative) {
-            publish({ ...voiceSourceStatusPatch(status), ...authoritative, get error() { return authoritative.error; } });
+            publish({ ...voiceSourceStatusPatch(withConfirmedArchive(status)), ...authoritative, get error() { return authoritative.error; } });
             if (
               status.sessionId
               && voiceStatusPollMayAcknowledge({
@@ -2394,7 +2540,7 @@ export default defineApp({
             }
           } else if (state.phase === "idle" && state.commandPhase === "idle"
             && voiceAvailabilityChanged(state, status)) {
-            publish(voiceSourceStatusPatch(status));
+            publish(voiceSourceStatusPatch(withConfirmedArchive(status)));
           }
         })
         .catch(() => undefined)
@@ -2423,7 +2569,8 @@ export default defineApp({
         ? { ...original, get message() { return t("app.agentReceiptUnknown"); } }
         : purpose
         ? { ...original, get message() { return voiceRequestFailureMessage(purpose, cause); } }
-        : original;
+        // 会落盘进命令历史：固定按普通模式的人话写，不存上游原文。
+        : { ...original, get message() { return plainFailureText(cause); } };
       const presented = presentAgentToolError(
         isVoiceCancellation(cause) ? undefined : pendingWebToolError(taskId),
         normalized,
@@ -3889,9 +4036,9 @@ export default defineApp({
         publish({ segmentSummarizing: undefined });
         throw new VoiceAppError({
           code: `com.reai.voice/${outcome.failure?.code ?? "SUMMARY_FAILED"}`,
-          get userMessage() { return outcome.failure?.message ?? t("app.summaryIsTemporarilyUnavailableTryAgainLater"); },
+          get userMessage() { return voiceRequestFailureMessage("summary", outcome.failure); },
           retryable: true,
-        }, withOuterCode(failureFields(outcome.failure), `com.reai.voice/${outcome.failure?.code ?? "SUMMARY_FAILED"}`));
+        }, withOuterCode(failureFields(outcome.failure), `com.reai.voice/${outcome.failure?.code ?? "SUMMARY_FAILED"}`), { constantMessage: true });
       }
       const summary = {
         points: outcome.summary.points,
@@ -3924,7 +4071,7 @@ export default defineApp({
           code: "com.reai.voice/SUMMARY_SAVE_FAILED",
           get userMessage() { return t("app.summaryGeneratedButNotSavedItWill", { value0: readableError(storageCause) }); },
           retryable: true,
-        });
+        }, undefined, { composedMessage: true });
       }
     };
 
@@ -4034,9 +4181,9 @@ export default defineApp({
           if (force === item.dayKey) {
             throw new VoiceAppError({
               code: `com.reai.voice/${outcome.failure?.code ?? "DIGEST_FAILED"}`,
-              get userMessage() { return outcome.failure?.message ?? t("app.summaryIsTemporarilyUnavailableTryAgainLater"); },
+              get userMessage() { return voiceRequestFailureMessage("summary", outcome.failure); },
               retryable: true,
-            }, withOuterCode(failureFields(outcome.failure), `com.reai.voice/${outcome.failure?.code ?? "DIGEST_FAILED"}`));
+            }, withOuterCode(failureFields(outcome.failure), `com.reai.voice/${outcome.failure?.code ?? "DIGEST_FAILED"}`), { constantMessage: true });
           }
         }
       } finally {
@@ -4092,7 +4239,7 @@ export default defineApp({
           code: "com.reai.voice/AGENTS_IM_OPEN_FAILED",
           get userMessage() { return t("app.couldNotSendTheSummaryToAgent", { value0: readableError(cause) }); },
           retryable: true,
-        });
+        }, undefined, { composedMessage: true });
       }
     };
 
@@ -4149,7 +4296,7 @@ export default defineApp({
           // 云端模型没选/失效要在采集前拦住：Host 对 retainAudio 不查本地模型，
           // 起跑后才失败就只剩一段谁也转写不了的音频。
           if (pendingCommandSelection.engine === "cloud") await timedStage("cloud_model", () => selectedCloudModel(pendingCommandSelection!));
-          await timedStage("configure", () => ctx.voiceInput.configure(state.settings));
+          await timedStage("configure", () => configuration.prepare(state.settings));
           throwIfAborted(signal);
           activeCommandId = requestedCommand;
           activeAgentConversation = requestedCommand === BUILTIN_VOICE_COMMANDS.agent
@@ -4346,7 +4493,7 @@ export default defineApp({
         await ctx.voiceInput.cancel(sessionId);
         if (state.sessionId === sessionId) publish({ phase: "idle", commandPhase: "idle", activeMode: undefined, sessionId: undefined });
       },
-      failed: cause => publish({ error: readableError(cause), errorDetail: errorDetailFrom("capture", cause) }),
+      failed: cause => publish({ get error() { return readableError(cause); }, errorDetail: errorDetailFrom("capture", cause) }),
     });
 
     ctx.commands.register("com.reai.voice.toggle-input", guardCommand(async ({ signal, operation }) => {
@@ -4448,6 +4595,13 @@ export default defineApp({
 
     ctx.surfaces.register("main", async (surface) => {
       let view: VoiceView | undefined;
+      const navigation = createVoiceSurfaceNavigation(surface, () => ({
+        root: t("metadata.name"), detail: t("app.inputDetails"),
+        translation: t("app.translationDetails"), chat: t("app.commands"),
+        context: t("app.liveRecordings"), settings: t("common.settings"),
+        events: t("app.manageTriggerEvents"), models: t("app.modelsRecognition"),
+        audioSettings: t("view.settingsRecordingRetention"),
+      }));
       const stopReturnIntent = surface.onIntent((intent) => {
         if (isSystemTaskReturnIntent(intent)) void refresh();
       });
@@ -4455,9 +4609,71 @@ export default defineApp({
       let stopActionMounts: (() => void) | undefined;
       let modelRefreshInFlight = false;
       let stopHostVersionRefresh: (() => void) | undefined;
+      let stopPresentationChange: (() => void) | undefined;
+      // 本挂载是否已计入 voiceSurfaceMounts（失败分支与 cleanup 只退自己那一份）。
+      let surfaceCounted = false;
+      const uncountSurface = () => {
+        if (!surfaceCounted) return;
+        surfaceCounted = false;
+        voiceSurfaceMounts = Math.max(0, voiceSurfaceMounts - 1);
+        voiceClipCapture?.setMounted(voiceSurfaceMounts === 1);
+      };
       const hostVersionScope = {};
       // 这个挂载是否还在：晚到的版本读取结果不能在界面关掉后再安排重试。
       let mounted = true;
+      const conversationOpen = createOwnedConversationOpenController<VoiceCommandHistoryItem>({
+        async load(entityId, current) {
+          if (mounted && current()) {
+            view?.setConversationOpenPending(true);
+            publish({ error: undefined, errorDetail: undefined });
+          }
+          const saved = await repository.load();
+          if (!mounted || !current()) return undefined;
+          publish({ commandHistory: saved.commandHistory ?? [] });
+          return (saved.commandHistory ?? []).find(entry => entry.id === entityId
+            || entry.runId === entityId || entry.agentSessionId === entityId);
+        },
+        async prepare(item) {
+          if (!item.agentSessionId) return undefined;
+          // Old injected SDK has no owned-open API; it retains the guarded legacy path.
+          // New SDK/Host source or grant rejection never downgrades to that path.
+          if (typeof ctx.agent.prepareConversationOpen !== "function") return undefined;
+          return ctx.agent.prepareConversationOpen({ sessionId: item.agentSessionId });
+        },
+        async land(item, current) {
+          if (!mounted || !current() || !view?.openConversation(item.id, { focusComposer: true })) return false;
+          return view.waitForConversationLanding(item.id, () => mounted && current());
+        },
+        async commit(item, receipt) {
+          if (item.agentSessionId) {
+            await ctx.agent.reportConversationOpened({ sessionId: item.agentSessionId, ...(receipt ? { receipt } : {}) });
+          }
+          if (!receipt) await ctx.voiceCommand.dismissTask(item.id);
+        },
+        cancel(sessionId, receipt) { return ctx.agent.cancelConversationOpen({ sessionId, receipt }); },
+        async completed(item, current) {
+          if (!mounted || !current()) return;
+          const commandHistory = await repository.markCommandRead(item.id);
+          if (mounted && current()) {
+            view?.setConversationOpenPending(false);
+            publish({ commandHistory, error: undefined, errorDetail: undefined });
+          }
+        },
+        failed(cause, item, phase) {
+          if (!mounted) return;
+          // Reading saved content remains possible on old/denied Hosts. This is
+          // a preview with explicit failure, never an opened/read fallback.
+          if (item) view?.openConversation(item.id, { focusComposer: true });
+          view?.setConversationOpenPending(false);
+          publish(failurePatch("conversationOpen", cause, () => {
+            if (phase === "prepare" || collectErrorFields(cause).code === "TASK_SOURCE_STALE") {
+              return t("errors.conversationOpen.sourceStale");
+            }
+            return t(phase === "commit" || phase === "complete"
+              ? "errors.conversationOpen.commitFailed" : "errors.conversationOpen.landingFailed");
+          }));
+        },
+      });
       const listener = (next: VoiceViewState) => view?.update(next);
       const modelPoll = window.setInterval(() => {
         if (modelRefreshInFlight || !localDownloads.busy) return;
@@ -4470,7 +4686,7 @@ export default defineApp({
           });
       }, 1000);
       try {
-        const legacyBack = typeof surface.reportNav !== "function";
+        const legacyBack = !surface.navigation && typeof surface.reportNav !== "function";
         view = mountVoiceView(surface.root, state, {
           onOpenHistory: () => {
             if (mounted) stopHostVersionRefresh = hostVersionReader.refreshOnVisible(hostVersionScope);
@@ -4558,42 +4774,20 @@ export default defineApp({
               // 保留待显示状态，下次 surface 继续尝试确认。
             });
           },
-          // B2-3 面包屑合同：页面变化上报给 Host（label 对稿 syncVoiceChrome 的
-          // names 表）；null = 回根页，面包屑退成单段「Voice」。
-          onNavigated: (page) => {
-            const names: Record<string, string> = {
-              detail: t("app.inputDetails"),
-              translation: t("app.translationDetails"),
-              chat: t("app.commands"),
-              context: t("app.liveRecordings"),
-              settings: t("common.settings"),
-              events: t("app.manageTriggerEvents"),
-              models: t("app.modelsRecognition"),
-            };
-            /* 旧 Host 注入的旧 SDK 运行时没有 reportNav（插件用 Host 注入的运行时，
-               不是打包的 SDK）——能力探测而不是抛异常，旧 Host 上静默不报，
-               面包屑退成单段，导航不受影响。 */
-            if (typeof surface.reportNav !== "function") return;
-            surface.reportNav(page && names[page] !== undefined
-              ? {
-                  key: page === "events" || page === "models" ? `settings/${page}` : page,
-                  label: names[page],
-                }
-              : null);
-          },
+          onNavigated: page => { void navigation.publish(page === "history" ? null : page); },
           onRefresh: refresh,
           onChooseRecognitionEngine: async (engine) => {
             if (state.recognitionSetupBusy) return;
             publish({ recognitionSetupBusy: true, recognitionSetupError: undefined });
             try {
-              // Re-read availability when the user chooses; cached cloud options
-              // must not silently turn into an invented provider/model.
+              // Use the Host options already read (or read once when there are none);
+              // never invent a provider/model, and do not flash a reload on choice.
               const cloudModels = engine === "cloud"
-                ? await loadCloudModels() : [];
+                ? await cloudModelsForSelection(true) : [];
               if (toggleInFlight || serviceOperationActive) throw operationInProgressError();
               const operation = settingsSaveChain.then(() => chooseRecognitionEngine(
                 engine, state.settings, state.featureSettings, cloudModels, {
-                  configure: settings => ctx.voiceInput.configure(settings),
+                  configure: settings => configuration.apply(settings, { writeSource: false }),
                   startDownload: modelId => localDownloads.start(modelId),
                   saveSettings: settings => repository.saveSettings(settings),
                   saveFeatures: features => repository.saveFeatureSettings(features),
@@ -4606,18 +4800,18 @@ export default defineApp({
               publish({ ...selected, recognitionSetupRequired: false });
               await refresh();
             } catch (cause) {
-              publish({ recognitionSetupError: cause instanceof RecognitionSetupRollbackError
+              publish({ get recognitionSetupError() { return cause instanceof RecognitionSetupRollbackError
                 ? t("app.valueCouldNotRestoreThePreviousSetting", { value0: readableError(cause.original),
                   value1: cause.rollbackErrors.map(readableError).join("; ") })
                 : cause instanceof Error && cause.message === "VOICE_SETUP_CLOUD_UNAVAILABLE"
-                  ? t("setup.cloudUnavailable") : readableError(cause),
+                  ? t("setup.cloudUnavailable") : readableError(cause); },
               recognitionSetupErrorDetail: errorDetailFrom("recognitionSetup",
                 cause instanceof RecognitionSetupRollbackError ? { ...cause, cause: cause.original } : cause) });
             } finally {
               publish({ recognitionSetupBusy: false });
             }
           },
-          onSettingsChanged: (patch: Partial<VoiceInputSettings>) => {
+          onSettingsChanged: (patch: Partial<VoiceInputSettings>, options: VoiceSettingsChangeOptions = {}) => {
             if (toggleInFlight || serviceOperationActive) {
               const busy = operationInProgressError();
               publish(failurePatch("settingsSave", busy));
@@ -4629,8 +4823,18 @@ export default defineApp({
             if (downloadSelection) localDownloads.prepare(selectedId);
             const operation = settingsSaveChain.then(async () => {
               const previous = state.settings;
-              let settings = { ...previous, ...patch };
-              const sourceChanged = patch.source !== undefined && patch.source !== previous.source;
+              let settings = withExplicitVoiceSource(previous, patch);
+              // 显式选档（五档对话框）= 用户对音源的明确选择；成功后总是推进来源版本，
+              // 免得晚到的旧刷新（例如还带着 UAC 兼容态的读数）把新档位盖回去。
+              // 显式选档意图单独传入：旧 Host 上「只用电脑麦」只发旧 source，不能靠 wire 是否带档位判断。
+              const chosenMode = options.audioSourceMode ?? patch.audioSourcePreference?.kind;
+              const modeChosen = chosenMode !== undefined;
+              const sourceChanged = (patch.source !== undefined && patch.source !== previous.source) || modeChosen;
+              // Host 是档位的唯一持有者：它一旦接受了这次选档，后面本地落盘或回读失败都不回滚 Host
+              // （回滚只能用本地旧设置猜 Host 原策略，猜不出 UAC 兼容态和指定设备）。
+              let hostCommitted = false;
+              // 与音源无关的保存（语言 / VAD / 润色……）不写 Host 的音源档位。
+              const writeSource = modeChosen || patch.source !== undefined || patch.systemEndpointId !== undefined;
               const sourceEndpointChanged =
                 patch.systemEndpointId !== undefined
                 && patch.systemEndpointId !== previous.systemEndpointId;
@@ -4652,10 +4856,18 @@ export default defineApp({
                     systemInputs = [];
                   }
                 }
-                await ctx.voiceInput.configure(settings);
+                // 显式选档先把「已明确选择」marker 与完整设置落盘，再交 Host：本地写不进去就整笔
+                // 不动 Host；Host 没接受则把本地设置写回原样。这样下次激活读到的本地设置与 Host
+                // 一致——旧 Host 不认识 preserve，靠的正是这份已落盘的完整选择。
+                if (modeChosen) {
+                  await repository.confirmAudioSourceMode();
+                  await repository.saveSettings(settings);
+                }
+                await configuration.apply(settings, { writeSource });
+                hostCommitted = true;
                 // 只认真实的 source 变化；语言/VAD/润色等普通保存不能冒充音源确认。
-                if (sourceChanged) await repository.confirmSourceSelection();
-                await repository.saveSettings(settings);
+                if (!modeChosen && sourceChanged) await repository.confirmSourceSelection();
+                if (!modeChosen) await repository.saveSettings(settings);
                 // 用户重新挑了润色档位 = 一句明确的「权限我开好了，再试一次」。
                 // 这是唯一拿得到的复位信号：封锁期间录音在采集前就被拦住，「写回成功
                 // 就清零」那条路永远走不到，标志会一直挂着，而界面上还写着「开启后再切
@@ -4663,7 +4875,17 @@ export default defineApp({
                 if (patch.polish !== undefined) {
                   deliveryPermissionBlocked = false;
                 }
-                const status = await ctx.voiceInput.getStatus();
+                const status = await readVoiceStatus();
+                // 选档后立刻回读 Host 真值（当前档位、两类麦的在场与授权、下一次会用哪类）。
+                // 回读失败也不能停在旧档位：已写入成功的选择就是当前档位，否则下次点旧档会被当成「已选」而不生效。
+                const permissions = writeSource
+                  ? await ctx.voiceInput.checkPermissions().catch(() => ({
+                    ...state.permissions,
+                    ...(state.permissions.audioSources && chosenMode
+                      ? { audioSources: { ...state.permissions.audioSources, mode: chosenMode } }
+                      : {}),
+                  }))
+                  : state.permissions;
                 const contextProbePatch = windowContextChanged
                   ? { contextProbe: await probeContext(settings) }
                   : {};
@@ -4674,21 +4896,42 @@ export default defineApp({
                 publish({
                   settings,
                   systemInputs,
+                  permissions,
                   deliveryPermissionBlocked,
-                  ...voiceSourceStatusPatch(status),
+                  ...voiceSourceStatusPatch(withConfirmedArchive(status)),
                   // 刚打开窗口上下文的那一刻就把真实权限状态探回来，别让用户
                   // 盯着一块什么都不说的说明区等下一次刷新。
                   ...contextProbePatch,
                   error: undefined,
                 });
               } catch (cause) {
-                let message = readableError(cause);
-                try {
-                  await ctx.voiceInput.configure(previous);
-                } catch (rollbackCause) {
-                  message = t("app.valueCouldNotRestoreThePreviousSetting", { value0: message, value1: readableError(rollbackCause) });
+                // 展示时求值：开发者模式切换后主句跟着变。
+                let message = () => readableError(cause);
+                if (modeChosen) {
+                  // 选档：Host 没接受（configure 失败）就原样未变；接受了就以 Host 为准，
+                  // 界面跟随已写入的档位，下一次激活的 prepare 也会保留它。
+                  const chosen = chosenMode;
+                  publish(Object.assign(failurePatch("settingsSave", cause, () => message()), hostCommitted
+                    ? {
+                      settings,
+                      permissions: state.permissions.audioSources && chosen
+                        ? { ...state.permissions, audioSources: { ...state.permissions.audioSources, mode: chosen } }
+                        : state.permissions,
+                    }
+                    : { settings: previous }));
+                  if (hostCommitted) sourceSettingsRevision += 1;
+                  // Host 没接受：本地已提前落盘的新选择写回原样（尽力而为）。
+                  else await repository.saveSettings(previous).catch(() => undefined);
+                  localDownloads.clearPreparation(selectedId);
+                  throw cause;
                 }
-                publish(Object.assign(failurePatch("settingsSave", cause, () => message), { settings: previous }));
+                try {
+                  await configuration.apply(previous, { writeSource });
+                } catch (rollbackCause) {
+                  const original = message;
+                  message = () => t("app.valueCouldNotRestoreThePreviousSetting", { value0: original(), value1: readableError(rollbackCause) });
+                }
+                publish(Object.assign(failurePatch("settingsSave", cause, () => message()), { settings: previous }));
                 localDownloads.clearPreparation(selectedId);
                 throw cause;
               }
@@ -4712,7 +4955,8 @@ export default defineApp({
               try {
                 const next = sanitizeVoiceFeatureSettings({ ...previous, ...patch });
                 if (patch.cloudModelId !== undefined) {
-                  const models = await loadCloudModels();
+                  // 用已读到的列表校验，不重拉：切换不闪、不报错；执行时 Host 仍按实时计费复核。
+                  const models = await cloudModelsForSelection();
                   const selected = selectedCloudOption(models, next.cloudModelId);
                   if (!selected) {
                     throw new VoiceAppError({
@@ -4763,9 +5007,60 @@ export default defineApp({
               throw cause;
             }
           },
+          // 全天存档只决定要不要长期保存全天转写；常驻收音与它无关（2026-10-15 用户拍板）。
+          // 点下即记目标值（设置页按目标显示）；同一时间只有一个写入在跑，连点只保留最后一次意图，
+          // 跑完发现目标又变了就再写一次。失败后回读 Host 真值，设置页顶部给可读原因与诊断（§6.0 / §6.1）。
           onContinuousRecording: async (enabled) => {
-            const timeline = await ctx.voiceInput.setContinuousRecording(enabled);
-            publish({ timeline });
+            archiveDesired = enabled;
+            archiveRevision += 1;
+            publish({ continuousRecordingPending: enabled });
+            if (archiveWriting) return;
+            archiveWriting = true;
+            try {
+              while (archiveDesired !== undefined) {
+                const target: boolean = archiveDesired;
+                let timeline: AudioTimelineStatus;
+                try {
+                  timeline = await ctx.voiceInput.setContinuousRecording(target);
+                } catch (cause) {
+                  archiveRevision += 1;
+                  // 等待期间用户又改了主意：这笔旧失败已被新意图取代，接着写最新目标。
+                  if (archiveDesired !== target) continue;
+                  archiveDesired = undefined;
+                  // 先立刻收起目标值并报错，不让开关停在「关」而 Host 其实还开着。
+                  publish(Object.assign(failurePatch("continuousRecording", cause), { continuousRecordingPending: undefined }));
+                  // Host 可能已经写入、只是确认失败：再有界回读一次真值，只取存档位（时间线其余字段
+                  // 归来源版本域，不在这里覆盖）；回读超时或失败就保留上次确认的值，期间又有新写入时以新写入为准。
+                  const revision = archiveRevision;
+                  void Promise.race([
+                    ctx.voiceInput.getStatus().then(status => status.timeline),
+                    new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), 3_000)),
+                  ]).then((fresh) => {
+                    if (!fresh || !state.timeline || revision !== archiveRevision || archiveWriting) return;
+                    publish({ timeline: {
+                      ...state.timeline,
+                      continuousRecordingEnabled: fresh.continuousRecordingEnabled,
+                      recordingState: fresh.recordingState,
+                    } });
+                  }, () => undefined);
+                  throw cause;
+                }
+                archiveRevision += 1;
+                // 回执只取存档位：写入期间来源可能已经切换（路由、运行态归来源版本域），
+                // 整份旧回执会把切源后的时间线盖回去；没有当前时间线时才整份采用。
+                const confirmed: AudioTimelineStatus = state.timeline
+                  ? { ...state.timeline, continuousRecordingEnabled: timeline.continuousRecordingEnabled, recordingState: timeline.recordingState }
+                  : timeline;
+                if (archiveDesired === target) {
+                  archiveDesired = undefined;
+                  publish({ timeline: confirmed, continuousRecordingPending: undefined, error: undefined });
+                } else {
+                  publish({ timeline: confirmed });
+                }
+              }
+            } finally {
+              archiveWriting = false;
+            }
           },
           // §5D：确认=用户在对话框里勾选并点了「确认并开启」；epoch 读取失败
           // （Host 尚未下发 sessionEpoch）时如实报不可用，不静默也不伪造同意。
@@ -4874,6 +5169,8 @@ export default defineApp({
               throw cause;
             }
           },
+          onOpenConversation: entityId => conversationOpen.open(entityId),
+          onConversationNavigation: () => conversationOpen.retire(),
           onMarkCommandRead: async (commandId) => {
             try {
               const commandHistory = await repository.markCommandRead(commandId);
@@ -5033,48 +5330,26 @@ export default defineApp({
             }
           },
         }, { legacyBack });
-        const openTaskConversation = (entityId: string): boolean => {
+        const openTaskConversation = (raw: unknown) => {
+          if (!raw || typeof raw !== "object") return;
+          const intent = raw as {
+            source?: unknown; actionId?: unknown;
+            payload?: { entityId?: unknown; openToken?: unknown };
+          };
+          if (intent.source !== "host.taskConversation" || typeof intent.payload?.entityId !== "string") return;
+          const token = intent.payload.openToken;
+          if (token !== undefined && (intent.actionId !== "open-conversation"
+            || typeof token !== "string" || !/^[\x21-\x7e]{1,128}$/.test(token))) return;
           if (mounted) stopHostVersionRefresh = hostVersionReader.refreshOnVisible(hostVersionScope);
-          const item = state.commandHistory.find(
-            (entry) =>
-              entry.id === entityId
-              || entry.runId === entityId
-              || entry.agentSessionId === entityId,
-          );
-          // 查不到/打不开不再纯静默：Host 的 host.taskConversation intent 到了但
-          // 会话没落地时，用户看到的是「点开界面了、胶囊却永不消失」——没有日志
-          // 就只能靠猜断在哪一环。
-          if (!item) {
-            console.warn("[voice] host.taskConversation 找不到对应会话", entityId);
-            return false;
+          // Host-delivered owned opens require the captured receipt. Only an
+          // explicit local history click may prepare a new operation.
+          if (token === undefined && typeof ctx.agent.prepareConversationOpen === "function") {
+            publish(failurePatch("conversationOpen", { code: "TASK_SOURCE_STALE" },
+              () => t("errors.conversationOpen.sourceStale")));
+            return;
           }
-          // 这条 intent 只来自用户明确的点击（结果面板「继续」、胶囊 / Tab 行 / 通知
-          // 「打开会话」）：打开后光标直接落进输入框，不用再点一下才能打字。
-          if (!view?.openConversation(entityId, { focusComposer: true })) {
-            console.warn("[voice] 打开会话视图失败", entityId);
-            return false;
-          }
-          // 真实详情已经落地：Voice 自己的 taskId 卡与旧版通用 Agent Session 卡
-          // 同时收账。两条窄口都幂等，重复打开不会误伤其它会话。rejection 记 warn：
-          // 「视图已打开但撤卡回报失败」此前吞错，胶囊会无解释地留着。
-          commandLifecycleTrace("conversation_opened_dismiss", item.id, {
-            status: item.status,
-            ...(item.agentSessionId ? { agentSessionId: item.agentSessionId } : {}),
-          });
-          void ctx.voiceCommand.dismissTask(item.id).catch((error) => {
-            console.warn("[voice] 撤下任务卡失败", { taskId: item.id, ...diagnosticLogFields(error) });
-          });
-          if (item.agentSessionId) {
-            void ctx.agent
-              .reportConversationOpened({ sessionId: item.agentSessionId })
-              .catch((error) => {
-                console.warn("[voice] 回报会话已打开失败", {
-                  sessionId: item.agentSessionId,
-                  ...diagnosticLogFields(error),
-                });
-              });
-          }
-          return true;
+          void conversationOpen.open(intent.payload.entityId,
+            typeof token === "string" ? { openToken: token } : undefined);
         };
         stopTitlebarIntent = surface.onIntent((raw) => {
           if (!raw || typeof raw !== "object") return;
@@ -5087,7 +5362,7 @@ export default defineApp({
             intent.source === "host.taskConversation"
             && typeof intent.payload?.entityId === "string"
           ) {
-            openTaskConversation(intent.payload.entityId);
+            openTaskConversation(raw);
             return;
           }
           if (
@@ -5095,7 +5370,7 @@ export default defineApp({
             intent.actionId === "settings" &&
             intent.payload?.type === "open-settings"
           ) {
-            view?.openSettings();
+            view?.toggleSettings();
           }
         });
         listeners.add(listener);
@@ -5104,22 +5379,34 @@ export default defineApp({
         /* view 已挂上（mount 成功）：back-to-root command 从这一刻起可用。 */
         activeVoiceView = view ?? null;
         surface.ready();
+        voiceSurfaceMounts += 1;
+        surfaceCounted = true;
+        voiceClipCapture?.setMounted(voiceSurfaceMounts === 1);
         // ready 不等于已可见（冷后台挂载）；用户稍后打开会话时再触发有界刷新，
         // 不依赖「复制诊断」，也不绕过 Host 的可见界面门禁。
         stopHostVersionRefresh = hostVersionReader.refreshOnVisible(hostVersionScope);
+        if (typeof surface.onPresentationChange === "function") {
+          stopPresentationChange = surface.onPresentationChange(() => {
+            if (!mounted) return;
+            stopHostVersionRefresh = hostVersionReader.refreshOnVisible(hostVersionScope);
+            rereadCloudModelsWhenVisible();
+          });
+        }
         if (
           surface.initialIntent
           && typeof surface.initialIntent === "object"
           && (surface.initialIntent as { source?: unknown }).source === "host.taskConversation"
         ) {
-          const entityId = (surface.initialIntent as { payload?: { entityId?: unknown } }).payload?.entityId;
-          if (typeof entityId === "string") openTaskConversation(entityId);
+          openTaskConversation(surface.initialIntent);
         }
         if (isSystemTaskReturnIntent(surface.initialIntent)) void refresh();
         void refresh();
         void refreshActionMounts();
       } catch (cause) {
         mounted = false;
+        uncountSurface();
+        conversationOpen.retire();
+        stopPresentationChange?.();
         stopHostVersionRefresh?.();
         window.clearInterval(modelPoll);
         stopReturnIntent();
@@ -5127,6 +5414,7 @@ export default defineApp({
         if (listeners.size === 0) clearCloudModelsRetry();
         stopTitlebarIntent?.();
         stopActionMounts?.();
+        void navigation.dispose();
         view?.dispose();
         void savedInputRetries.cancelAll();
         /* 身份保护：这个失败分支只收自己的引用，别误伤并发的新 mount。 */
@@ -5143,13 +5431,17 @@ export default defineApp({
       }
       return () => {
         mounted = false;
+        uncountSurface();
+        conversationOpen.retire();
         window.clearInterval(modelPoll);
+        stopPresentationChange?.();
         stopHostVersionRefresh?.();
         stopReturnIntent();
         listeners.delete(listener);
         if (listeners.size === 0) clearCloudModelsRetry();
         stopTitlebarIntent?.();
         stopActionMounts?.();
+        void navigation.dispose();
         view?.dispose();
         void savedInputRetries.cancelAll();
         /* 身份保护：旧 mount 的 cleanup 只在自己仍是当前引用时清空。 */
@@ -5172,6 +5464,8 @@ export default defineApp({
     stopVoiceLocale = undefined;
     requestTextProviderDeactivate?.();
     requestTextProviderDeactivate = undefined;
+    voiceClipCapture?.dispose();
+    voiceClipCapture = undefined;
     if (voiceStatusPoll !== undefined) window.clearInterval(voiceStatusPoll);
     voiceStatusPoll = undefined;
     listeners.clear();
@@ -5326,13 +5620,34 @@ function normalizedError(cause: unknown): { code: string; message: string } {
   return { code: "VOICE_COMMAND_FAILED", get message() { return t("app.voiceCommandsAreTemporarilyUnavailable"); } };
 }
 
+/**
+ * 插件界面上的失败主句。开发者模式可带上游原文（方便排查）；普通模式只用插件自己的人话：
+ * 登记过的固定文案 → 组合文案（按当前模式重新求值）→ 按错误码/类别查表 → 统一兜底。
+ * 调用方都在 getter 里求值，切换开发者模式后已显示的主句随之更新。
+ */
+function cloudOptionRequiredError(): VoiceAppError {
+  return new VoiceAppError({
+    code: "com.reai.voice/CLOUD_MODEL_SELECTION_REQUIRED",
+    get userMessage() { return t("app.cloudOptionRequired"); },
+    retryable: true,
+  }, undefined, { constantMessage: true });
+}
+
 function readableError(cause: unknown): string {
-  if (cause && typeof cause === "object") {
-    const error = cause as { userMessage?: unknown; message?: unknown };
-    if (typeof error.userMessage === "string") return error.userMessage;
-    if (typeof error.message === "string") return error.message;
+  if (voiceDeveloperMode()) {
+    if (cause && typeof cause === "object") {
+      const error = cause as { userMessage?: unknown; message?: unknown };
+      if (typeof error.userMessage === "string") return error.userMessage;
+      if (typeof error.message === "string") return error.message;
+    }
+    return t("app.voiceInputIsTemporarilyUnavailable");
   }
-  return t("app.voiceInputIsTemporarilyUnavailable");
+  return plainFailureText(cause);
+}
+
+/** 普通模式口径的失败主句（也用于会落盘或离开插件页面的文字）：只用插件自己的人话。 */
+function plainFailureText(cause: unknown): string {
+  return inPlainMode(() => constantUserMessage(cause) ?? composedUserMessage(cause) ?? knownFailureLabel(cause) ?? t("app.notCompletedTryAgainLater"));
 }
 
 function isVoiceCancellation(cause: unknown): boolean {

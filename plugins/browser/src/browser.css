@@ -1,129 +1,50 @@
-/* 浏览器插件主页。颜色一律用宿主注入的 :root token（跟随主题切换），
-   不写死色值——写死了亮暗主题下必炸一边。 */
-
+/* Host 的安全区只在根框架消费一次。 */
 html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+button { font: inherit; color: inherit; border: 0; background: transparent; cursor: pointer; appearance: none; text-align: inherit; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button:disabled { cursor: not-allowed; opacity: .45; }
+[hidden] { display: none !important; }
 .plugin-main-frame {
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
+  box-sizing: border-box; width: 100%; height: 100%; min-height: 0;
   padding-top: var(--reai-plugin-titlebar-safe-top, 44px);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  display: flex; flex-direction: column; overflow: hidden; background: var(--bg);
 }
-.main-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-
-.rb-home {
-  min-height: 0;
-  box-sizing: border-box;
-  padding: 12px 26px 28px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  color: var(--text-primary);
-  background: var(--bg);
-}
-
-.rb-sub { margin: 0; font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
-
+.main-body { flex: 1; min-height: 0; padding: 0; overflow-y: auto; overscroll-behavior: contain; }
+.rb-home { color: var(--text-primary); background: var(--bg); }
+.rb-content { box-sizing: border-box; padding: 12px 24px 28px; display: flex; flex-direction: column; gap: 16px; }
+.rb-sub { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
 .rb-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.rb-btn {
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 7px 18px;
-  border-radius: 14px;
-  border: 1px solid var(--divider);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.rb-btn.primary { background: var(--accent); border-color: transparent; color: #fff; }
-.rb-btn:hover { opacity: 0.9; }
-
-.rb-sec-t {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-tertiary);
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  margin-top: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.rb-refresh {
-  font-family: inherit;
-  font-size: 11px;
-  border: none;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 6px;
-}
-.rb-refresh:hover { background: var(--divider); color: var(--text-primary); }
-
+.rb-btn { font-size: 14px; font-weight: 600; min-height: 36px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--card-border); color: var(--text-primary); }
+/* 主题背景色在两套主题中均与 accent 保持可读对比。 */
+.rb-btn.primary { background: var(--accent); border-color: transparent; color: var(--bg); }
+.rb-btn:not(:disabled):hover { background: var(--accent-soft); }
+.rb-btn.primary:not(:disabled):hover { background: var(--accent); filter: brightness(.94); }
+.rb-sec-t { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-top: 8px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rb-refresh { font-size: 12px; min-height: 32px; padding: 0 12px; border-radius: 10px; color: var(--text-secondary); }
+.rb-refresh:not(:disabled):hover { background: var(--accent-soft); color: var(--text-primary); }
 .rb-links { display: flex; gap: 8px; flex-wrap: wrap; }
-.rb-link {
-  font-family: inherit;
-  font-size: 12px;
-  padding: 6px 14px;
-  border-radius: 16px;
-  border: 1px solid var(--divider);
-  background: var(--bg);
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.rb-link:hover { border-color: var(--accent); color: var(--text-primary); }
-
-.rb-tabs { display: flex; flex-direction: column; gap: 6px; }
-.rb-tab {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--divider);
-  background: var(--bg);
-  font-size: 12px;
-  font-family: inherit;
-  color: var(--text-secondary);
-  cursor: pointer;
-  text-align: left;
-  width: 100%;
-}
-.rb-tab:hover { border-color: var(--accent); }
-.rb-tab-close {
-  flex-shrink: 0;
-  border-radius: 6px;
-  /* 悬停铺底色：上下原来只有 1px，贴着字（按钮留白规则 §3.5）。上下改 3px，
-     再用等量负 margin 抵消，标签行高不变。 */
-  padding: 3px 5px;
-  margin: -2px 0;
-  font-size: 11px;
-  opacity: 0.5;
-}
-.rb-tab-close:hover { opacity: 1; background: var(--divider); }
+.rb-link { font-size: 12px; min-height: 32px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--card-border); background: var(--bg); color: var(--text-secondary); }
+.rb-link:not(:disabled):hover { border-color: var(--accent); color: var(--text-primary); background: var(--accent-soft); }
+.rb-tabs { display: flex; flex-direction: column; gap: 8px; }
+.rb-tab { display: grid; grid-template-columns: minmax(0, 1fr) 44px; align-items: center; gap: 8px; border-radius: 10px; border: 1px solid var(--card-border); background: var(--bg); font-size: 12px; color: var(--text-secondary); min-width: 0; }
 .rb-tab.active { border-color: var(--accent); color: var(--text-primary); }
-.rb-tab-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.rb-tab-badge {
-  flex-shrink: 0;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: var(--accent-soft);
-  color: var(--accent);
-}
-.rb-tab-badge.work { background: var(--divider); color: var(--text-tertiary); }
+.rb-tab-select { min-width: 0; min-height: 44px; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 6px; }
+.rb-tab-select:not(:disabled):hover { background: var(--accent-soft); }
+.rb-tab-close { position: relative; width: 32px; height: 32px; padding: 0; margin: 0; border-radius: 8px; display: grid; place-items: center; color: var(--text-secondary); }
+.rb-tab-close::after { content: ""; position: absolute; inset: -6px; }
+.rb-tab-close:not(:disabled):hover { color: var(--text-primary); background: var(--accent-soft); }
+.rb-tab-close.busy svg { animation: rb-spin 1s linear infinite; }
+.rb-tab-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rb-tab-badge { flex-shrink: 0; font-size: 10px; font-weight: 600; padding: 4px 8px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); }
+.rb-tab-badge.work { background: var(--divider); color: var(--text-secondary); }
+.rb-status { font-size: 12px; color: var(--text-primary); line-height: 1.6; }
+.rb-status.error { color: var(--text-primary); border-left: 2px solid var(--alert); padding-left: 12px; }
+.rb-progress { width: 100%; height: 4px; overflow: hidden; background: var(--accent-soft); border-radius: 6px; }
+.rb-progress::after { content: ""; display: block; width: 28%; height: 100%; background: var(--accent); animation: rb-progress 1.2s ease-in-out infinite alternate; }
+.rb-diagnostic { margin: 0; padding: 12px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary); background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 10px; user-select: text; }
+@keyframes rb-progress { from { transform: translateX(0); } to { transform: translateX(250%); } }
+@keyframes rb-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .rb-progress::after, .rb-tab-close.busy svg { animation: none; } }
+@media (max-width: 480px) { .rb-content { padding: 12px 16px 24px; } }
 
-.rb-status { font-size: 12px; color: var(--text-tertiary); line-height: 1.6; }
-.rb-status.error { color: #d33; }
+.rb-feedback { display: flex; flex-direction: column; gap: 8px; }

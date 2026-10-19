@@ -14,11 +14,23 @@
     "close": "Close tab"
   },
   "status": {
-    "loadFailed": "Could not load browser state: {detail}"
+    "loadFailed": "Could not load browser state. Refresh to retry.",
+    "failed": "Could not {action}. Refresh the state, then retry.",
+    "timeout": "The request to {action} timed out. Refresh the state, then retry.",
+    "disabled": "The Browser plugin is disabled. Enable it, then retry.",
+    "permission": "Browser access is not authorized. Check the plugin permissions, then retry.",
+    "unavailable": "Cannot connect to Browser. Refresh to retry.",
+    "waiting": "{activity} Elapsed: {seconds} seconds",
+    "diagnostic": "Plugin {pluginVersion} · Host {hostVersion}\nState: {state}\nGenerated: {generatedAt}\n{logs}\n{detail}",
+    "versionUnavailable": "Version unavailable",
+    "noCode": "No error code",
+    "objectFailed": "Browser operation failed",
+    "objectWaiting": "Browser operation in progress",
+    "logsUnavailable": "Log location: Host does not provide the log path to plugins."
   },
   "errors": {
     "homeMountFailed": "Could not open the Browser home",
-    "bridgeMissing": "Browser bridge is not available (not in a plugin surface context)"
+    "bridgeMissing": "Cannot connect to Browser. Open the plugin again."
   },
   "metadata": {
     "name": "Browser",
@@ -28,15 +40,29 @@
     "openCommand": "Open the Browser drawer"
   },
   "metadataV2": {
-    "category": "Utilities",
+    "category": "Dev",
     "tagline": "Keep every Agent web action in plain sight.",
     "longDescription": "Built-in managed browser: tabs, address-bar navigation, back/forward/refresh. The Agent opens pages, observes elements, clicks, and types through the narrow browser-engine channel, and every action is shown to you in the half-screen drawer. Only https is allowed (http works for local development addresses); new windows and downloads are rejected by default, and web data stays isolated from the main app.",
     "capability0Label": "Tabbed browsing",
     "capability0Detail": "Address bar, back/forward/refresh, open in the system browser",
     "capability1Label": "Agent controls",
     "capability1Detail": "Open pages, observe elements, click, type, and press keys",
-    "capability2Label": "Permissions needed",
-    "capability2Detail": "Active after install and enable; no microphone or other system permissions",
+    "capability2Label": "Isolated browsing",
+    "capability2Detail": "Separate web profile; new windows and downloads are blocked by default",
     "caption0": "The tabbed browser in the half-screen drawer with the Agent activity bar"
+  },
+  "activity": {
+    "open": "Opening Browser…",
+    "new": "Creating a tab…",
+    "refresh": "Reading tab state…",
+    "select": "Switching tabs…",
+    "close": "Closing the tab…"
+  },
+  "action": {
+    "open": "open Browser",
+    "new": "create the tab",
+    "refresh": "read tab state",
+    "select": "switch tabs",
+    "close": "close the tab"
   }
 }

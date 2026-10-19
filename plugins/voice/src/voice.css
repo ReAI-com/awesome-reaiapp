@@ -6,7 +6,7 @@
 :root {
   /* 当前公开平台合同：macOS Host titlebar 占据 Surface 顶部 44px。未来 Host 注入
      平台解析 Token 后只替换这一处消费，静态预览仍以 44px 为 fallback。 */
-  --reai-titlebar-h: 44px;
+  --reai-titlebar-h: var(--reai-plugin-titlebar-safe-top, 44px);
   --voice-canvas: var(--bg, #f4f3f9);
   --voice-card: var(--card-bg, rgba(255, 255, 255, .8));
   /* 设计稿的 .appwin 是 card-bg 叠在 bg 上；插件 WebView 没有那一层宿主 DOM，
@@ -69,7 +69,8 @@ button:disabled {
   padding-top: var(--reai-titlebar-h);
 }
 
-.main-body {
+.voice-main-frame > .main-body:not(.voice-surface-body),
+.voice-surface-body > .main-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -2902,6 +2903,15 @@ button:disabled {
     display: none;
   }
 
+  /* 窄窗仍保留复制区：父级不能遮掉 hover/focus 或无 hover 设备的复制入口。 */
+  .task-meta:has(> .task-copy-row) {
+    display: flex;
+  }
+
+  .task-meta-row {
+    display: none;
+  }
+
   .settings-row {
     align-items: flex-start;
     flex-wrap: wrap;
@@ -3233,7 +3243,55 @@ button:disabled {
   color: var(--text-secondary);
 }
 .voice-progress:empty { display: none; }
+.voice-progress { align-items: center; }
+/* 中性的加载转圈：普通模式的等待态与云端选项后台刷新共用，不带任何错误色。 */
+.voice-progress-spinner,
+.settings-cloud-refreshing {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border: 1.5px solid var(--text-secondary, #6b6b80);
+  border-right-color: transparent;
+  border-radius: 50%;
+  opacity: 0.7;
+  animation: voice-progress-spin 0.9s linear infinite;
+}
+@keyframes voice-progress-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .voice-progress-spinner,
+  .settings-cloud-refreshing { animation: none; border-right-color: var(--text-secondary, #6b6b80); opacity: 0.4; }
+}
 
 /* Utterance start times retain seconds; expanded fragments retain precise ranges. */
 .ctx-utterance-line .ctx-line-ts { width: 64px; flex-shrink: 0; }
 .ctx-fragments { margin-top: -8px; }
+
+/* 录音来源五档对话框：每档两行（标题 + 说明 / 不可选原因）。 */
+.voice-source-option {
+  min-height: 56px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.voice-source-option-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.voice-source-option-desc {
+  color: var(--text-secondary, #6b6b80);
+  font-size: 12px;
+  font-weight: 400;
+}
+.voice-source-option:disabled {
+  cursor: not-allowed;
+  opacity: .5;
+}
+.voice-source-option:disabled:hover { background: transparent; }
+.voice-audio-source-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}

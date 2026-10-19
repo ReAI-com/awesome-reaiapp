@@ -38,6 +38,26 @@ describe("grantGated 能力（C1-1）", () => {
     expect(validateManifest(manifest).map(f => f.code)).toContain("MANIFEST_REFERENCE_INVALID");
   });
 
+  test("v1.0.5 平台服务：第三方未审核按未授予拒绝，且平台能力与同名 permission 必须成对", () => {
+    const matrix = loadSupportMatrix();
+    for (const id of ["audio.capture@1", "tasks.present@1", "notifications.publish@1"]) {
+      expect(matrix.hostCapabilities.grantGated).toContain(id);
+      expect(matrix.hostCapabilities.withheld).not.toHaveProperty([id]);
+      expect(Object.keys(matrix.pluginPermissions.supported)).toContain(id);
+      expect(Object.keys(matrix.pluginPermissions.withheld)).not.toContain(id);
+      const manifest = minimalTodo();
+      manifest["hostApi"] = { ...(manifest["hostApi"] as object), range: ">=1.25.0 <2.0.0" };
+      (manifest["requires"] as { hostCapabilities: string[] }).hostCapabilities.push(id);
+      manifest["permissions"] = [{ id, purpose: "验证 v1.0.5 平台服务", required: false }];
+      expect(validateManifest(manifest).map(f => f.code)).toEqual(["APP_CAPABILITY_NOT_GRANTED"]);
+      manifest["permissions"] = [];
+      expect(validateManifest(manifest).map(f => f.code)).toContain("MANIFEST_REFERENCE_INVALID");
+      const permissionOnly = minimalTodo();
+      permissionOnly["permissions"] = [{ id, purpose: "验证 v1.0.5 平台服务", required: false }];
+      expect(validateManifest(permissionOnly).map(f => f.code)).toContain("MANIFEST_REFERENCE_INVALID");
+    }
+  });
+
   const matrixWithGated = () => {
     // loadSupportMatrix 有模块级缓存——注入用深拷贝，别污染共享单例。
     const matrix = structuredClone(loadSupportMatrix());
@@ -101,6 +121,15 @@ describe("grantGated 能力（C1-1）", () => {
       "surface.clipboard@1",
       "agent.session@2",
       "local.terminal.exec@1",
+      // 共享录音片段：只对审核策略按版本批准、且同时获准 audio.capture@1 的插件开放。
+      "audio.clips@1",
+      // v1.0.5：任务胶囊、统一通知与共享采音只对审核批准 + 用户同意的插件开放。
+      "audio.capture@1",
+      "tasks.present@1",
+      "notifications.publish@1",
+      // 单次 Esc 仲裁：Host 发起握手，插件只能回执 consumed/pass/input-owned（T05）。
+      "surface.escape@1",
+      "resources.files@1",
     ]);
     expect(loadSupportMatrix().hostCapabilities.granted).toContain("titlebar.action@1");
     expect(loadSupportMatrix().hostCapabilities.withheld).not.toHaveProperty("titlebar.action@1");

@@ -23,6 +23,31 @@ test("budget rejects before allocation, clamps growth, and never resets failed d
   decoder.reset(); expect(() => decoder.ensureBuffer(0)).toThrow(marker);
   expect(new worker.VoicePdfDecodedBudget(600).used).toBe(0);
 });
+test("growth beside other decoded streams reallocates a bounded number of times (#1312)", () => {
+  // 已有其他流占用时，加倍放不进剩余预算；不能退化成每个 Flate 块都整段重新分配拷贝。
+  const limit = 16 * 1024 * 1024, budget = new worker.VoicePdfDecodedBudget(limit);
+  const other = new worker.DecodeStream(); worker.voiceBindPdfStream(other, budget); other.ensureBuffer(1024);
+  const decoder = new worker.DecodeStream(); worker.voiceBindPdfStream(decoder, budget);
+  let replacements = 0, previous = decoder.buffer, undersized = 0;
+  for (let requested = 258; requested <= limit - 1024; requested += 258) {
+    const buffer = decoder.ensureBuffer(requested);
+    if (buffer.length < requested) undersized++;
+    if (buffer !== previous) { replacements++; previous = buffer; }
+  }
+  expect(undersized).toBe(0);
+  expect(replacements).toBeLessThanOrEqual(24);
+  expect(budget.used).toBeLessThanOrEqual(limit);
+  expect(() => decoder.ensureBuffer(limit - 1024 + 1)).toThrow(marker);
+});
+test("a decoded budget failure inside an embedded CMap is not swallowed as invalid CMap data", async () => {
+  const budget = new worker.VoicePdfDecodedBudget(4096);
+  const cmap = new TextEncoder().encode(" ".repeat(64 * 1024) + "1 begincodespacerange <20> <5f> endcodespacerange endcmap");
+  // RunLength 每次只解一段 ≤128 字节，确保超预算发生在 parseCMap 的逐对象循环里，而不是 Lexer 构造时。
+  const runs: number[] = []; for (let offset = 0; offset < cmap.length; offset += 128) { const chunk = cmap.subarray(offset, offset + 128); runs.push(chunk.length - 1, ...chunk); } runs.push(128);
+  const encoding = new worker.RunLengthStream(source(new Uint8Array(runs), budget));
+  await expect(worker.CMapFactory.create({ encoding, fetchBuiltInCMap: async () => { throw new Error("no built-in CMap"); }, useCMap: null })).rejects.toThrow(marker);
+  expect(budget.failed).toBe(true);
+});
 test("invalid allocation requests and independent streams cannot evade the cumulative budget", () => {
   for (const requested of [-1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
     const decoder = new worker.DecodeStream(); worker.voiceBindPdfStream(decoder, new worker.VoicePdfDecodedBudget(1024));

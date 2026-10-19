@@ -1,6 +1,6 @@
 {
   "name": "@reai/app-contract",
-  "version": "1.24.0",
+  "version": "1.25.3-v105.1",
   "private": true,
   "type": "module",
   "files": [
@@ -20,6 +20,7 @@
     "./gateway-manifest-fixtures/*": "./gateway-manifest-fixtures/*",
     "./i18n-targets.json": "./i18n-targets.json",
     "./i18n-fixtures.json": "./i18n-fixtures.json",
-    "./i18n-v2-target-fixtures.json": "./i18n-v2-target-fixtures.json"
+    "./i18n-v2-target-fixtures.json": "./i18n-v2-target-fixtures.json",
+    "./platform-services-v1.json": "./platform-services-v1.json"
   }
 }

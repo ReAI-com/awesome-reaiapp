@@ -6,6 +6,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { resolveDeflateCodec, type Compression } from "./archive";
+import { verifyReviewDistribution, type ReviewDistribution } from "./review-distribution";
 
 const digest = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 const repository = realpathSync(resolve(import.meta.dir, "../../.."));
@@ -20,7 +21,8 @@ export interface ReviewToolchain {
   pluginLockSha256: string;
   pluginFileDependencyRecords: string[];
   scriptSha256: string;
-  packages: Record<string, { version: string; files: Record<string, string>; resolution: "same-content"; entry?: string }>;
+  packages: Record<string, { version: string; files: Record<string, string>; resolution: "same-content" | "verified-distribution"; entry?: string }>;
+  distribution?: ReviewDistribution;
   environment: Record<string, string>;
   globalBunfig: Record<string, string | null>;
 }
@@ -61,7 +63,8 @@ function packageFiles(root: string): Record<string, string> {
   return Object.fromEntries(files.sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0));
 }
 
-export function collectReviewToolchain(appDirectory: string, compression: Compression = "store"): ReviewToolchain {
+export function collectReviewToolchain(appDirectory: string, compression: Compression = "store", receiptPath?: string): ReviewToolchain {
+  const distribution = receiptPath ? verifyReviewDistribution(receiptPath, appDirectory, repository, packageFiles, packageRoot) : undefined;
   const names = ["@reai/app-i18n-cli", "@reai/app-cli", "@reai/app-contract"];
   const activeEntries = [
     resolve(import.meta.dir, "index.ts"),
@@ -74,9 +77,11 @@ export function collectReviewToolchain(appDirectory: string, compression: Compre
     const active = packageRoot(activeEntries[index]!, name);
     const installed = packageRoot(Bun.resolveSync(target, appDirectory), name);
     const files = packageFiles(active), installedFiles = packageFiles(installed);
-    if (JSON.stringify(files) !== JSON.stringify(installedFiles)) throw new Error(`Review toolchain differs from the normal installed CLI: ${name}`);
+    const expected = distribution?.files[name] ?? files;
+    if (JSON.stringify(expected) !== JSON.stringify(installedFiles)
+      || Object.entries(expected).some(([path, hash]) => files[path] !== hash)) throw new Error(`Review toolchain differs from the normal installed CLI: ${name}`);
     const metadata = JSON.parse(readFileSync(join(active, "package.json"), "utf8"));
-    packages[name] = { version: String(metadata.version), files, resolution: "same-content" };
+    packages[name] = { version: String(metadata.version), files, resolution: distribution ? "verified-distribution" : "same-content" };
   });
   if (compression === "deflate") {
     const installedCli = packageRoot(Bun.resolveSync("@reai/app-i18n-cli", appDirectory), "@reai/app-i18n-cli");
@@ -100,5 +105,6 @@ export function collectReviewToolchain(appDirectory: string, compression: Compre
   return { gitHead: git.stdout.trim(), bunVersion: Bun.version, bunBinarySha256: digest(readFileSync(realpathSync(process.execPath))), platform: process.platform, arch: process.arch,
     platformLockSha256: digest(readFileSync(join(repository, "packages/bun.lock"))), pluginLockSha256: digest(lock),
     pluginFileDependencyRecords: lock.toString("utf8").split("\n").filter(line => line.includes('"@reai/') && line.includes("file:")).map(line => line.trim()),
-    scriptSha256: digest(readFileSync(join(repository, "scripts/source-review-bytes.ts"))), packages, environment, globalBunfig };
+    scriptSha256: digest(readFileSync(join(repository, "scripts/source-review-bytes.ts"))), packages, environment, globalBunfig,
+    ...(distribution ? { distribution } : {}) };
 }

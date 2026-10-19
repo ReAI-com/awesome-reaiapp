@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { HOST_API_VERSION } from "@reai/app-sdk/v1";
 import { loadSchema, loadSupportMatrix } from "../src/assets";
 import { validateAgainstSchema } from "../src/json-schema";
 import { satisfiesHostApiRange } from "../src/validate";
@@ -77,7 +78,7 @@ describe("契约资源", () => {
     // 1.13.0：新增开发者内置 Audio8 本地 TTS 窄口。
     // 1.14.0：新增有返回值、可取消的 App Service Provider/Consumer 最小子集。
     // 1.23.0：新增 contributes.agentFeatures 与 AgentConfig.featureRef（插件 Agent 配置）。
-    expect(matrix.hostApi).toBe("1.24.0");
+    expect(matrix.hostApi).toBe(HOST_API_VERSION);
   });
 });
 

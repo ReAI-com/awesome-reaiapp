@@ -10,6 +10,7 @@ import { mountTerminalSettings, type TerminalSettingsView } from "./terminal-set
 import { TerminalPreferencesStore } from "./terminal-preferences";
 import "./terminal.css";
 import "./terminal-settings.css";
+import { mountNavigation } from "./surface-navigation";
 
 interface TerminalAppView {
   openSettings(): void;
@@ -21,6 +22,7 @@ export default defineApp({
     const messages = createTerminalMessages(ctx.locale);
     let workspace: TerminalWorkspace | undefined;
     let activeView: TerminalAppView | undefined;
+    let mountGeneration = 0;
     const preferences = new TerminalPreferencesStore(ctx.storage.private("terminal-preferences"));
     await preferences.load().catch(() => undefined);
     ctx.terminal.onEvent((event: TerminalSessionEvent) => workspace?.accept(event));
@@ -35,25 +37,48 @@ export default defineApp({
       return {};
     });
 
+    ctx.commands.register("com.reai.terminal.open-settings", async () => {
+      if (!activeView) throw new AppError({ code: "com.reai.terminal/NO_ACTIVE_VIEW", userMessage: messages.t("noView"), retryable: true });
+      activeView.openSettings();
+      return {};
+    });
+
     ctx.surfaces.register("main", async (surface) => {
+      const generation = ++mountGeneration;
       let settings: TerminalSettingsView | undefined;
+      let localWorkspace: TerminalWorkspace | undefined;
+      let view: TerminalAppView | undefined;
+      let page: "root" | "settings" = "root";
+      const navigation = mountNavigation(surface, {
+        rootLabel: () => messages.t("metadataName"), backLabel: () => messages.t("metadataBack"),
+        rootCommand: "com.reai.terminal.back-to-root",
+        menu: () => [{ key: "settings", label: messages.t("common.settings"), command: { commandId: "com.reai.terminal.open-settings" } }],
+        onBack: () => view?.navigateRoot(),
+      });
+      navigation.publish(null);
       try {
-        surface.root.innerHTML = '<div class="terminal-view-host" data-terminal-view="root"></div><div class="terminal-view-host" data-terminal-view="settings" hidden></div>';
-        const rootView = surface.root.querySelector<HTMLElement>('[data-terminal-view="root"]')!;
-        const settingsView = surface.root.querySelector<HTMLElement>('[data-terminal-view="settings"]')!;
-        workspace = await mountTerminalWorkspace(rootView, ctx.terminal, preferences, messages);
+        navigation.content.innerHTML = '<div class="terminal-view-host" data-terminal-view="root"></div><div class="terminal-view-host" data-terminal-view="settings" hidden></div>';
+        const rootView = navigation.content.querySelector<HTMLElement>('[data-terminal-view="root"]')!;
+        const settingsView = navigation.content.querySelector<HTMLElement>('[data-terminal-view="settings"]')!;
+        localWorkspace = await mountTerminalWorkspace(rootView, ctx.terminal, preferences, messages, navigation.footer);
+        if (generation !== mountGeneration) { await localWorkspace.dispose(); navigation.dispose(); return; }
+        workspace = localWorkspace;
         settings = mountTerminalSettings(settingsView, preferences, messages);
-        const view: TerminalAppView = {
+        view = {
           openSettings() {
+            page = "settings";
             rootView.hidden = true;
             settingsView.hidden = false;
-            surface.reportNav?.({ key: "settings", label: messages.t("common.settings") });
+            localWorkspace?.showFooter(false);
+            navigation.publish({ key: "settings", label: messages.t("common.settings") });
           },
           navigateRoot() {
+            page = "root";
             settingsView.hidden = true;
             rootView.hidden = false;
-            surface.reportNav?.(null);
-            workspace?.refresh();
+            localWorkspace?.showFooter(true);
+            navigation.publish(null);
+            localWorkspace?.refresh();
           },
         };
         activeView = view;
@@ -61,18 +86,20 @@ export default defineApp({
           const intent = raw as Partial<HostTitlebarActionIntent<{ type?: unknown }>> | null;
           if (intent?.source !== "host.titlebarAction") return;
           if (intent.actionId === "restart" && intent.payload?.type === "restart-active") {
-            void workspace?.restartActive();
+            void localWorkspace?.restartActive();
           } else if (intent.actionId === "stop" && intent.payload?.type === "stop-active") {
-            void workspace?.stopActive();
+            void localWorkspace?.stopActive();
           } else if (intent.actionId === "settings" && intent.payload?.type === "open-settings") {
-            view.openSettings();
+            if (page === "settings") view?.navigateRoot(); else view?.openSettings();
           }
         };
+        navigation.publish(null);
         applyTitlebarIntent(surface.initialIntent);
         const stopIntent = surface.onIntent(applyTitlebarIntent);
         const stopLocale = messages.subscribe(() => {
-          if (!settingsView.hidden) surface.reportNav?.({ key: "settings", label: messages.t("common.settings") });
+          navigation.publish(page === "settings" ? { key: "settings", label: messages.t("common.settings") } : null);
         });
+        navigation.ready();
         surface.ready();
         return async () => {
           stopIntent();
@@ -80,9 +107,9 @@ export default defineApp({
           if (activeView === view) activeView = undefined;
           settings?.dispose();
           settings = undefined;
-          const current = workspace;
-          workspace = undefined;
-          await current?.dispose();
+          if (workspace === localWorkspace) workspace = undefined;
+          navigation.dispose();
+          await localWorkspace?.dispose();
         };
       } catch (cause) {
         surface.fail(new AppError({
@@ -91,7 +118,9 @@ export default defineApp({
           retryable: true,
           cause,
         }));
-        return () => surface.root.replaceChildren();
+        await localWorkspace?.dispose();
+        navigation.fail(messages.t("mountFailed"));
+        return () => navigation.dispose();
       }
     });
   },

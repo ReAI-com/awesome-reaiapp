@@ -669,7 +669,7 @@ describe("播放器按真实媒体时间定位", () => {
     } finally { console.error = originalConsoleError; }
   });
 
-  test("第三方播放错误原文不会随界面语言改写", async () => {
+  test("普通模式隐藏第三方播放错误原文，失败提示随界面语言更新", async () => {
     const audio = audios[0];
     audio.deferPlay = true;
     harness.root.querySelector<HTMLButtonElement>(".replay-play")!.click();
@@ -678,7 +678,8 @@ describe("播放器按真实媒体时间定位", () => {
     await flush();
     const error = harness.root.querySelector(".replay-error")!;
     setVoiceLocale("en");
-    expect(error.textContent).toBe(original);
+    expect(error.textContent).toBe("Audio could not play. Reopen this recording and try again.");
+    expect(error.textContent).not.toContain(original);
     expect(error.querySelector("b")).toBeNull();
     expect(audio.playCalls).toBe(1);
   });
@@ -849,7 +850,7 @@ describe("刚录完那条", () => {
       let button = root.querySelector(".replay-play") as HTMLButtonElement;
       expect(button.disabled).toBeFalse();
       expect(button.getAttribute("aria-label")).toBe("回听这段录音");
-      expect(root.querySelector(".replay-error")?.textContent).toContain("录音暂时读不到");
+      expect(root.querySelector(".replay-error")?.textContent).toBe("音频无法播放，请重新打开这条记录后再试");
       expect(root.querySelector(".replay-time")?.textContent).toBe("音频不可用");
 
       button.click();

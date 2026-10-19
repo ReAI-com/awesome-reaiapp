@@ -110,8 +110,9 @@ export default defineContractSuite({
           throw new Error("Close tooltip not localized");
         }
         // 焦点落在第二行标签上后切语言：节点、焦点、活动标记都保留。
-        rows[1]!.focus();
-        if (document.activeElement !== rows[1]) throw new Error("Fixture row is not focusable");
+        const focused = rows[1]!.querySelector<HTMLButtonElement>(".rb-tab-select")!;
+        focused.focus();
+        if (document.activeElement !== focused) throw new Error("Fixture row is not focusable");
         const before = calls.length;
         host.setLocale("zh"); await pause();
         if (root.querySelector<HTMLElement>(".rb-sub")?.textContent !== "Agent 的网页操作会以半屏抽屉呈现；引擎只放行 https。") {
@@ -129,7 +130,7 @@ export default defineContractSuite({
         if (root.querySelector<HTMLElement>(".rb-tab-close")?.getAttribute("title") !== "关闭标签") {
           throw new Error("Close tooltip did not re-localize");
         }
-        if (document.activeElement !== rows[1]) throw new Error("Locale switch lost focus");
+        if (document.activeElement !== focused) throw new Error("Locale switch lost focus");
         // 订阅回放与同值 setLocale（MockHost 对同值 no-op）下文字均幂等，
         // 且切语言不新增任何 browser.* 调用。
         host.setLocale("en"); await pause();
@@ -226,7 +227,7 @@ export default defineContractSuite({
       },
     },
     {
-      name: "引擎失败时标题翻译、原始诊断详情保留",
+      name: "引擎失败时普通模式显示恢复动作并隐藏技术诊断",
       async run({ host }) {
         const { restore } = installEngineFixture(null, new Error("engine-offline-diagnostic"));
         try {
@@ -236,13 +237,13 @@ export default defineContractSuite({
         document.body.append(root);
         await pause();
         const status = root.querySelector<HTMLElement>(".rb-status");
-        if (!status?.textContent?.startsWith("Could not load browser state: ")) {
+        if (status?.textContent !== "Cannot connect to Browser. Refresh to retry.") {
           throw new Error("Failure prefix not localized");
         }
-        if (!status.textContent.includes("engine-offline-diagnostic")) throw new Error("Original diagnostic detail lost");
-        if (!status.classList.contains("error")) throw new Error("Error style class lost");
+        if (root.textContent?.includes("engine-offline-diagnostic")) throw new Error("Technical diagnostic visible in normal mode");
+        if (!status?.classList.contains("error")) throw new Error("Error style class lost");
         host.setLocale("zh"); await pause();
-        if (!root.querySelector<HTMLElement>(".rb-status")?.textContent?.startsWith("无法获取浏览器状态：")) {
+        if (root.querySelector<HTMLElement>(".rb-status")?.textContent !== "浏览器暂时无法连接，请刷新重试。") {
           throw new Error("Failure prefix did not follow the locale");
         }
         await host.unmountSurface(surface.surfaceMountId);

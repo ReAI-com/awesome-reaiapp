@@ -26,6 +26,7 @@ test("实际 activate/mount/输入/停止链路丢弃迟到成功，只取消原
   const resolvers: ((result: AgentSendResult) => void)[] = [];
   let emitAgentEvent: Parameters<AppContext["events"]["onLocalAgent"]>[0] | undefined;
   const host = new MockHost({
+    ownedConversationOpen: { accountGeneration: "t09-synthetic", packageDigest: "a".repeat(64), admitted: true, decision: "granted", userCeiling: "in_app", sessionIds: ["session-a", "retention-session"] },
     manifest: structuredClone(manifest) as never,
     loadApp: async () => {
       const { default: app } = await import("../src/app");
@@ -65,6 +66,7 @@ test("实际 activate/mount/输入/停止链路丢弃迟到成功，只取消原
     const root = surface.root!;
     root.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
     root.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+    await waitForConversationFixture(root);
     const send = (text: string) => {
       const input = root.querySelector<HTMLInputElement>(".chat-input")!;
       expect(input.disabled).toBeFalse();
@@ -115,6 +117,7 @@ test("转文本在润色期间停止后，不将取消当成失败兜底写回�
   let cancelled = false;
   let finishPolish: (() => void) | undefined;
   const host = new MockHost({
+    ownedConversationOpen: { accountGeneration: "t09-synthetic", packageDigest: "a".repeat(64), admitted: true, decision: "granted", userCeiling: "in_app", sessionIds: ["session-a", "retention-session"] },
     manifest: structuredClone(manifest) as never,
     loadApp: async () => {
       const { default: app } = await import("../src/app");
@@ -150,6 +153,7 @@ test("转文本在润色期间停止后，不将取消当成失败兜底写回�
     await until(() => generated, "Transcription reaches polishing");
     root!.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
     root!.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+    await waitForConversationFixture(root!);
     root!.querySelector<HTMLButtonElement>(".chat-cancel")!.click();
     await until(() => cancelled && !root!.querySelector(".chat-cancel"), "Polish cancellation settles");
     finishPolish!();
@@ -176,6 +180,7 @@ for (const level of ["light", "formal"] as const) {
     let polishes = 0;
     const transcript = "H04 DSH fresh final. What is the exact code I asked you to remember? Reply with that code only.";
     const host = new MockHost({
+    ownedConversationOpen: { accountGeneration: "t09-synthetic", packageDigest: "a".repeat(64), admitted: true, decision: "granted", userCeiling: "in_app", sessionIds: ["session-a", "retention-session"] },
       manifest: structuredClone(manifest) as never,
       loadApp: async () => {
         const { default: app } = await import("../src/app");
@@ -211,6 +216,7 @@ for (const level of ["light", "formal"] as const) {
       const { root } = await host.openSurface("main");
       root!.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
       root!.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+    await waitForConversationFixture(root!);
       const input = root!.querySelector<HTMLInputElement>(".chat-input")!;
       input.value = transcript; input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
@@ -223,4 +229,10 @@ for (const level of ["light", "formal"] as const) {
       expect(history!.find(item => item.id === sends[0]!.turnId)?.transcript).toBe(transcript);
     } finally { await host.disable(); }
   });
+}
+
+/** Synthetic fixture waits for the actual asynchronous history/paint boundary. */
+async function waitForConversationFixture(root: Element) {
+ const end=Date.now()+2500; while(!root.querySelector(".main-body.chat-view,.main-body.translation-detail")&&Date.now()<end)await new Promise(r=>setTimeout(r,5));
+ expect(!!root.querySelector(".main-body.chat-view,.main-body.translation-detail")).toBeTrue();
 }

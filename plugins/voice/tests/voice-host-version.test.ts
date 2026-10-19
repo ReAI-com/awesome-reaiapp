@@ -235,3 +235,21 @@ test("rate-limited timer wakeup does not consume a real refresh attempt", async 
     expect(calls).toBe(2); // Two actual reads exhaust the budget; no polling.
   } finally { instance.dispose(); }
 });
+
+test("default admission interval is exactly 2500ms on the reader's own clock", async () => {
+  let now = 1_000, calls = 0;
+  const instance = new HostVersionReader({
+    read: async () => { calls++; throw { code: "SYSTEM_TASK_VISIBLE_SURFACE_REQUIRED" }; },
+    publish: () => {}, now: () => now, timeoutMs: 20,
+  });
+  try {
+    await instance.request();
+    expect(calls).toBe(1);
+    now += 2_499;
+    await instance.request();
+    expect(calls).toBe(1);
+    now += 1;
+    await instance.request();
+    expect(calls).toBe(2);
+  } finally { instance.dispose(); }
+});

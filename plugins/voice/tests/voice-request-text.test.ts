@@ -464,7 +464,6 @@ describe("Voice request-text 原Promise", () => {
         h.ports.prepare = (signal, report) => prepareVoiceRequest({
           async configure() {},
           async checkPermissions() { return { microphone: "denied", accessibility: "granted", ...(missing ? {} : { microphoneRequired: true }) }; },
-          async requestPermission() { return "denied"; },
         }, DEFAULT_SETTINGS, signal, report, { cancelled: "cancelled", upgrade: "private helper detail", microphone: "private helper detail" });
         const handlers = new Map<string, ServiceHandler>();
         const services: AppServicesClient = {
@@ -475,7 +474,7 @@ describe("Voice request-text 原Promise", () => {
         try {
           const error = await Promise.resolve(handlers.get("request-text")!({ caller, input: input(), signal: new AbortController().signal })).catch((error) => error);
           expect(error).toMatchObject({ code: missing ? "com.reai.voice/VOICE_HOST_UPGRADE_REQUIRED" : "com.reai.voice/VOICE_MIC_PERMISSION_REQUIRED" });
-          expect(error).toMatchObject({ userMessage: expect.stringContaining(missing ? (locale === "zh" ? "升级 ReAI Board" : "Update ReAI Board") : (locale === "zh" ? "允许麦克风访问" : "Allow microphone access")) });
+          expect(error).toMatchObject({ userMessage: expect.stringContaining(missing ? (locale === "zh" ? "升级 ReAI Board" : "Update ReAI Board") : (locale === "zh" ? "授权电脑麦克风" : "Allow the computer microphone")) });
           expect(JSON.stringify(error)).not.toContain("private helper detail");
           expect(h.actions).not.toContain("start:false:false");
           expect(h.busy()).toBe(false);

@@ -3,7 +3,7 @@ import { read, utils } from "./generated/sheetjs-reader.mjs";
 import { createVoiceSpreadsheetHyperlinkGuard } from "./voice-spreadsheet-hyperlink-guard";
 import { Inflate } from "fflate";
 import { validateVoiceCfbChains } from "./voice-cfb-chains";
-import { VoiceAttachmentContentError, VOICE_ATTACHMENT_MAX_CHARACTERS, VOICE_TEXT_ATTACHMENT_POLICY } from "./voice-attachment-content";
+import { VoiceAttachmentContentError, VOICE_ATTACHMENT_MAX_CHARACTERS, VOICE_TEXT_ATTACHMENT_POLICY } from "./voice-attachment-policy";
 const fail = (code: "VOICE_ATTACHMENT_DOCUMENT_INVALID" | "VOICE_ATTACHMENT_DOCUMENT_LIMIT" | "VOICE_ATTACHMENT_DOCUMENT_NO_TEXT" | "VOICE_ATTACHMENT_DOCUMENT_ENCRYPTED"): never => { throw new VoiceAttachmentContentError(code); };
 import { VOICE_DOCUMENT_LIMITS } from "./voice-document-policy";
 const crcTable = Uint32Array.from({ length: 256 }, (_, value) => {

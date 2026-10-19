@@ -32,9 +32,14 @@ describe("back-to-root 的 manifest 声明", () => {
   test("manifest 结构合法；新版本不继承旧版本的能力审批", () => {
     // This is a schema/command contract, not an approval for the new package.
     // Keep the real admission failures explicit instead of adding a runtime seed.
-    const findings = validateManifest(structuredClone(manifest));
+    // 当前候选在审核策略里有按版本精确的批准条目：结构合法、无拒绝项。
+    expect(validateManifest(structuredClone(manifest))).toEqual([]);
+    // 同一包换一个没有批准条目的版本号：不继承旧版本批准，受控能力全部显式拒绝。
+    const unreviewed = { ...structuredClone(manifest), version: "2.14.6-dev.999" };
+    const findings = validateManifest(unreviewed);
     const capabilities = (manifest.requires as { hostCapabilities: string[] }).hostCapabilities;
-    const unapproved = ["surface.clipboard@1", "agent.session@2", "system.folder-pick@1", "local.terminal.exec@1"];
+    const unapproved = ["surface.clipboard@1", "agent.session@2", "system.folder-pick@1", "local.terminal.exec@1",
+      "audio.capture@1", "audio.clips@1", "surface.escape@1"];
     expect(findings.map(({ code, pointer }) => ({ code, pointer }))).toEqual(
       unapproved.map(capability => ({
         code: "APP_CAPABILITY_NOT_GRANTED",

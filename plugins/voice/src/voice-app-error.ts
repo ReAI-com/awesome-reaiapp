@@ -20,14 +20,24 @@ export class VoiceAppError extends AppError {
   constructor(
     input: ConstructorParameters<typeof AppError>[0],
     diagnosticFields?: VoiceErrorFields,
-    options: { constantMessage?: true } = {},
+    options: { constantMessage?: true; composedMessage?: true } = {},
   ) {
     super(input);
     const message = Object.getOwnPropertyDescriptor(input, "userMessage");
     if (message?.get) Object.defineProperty(this, "userMessage", message);
     if (diagnosticFields) Object.defineProperty(this, "diagnosticFields", { value: diagnosticFields, enumerable: false });
     if (options.constantMessage) CONSTANT_MESSAGE.add(this);
+    if (options.composedMessage) COMPOSED_MESSAGE.add(this);
   }
+}
+
+/**
+ * 组合主句：插件 i18n 模板 + 递归的 `readableError()` / 固定短句。插件界面可以显示（每次求值都按当前
+ * 模式过滤），但不能交回 SDK 或上浮层——开发者模式下嵌入的原因可能是上游原文。
+ */
+const COMPOSED_MESSAGE = new WeakSet<object>();
+export function composedUserMessage(cause: unknown): string | undefined {
+  return cause instanceof VoiceAppError && COMPOSED_MESSAGE.has(cause) ? cause.userMessage : undefined;
 }
 
 /** 可以离开插件界面（交回 SDK、上浮层）的主句：只有登记为固定文案的插件错误才有；其余返回 undefined。 */

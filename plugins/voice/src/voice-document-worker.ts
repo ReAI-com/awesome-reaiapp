@@ -1,5 +1,5 @@
 import { extractVoiceSpreadsheet } from "./voice-spreadsheet-extraction";
-import { VoiceAttachmentContentError } from "./voice-attachment-content";
+import { VoiceAttachmentContentError } from "./voice-attachment-policy";
 const scope = globalThis as unknown as { onmessage: ((event: MessageEvent) => void) | null; postMessage(value: unknown): void };
 scope.onmessage = event => {
   const input = event.data;

@@ -1,4 +1,4 @@
-import { VoiceAttachmentContentError } from "./voice-attachment-content";
+import { VoiceAttachmentContentError } from "./voice-attachment-policy";
 
 const END = -2;
 const invalid = (): never => { throw new VoiceAttachmentContentError("VOICE_ATTACHMENT_DOCUMENT_INVALID"); };

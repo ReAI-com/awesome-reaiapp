@@ -3,6 +3,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createDefaultVoiceViewState } from "../src/data";
+import { setVoiceLocale } from "../src/voice-i18n";
 import {
   mountVoiceView,
   type VoiceViewActions,
@@ -47,6 +48,27 @@ function mountVoiceWith(
 }
 
 describe("Voice V1.7 插件页面骨架", () => {
+  test("旧 mount 的延迟清理不会移除同一 root 的新视图或其语言绑定", () => {
+    setVoiceLocale("zh");
+    const { root, view: oldView } = mountDefaultVoice();
+    const nextView = mountVoiceView(root, createDefaultVoiceViewState(), noopActions);
+    const nextFrame = root.firstElementChild;
+    try {
+      oldView.dispose();
+      oldView.dispose();
+      expect(root.firstElementChild === nextFrame).toBeTrue();
+      expect(root.querySelector(".voice-overview-title")?.textContent).toBe("语音记录");
+      setVoiceLocale("en");
+      expect(root.querySelector(".voice-overview-title")?.textContent).toBe("Voice history");
+      nextView.openSettings();
+      expect(root.querySelector(".voice-settings-view")).not.toBeNull();
+    } finally {
+      nextView.dispose();
+      setVoiceLocale("zh");
+    }
+    expect(root.childElementCount).toBe(0);
+  });
+
   test("隔离 WebView 补回设计稿 appwin 的 card-bg Surface，日期吸顶条与页面同底", () => {
     const css = readDriver("src/voice.css");
 
@@ -65,15 +87,18 @@ describe("Voice V1.7 插件页面骨架", () => {
     expect(frame.classList.contains("voice-page")).toBeTrue();
     expect(frame.classList.contains("plugin-main-frame")).toBeTrue();
     expect(frame.querySelectorAll(":scope > .main-body")).toHaveLength(1);
-    expect(frame.querySelector(":scope > .main-body.voice-main-body")).not.toBeNull();
-    expect(frame.querySelector(":scope > .main-body > .voice-list-view.task-list-view")).not.toBeNull();
+    expect(frame.querySelector(":scope > .voice-surface-body > .main-body.voice-main-body")).not.toBeNull();
+    expect(frame.querySelector(":scope > .voice-surface-body > .main-body > .voice-list-view.task-list-view")).not.toBeNull();
 
     const css = readDriver("src/voice.css");
-    expect(css).toContain("--reai-titlebar-h: 44px");
+    // happy-dom drops var() padding; actual pixels are verified in the browser fixture.
+    expect(frame.classList.contains("reai-surface-frame")).toBeTrue();
+    expect(frame.querySelector<HTMLElement>(":scope > .reai-surface-footer")?.style.display).toBe("none");
+    expect(css).toContain("--reai-titlebar-h: var(--reai-plugin-titlebar-safe-top, 44px)");
     expect(css).toMatch(
       /\.plugin-main-frame\s*\{[^}]*padding-top:\s*var\(--reai-titlebar-h\)/s,
     );
-    expect(css).toMatch(/\.main-body\s*\{[^}]*overflow-y:\s*auto/s);
+    expect(css).toMatch(/\.voice-surface-body > \.main-body\s*\{[^}]*overflow-y:\s*auto/s);
     expect(css).not.toMatch(
       /\.task-list-view,\s*\.voice-settings-view,\s*\.input-detail\s*\{[^}]*overflow-y:\s*auto/s,
     );
@@ -99,7 +124,7 @@ describe("Voice V1.7 插件页面骨架", () => {
     const frame = root.firstElementChild as HTMLElement;
 
     expect(frame.querySelectorAll(":scope > .main-body")).toHaveLength(1);
-    expect(frame.querySelector(":scope > .main-body.voice-settings-view")).not.toBeNull();
+    expect(frame.querySelector(":scope > .voice-surface-body > .main-body.voice-settings-view")).not.toBeNull();
     expect(frame.querySelector("header.settings-header")).toBeNull();
     expect(frame.textContent).toContain("说话之后发生什么，都在这一页定");
     /* V1.7.0 / B5-14：设置页自绘返回钮撤除，返回由 Host 面包屑承载。 */
@@ -192,12 +217,20 @@ describe("Voice V1.7 图标与交互基线", () => {
     expect(root.querySelector("details.settings-hint")).toBeNull();
     panel?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(document.body.querySelector('[role="tooltip"]')).not.toBeNull();
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    // 输入法组字中的 Esc 原样放行，提示不关。
+    const composing = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true, isComposing: true });
+    document.dispatchEvent(composing);
+    expect(composing.defaultPrevented).toBe(false);
+    expect(document.body.querySelector('[role="tooltip"]')).not.toBeNull();
+    // 普通 Esc 只关提示并声明已消费（surface.escape@1：Host 不再当成返回上一页）。
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    document.dispatchEvent(escape);
+    expect(escape.defaultPrevented).toBe(true);
     expect(document.body.querySelector('[role="tooltip"]')).toBeNull();
     view.dispose();
   });
 
-  test("记录保留只选择时长，不再提供全天存档与录音缓存开关", () => {
+  test("记录保留：只有「全天存档」一颗开关（稿 V1.12.3），没有录音缓存开关", () => {
     const actions = new Proxy({}, {
       get: () => async () => undefined,
     }) as VoiceViewActions;
@@ -218,7 +251,8 @@ describe("Voice V1.7 图标与交互基线", () => {
     view.openSettings();
 
     const section = root.querySelector('[data-settings-target="replay-cache"]');
-    expect(section?.querySelector('[role="switch"]')).toBeNull();
+    const switches = Array.from(section?.querySelectorAll('[role="switch"]') ?? []);
+    expect(switches.map(node => node.getAttribute("aria-label"))).toEqual(["全天存档"]);
     expect(section?.textContent).toContain("保留多久");
     expect(section?.textContent).toContain("立刻清空语音记录");
     view.dispose();

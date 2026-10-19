@@ -5,5 +5,5 @@
   "oauthAppId": "REPLACE_WITH_OAUTH_CLIENT_ID",
   "productId": "REPLACE_WITH_PRODUCT_ID",
   "target": "universal",
-  "version": "1.0.4-dev.2"
+  "version": "1.0.5-dev.2"
 }

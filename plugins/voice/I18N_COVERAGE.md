@@ -4,7 +4,7 @@
 
 ## Manifest 静态元数据
 
-本插件声明 `i18n.locales`、20 个元数据目标和 `metadata.i18n@1` 能力。当前 Manifest 要求 Host API `>=1.23.0 <2.0.0`。安装前必须核对 Host 兼容范围和授权。
+本插件声明 `i18n.locales`、20 个元数据目标和 `metadata.i18n@1` 能力。当前 Manifest 要求 Host API `>=1.25.0 <2.0.0`。安装前必须核对 Host 兼容范围和授权。
 
 资源单一来源是 `assets/locales/zh.json` 和 `assets/locales/en.json`，此次复用已有翻译，不复制词典。Manifest 默认可读文字与原始贡献 ID 保留，命令执行、权限与版本不随显示语言改变。
 
@@ -66,7 +66,7 @@ bun run pack
 
 `validate`、`build`、`pack` 现在使用独立 `reai-app-i18n` 门禁；旧 `@reai/app-cli` 及其既有本地 pins 保留，包装器复用原构建器。合同检查读取 `dist/app.js`，须先 build。pack 对实际 ZIP 中的资源和 Build Manifest 摘要复验。
 
-当前源码版本为 `2.14.4-rc.3`。构建与打包结果必须来自当前输入。单元测试、类型检查和本地包检查不能代替平台能力批准或真实 Host 验收。
+当前源码版本为 `2.14.7`。构建与打包结果必须来自当前输入。单元测试、类型检查和本地包检查不能代替平台能力批准或真实 Host 验收。
 
 ## 尚待真实验收
 

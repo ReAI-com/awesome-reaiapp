@@ -93,6 +93,13 @@ export interface CloudTranscribeOptions {
 export interface CloudTranscribeResult {
   invocationId: string;
   text: string;
+  /**
+   * Host 把转写文本置空的原因（2026-10-16，#1291）：`punctuation_only` = 只有标点 / 空白；
+   * `hallucination_phrase` = 录音没有可靠语音证据，且整句等于公认的静音幻觉
+   * （如「字幕由 Amara.org 社区提供」）；`silence` = 整段静音、未上传。出现时 `text` 为 `""`，
+   * 按「没听清」处理。常见真实短词（「嗯」「好」「Thank you」等）从不置空。旧 Host 不返回。
+   */
+  suppressedReason?: "punctuation_only" | "hallucination_phrase" | "silence";
 }
 
 /**

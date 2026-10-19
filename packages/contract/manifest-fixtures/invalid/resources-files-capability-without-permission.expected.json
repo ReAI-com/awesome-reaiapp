@@ -1,0 +1,7 @@
+{
+  "codes": [
+    "APP_CAPABILITY_NOT_GRANTED",
+    "MANIFEST_REFERENCE_INVALID"
+  ],
+  "note": "声明 resources.files@1 平台能力却漏了同名用户权限；第三方 appId 同时拿不到该 grantGated 能力"
+}

@@ -24,10 +24,10 @@ const session = {
 
 export default defineContractSuite({
   appDirectory: "..",
-  hostApi: "1.18.0",
+  hostApi: "1.25.0",
   expect: {
     surfaces: ["main"],
-    commands: ["com.reai.dsh-agent.back-to-root"],
+    commands: ["com.reai.dsh-agent.back-to-root", "com.reai.dsh-agent.open-settings"],
     intents: [],
     readySurfaces: ["main"],
     forbiddenNetworkRequests: "all",

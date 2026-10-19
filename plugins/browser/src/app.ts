@@ -1,106 +1,124 @@
-/**
- * 浏览器插件 —— `browser.engine@1` 的授权消费者。
- *
- * 分工（与固件升级同一条边界）：远程内容的 child WebView 只有 Host 能建，
- * 插件 Surface 本身仍是 incognito + origin 锁死的隔离面。这里的职责是
- * 产品入口与操作面：主页快捷方式、当前标签一览、打开半屏抽屉；
- * Agent（pi 工具桥）与插件共用 Host 引擎的同一套操作。
- *
- * 界面语言跟随 Host（只读 `ctx.locale`），先设语言再挂载首屏；切换时只
- * 原位更新文字，不重建 Surface、不发任何 `browser.*` 业务请求。
- */
+/** Browser 只消费 Host 托管的引擎；Surface 请求随卸载取消。 */
 import { AppError, defineApp } from "@reai/app-sdk/v1";
+import manifest from "../app.manifest.json";
 import { browserCall } from "./browser-bridge";
 import { setBrowserLocale, t } from "./browser-i18n";
 import {
-  applyBrowserHomeLocale,
-  mountBrowserHome,
-  refreshBrowserHome,
-  type BrowserStateSummary,
+  applyBrowserHomeLocale, mountBrowserHome, refreshBrowserHome,
+  setBrowserHomeActivity, setBrowserHomeDeveloperMode,
+  type BrowserActivity, type BrowserStateSummary,
 } from "./browser-view";
 import "./browser.css";
 
 export default defineApp({
   async activate(ctx) {
-    ctx.commands.register("com.reai.browser.open", async () => {
-      // 语义只是「请求 Host 滑出抽屉」；真正开不开由 Host 的呈现层决定。
-      await browserCall("browser.panel.open", {});
+    ctx.commands.register("com.reai.browser.open", async ({ signal }) => {
+      await browserCall("browser.panel.open", {}, { signal });
       return { status: "ok" as const };
     });
-
-    ctx.surfaces.register("main", async (surface) => {
+    ctx.surfaces.register("main", (surface) => {
       const root = surface.root;
+      const lifetime = new AbortController();
+      let alive = true;
+      let busy = false;
+      let refreshPending = false;
+      let timer: ReturnType<typeof setInterval> | undefined;
+      const subscriptions: Array<() => void> = [];
+      const cleanup = () => {
+        if (!alive) return;
+        alive = false;
+        lifetime.abort();
+        clearInterval(timer);
+        for (const stop of subscriptions) stop();
+        root.replaceChildren();
+      };
       try {
-        // 先取 Host 语言快照再挂载，避免首屏先中文后闪换。
         setBrowserLocale(ctx.locale?.getSnapshot().locale ?? "zh");
-        root.innerHTML = "";
+        root.replaceChildren();
         const home = mountBrowserHome(root, {
-          onOpenDrawer: () => void browserCall("browser.panel.open", {}),
-          onNewTab: (url) => void refreshStateAfterAction(url),
-          onRefresh: () => void refreshState(),
-          onSelectTab: (tabId) => {
-            // 点「当前标签」里的一行，意图就是「看这个页面」：选中之外还要请
-            // Host 展开右栏（panel.open 只是请求，开不开仍由 Host 呈现层决定）。
-            void browserCall("browser.tab.select", { tabId }).catch(() => undefined);
-            void browserCall("browser.panel.open", {})
-              .catch(() => undefined)
-              .then(() => refreshState());
-          },
-          onCloseTab: (tabId) =>
-            void browserCall("browser.tab.close", { tabId })
-              .catch(() => undefined)
-              .then(() => refreshState()),
+          onOpenDrawer: () => void run({ phase: "open" }, () => call("browser.panel.open")),
+          onNewTab: (url) => void run({ phase: "new", url }, () => call("browser.tab.new", url ? { url } : {})),
+          onRefresh: () => void run({ phase: "refresh" }),
+          onSelectTab: (tabId) => void run({ phase: "select", tabId }, async () => {
+            await call("browser.tab.select", { tabId });
+            await call("browser.panel.open");
+          }),
+          onCloseTab: (tabId) => void run({ phase: "close", tabId }, () => call("browser.tab.close", { tabId })),
         });
-        async function refreshState() {
+        home.pluginVersion = manifest.version;
+        const call = (method: Parameters<typeof browserCall>[0], params: unknown = {}) => browserCall(method, params, { signal: lifetime.signal });
+        async function run(activity: BrowserActivity, action?: () => Promise<unknown>) {
+          if (!alive || busy) return;
+          busy = true;
+          const started = Date.now();
+          setBrowserHomeActivity(home, activity, 0);
+          timer = setInterval(() => {
+            if (alive) setBrowserHomeActivity(home, activity, Date.now() - started);
+          }, 200);
+          let succeeded = false;
           try {
-            const state = await browserCall<BrowserStateSummary | null>("browser.state", {});
+            await action?.();
+            activity.stage = "refresh";
+            if (alive) setBrowserHomeActivity(home, activity, Date.now() - started);
+            const state = await call("browser.state") as BrowserStateSummary | null;
+            if (!alive) return;
             refreshBrowserHome(home, state ?? null);
+            succeeded = true;
           } catch (cause) {
-            // 受控错误只翻译本插件的标题；引擎原始诊断作为详情原样保留。
-            refreshBrowserHome(home, null, String(cause));
+            if (!alive) return;
+            // 失败保持在页面上；不再用后续刷新覆盖失败终态。
+            refreshBrowserHome(home, home.state, cause, activity.stage ?? activity.phase);
+          } finally {
+            clearInterval(timer);
+            busy = false;
+            if (alive) {
+              setBrowserHomeActivity(home, undefined, 0);
+              if (refreshPending && succeeded) {
+                refreshPending = false;
+                void run({ phase: "refresh" });
+              } else refreshPending = false;
+            }
           }
         }
-        async function refreshStateAfterAction(url?: string) {
-          try {
-            await browserCall("browser.tab.new", url ? { url } : {});
-          } catch {
-            // 新标签失败也要刷新一次——主页展示的是引擎的事实，不是本地的期望。
-          }
-          await refreshState();
-        }
-        await refreshState();
-        // Host 推的「引擎状态变了」轻通知：右栏/Agent 关了标签、换了页面，
-        // 主页的「当前标签」列表要即时跟上，不再等用户手动点刷新。
-        const stopStateNotify = surface.onIntent((raw) => {
+        subscriptions.push(surface.onIntent((raw) => {
           if (!raw || typeof raw !== "object") return;
           const intent = raw as { source?: unknown; type?: unknown };
           if (intent.source === "host.browser" && intent.type === "state-changed") {
-            void refreshState();
+            if (busy) refreshPending = true;
+            else void run({ phase: "refresh" });
           }
-        });
-        // onChange 会立即回放当前快照；applyBrowserHomeLocale 必须可重复调用，
-        // 且只改文字，不触发任何 browser.* 业务调用。
-        const stopLocale = ctx.locale?.onChange(({ locale }) => {
+        }));
+        subscriptions.push(ctx.locale?.onChange(({ locale }) => {
+          if (!alive) return;
           setBrowserLocale(locale);
           applyBrowserHomeLocale(home);
-        });
-        surface.ready();
-        return () => {
-          stopLocale?.();
-          stopStateNotify();
-          root.replaceChildren();
+        }) ?? (() => undefined));
+        let environmentRevision = 0;
+        let versionRequested = false;
+        const setEnvironment = ({ developerMode }: { developerMode: boolean }) => {
+          if (!alive) return;
+          setBrowserHomeDeveloperMode(home, developerMode);
+          if (developerMode && !versionRequested) {
+            versionRequested = true;
+            void ctx.systemTasks.getVersionStatus().then(status => {
+              if (alive) { home.hostVersion = status.app.currentVersion; applyBrowserHomeLocale(home); }
+            }).catch(cause => {
+              if (alive) { home.hostVersion = undefined; home.hostVersionError = cause; applyBrowserHomeLocale(home); }
+            });
+          }
         };
+        subscriptions.push(ctx.environment.onChange(value => { environmentRevision++; setEnvironment(value); }));
+        const revision = environmentRevision;
+        void ctx.environment.get().then(value => {
+          if (revision === environmentRevision) setEnvironment(value);
+        }).catch(() => { /* 无法确认明确开关时保持普通模式。 */ });
+        // 首屏含真实加载态，立即可用；cleanup 不等待引擎启动。
+        surface.ready();
+        void run({ phase: "refresh" });
+        return cleanup;
       } catch (cause) {
-        surface.fail(
-          new AppError({
-            code: "com.reai.browser/HOME_MOUNT_FAILED",
-            userMessage: t("errors.homeMountFailed"),
-            retryable: true,
-            cause,
-          }),
-        );
-        // fail 之后 cleanup 仍要返回，保证 unmount 不留残余。
-        return () => root.replaceChildren();
+        surface.fail(new AppError({ code: "com.reai.browser/HOME_MOUNT_FAILED", userMessage: t("errors.homeMountFailed"), retryable: true, cause }));
+        return cleanup;
       }
     });
   },

@@ -1,6 +1,6 @@
 {
   "name": "reai-voice-app",
-  "version": "2.14.5-dev.3",
+  "version": "2.14.7",
   "private": true,
   "type": "module",
   "reaiApp": {
@@ -11,10 +11,10 @@
     "typecheck": "tsc --noEmit && tsc --noEmit -p packages/chat-ui",
     "build": "bun run prepare:documents && reai-app-i18n build .",
     "validate": "reai-app-i18n validate .",
-    "test:contract": "reai-app contract-test . --host-api 1.23",
-    "pack": "bun run prepare:documents && reai-app-i18n pack . --out voice-2.14.5-dev.3.reaiapp",
+    "test:contract": "reai-app contract-test . --host-api 1.25",
+    "pack": "bun run prepare:documents && reai-app-i18n pack . --out voice-2.14.7.reaiapp",
     "check:submission": "bun ../../scripts/plugin-submission.ts check .",
-    "pack:submission": "bun run prepare:documents && bun ../../scripts/plugin-submission.ts pack . --out voice-2.14.5-dev.3-submission.reaiapp",
+    "pack:submission": "bun run prepare:documents && bun ../../scripts/plugin-submission.ts pack . --out voice-2.14.7-submission.reaiapp",
     "manifest:agent-features": "bun scripts/sync-agent-features.ts",
     "prepare:documents": "bun scripts/prepare-document-assets.ts"
   },

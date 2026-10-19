@@ -1,18 +1,17 @@
 /**
- * SDK 版本锚点。
+ * SDK 包身份与 Host API 合同分别维护。
  *
- * 三个版本锚点必须始终相等：`platform/sdk/package.json` 的 version、
- * `platform/contract/host-support-matrix.json` 的 hostApi、这里的常量。此前只有前两者且纯靠人肉
- * 巧合对齐——没有任何代码能在运行期回答「我是哪个版本的 SDK」。
- * 相等性由 `platform/sdk/tests/contract-constants.test.ts` 锁死。
+ * SDK_VERSION 与本包 package.json 精确一致；HOST_API_VERSION 与支持矩阵
+ * hostApi 一致。候选 SDK 可以在不改变 Host API 的情况下补充 runtime 或测试能力。
+ * 两组身份由 contract-constants.test.ts 分别校验，不要求两个版本相等。
  *
- * 注意：插件构建时 SDK 被 external，运行时用的是 Host 内置的同版本 runtime
- * （import map 接管），所以这两个常量描述的是「Host 内置 SDK」的版本，
- * 不是插件 node_modules 里那份的版本——两者在同一台 Host 上恒等。
+ * 插件构建将 SDK external，由 Host import map 提供实际 runtime。这里的常量
+ * 描述正在执行的 SDK 包及其 Host API 合同，不证明插件本地依赖与任意 Host runtime
+ * 具有相同版本或字节，也不授予平台能力。
  */
 
 /** SDK 自身版本（与 package.json version 同步）。 */
-export const SDK_VERSION = "1.24.0";
+export const SDK_VERSION = "1.26.0-v105.1";
 
 /** 本版 SDK 对应的 Host API 版本（与矩阵 hostApi 同步）。 */
-export const HOST_API_VERSION = "1.24.0";
+export const HOST_API_VERSION = "1.25.0";

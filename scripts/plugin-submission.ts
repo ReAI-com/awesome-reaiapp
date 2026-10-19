@@ -55,11 +55,19 @@ export interface ServerContract {
   reviewableCapabilities: readonly string[];
   contributesProperties: readonly string[];
 }
+// 2026-10-15 平台后端上线：
+// REAIAPP_MANIFEST_SCHEMA_BASELINE = "1.1@005a0f63-notification-scenes"（contributes 放行 notificationScenes），
+// app-capability-review.json 扩到 29 项（新增 audio.capture@1 / audio.clips@1 / surface.escape@1 / resources.files@1）。
+// 原 notification-scenes-pending / v105-capabilities-pending 合入 current 并退役。
+// tasks.present@1、notifications.publish@1 仍不在可批准表里，不加。
+const REVIEWABLE_CAPABILITIES_HOST_1_25_V105 = [
+  ...REVIEWABLE_CAPABILITIES_HOST_1_21, "audio.capture@1", "audio.clips@1", "surface.escape@1", "resources.files@1",
+] as const;
 export const SERVER_CONTRACTS = {
   current: {
-    name: "current", baseline: "1.1@005a0f63-agent-features", backend: "deployed",
-    probeIds: PROBE_IDS_1_1_31CF8889, reviewableCapabilities: REVIEWABLE_CAPABILITIES_HOST_1_21,
-    contributesProperties: [...CONTRIBUTES_PROPERTIES_1_1_31CF8889, "agentFeatures"],
+    name: "current", baseline: "1.1@005a0f63-notification-scenes", backend: "deployed",
+    probeIds: PROBE_IDS_1_1_31CF8889, reviewableCapabilities: REVIEWABLE_CAPABILITIES_HOST_1_25_V105,
+    contributesProperties: [...CONTRIBUTES_PROPERTIES_1_1_31CF8889, "agentFeatures", "notificationScenes"],
   },
   "legacy-31cf8889": {
     name: "legacy-31cf8889", baseline: "1.1@31cf8889", backend: "historical",
@@ -70,6 +78,8 @@ export const SERVER_CONTRACTS = {
 export type ServerContractName = keyof typeof SERVER_CONTRACTS;
 /** Contract names that used to be accepted; old command lines fail with the reason instead of a bare "unknown". */
 const RETIRED_SERVER_CONTRACTS: Readonly<Record<string, string>> = {
+  "notification-scenes-pending": "its baseline 1.1@005a0f63-notification-scenes was deployed on 2026-10-15 and is now current; drop --server-contract",
+  "v105-capabilities-pending": "its four reviewable capabilities were deployed on 2026-10-15 and are now in current; drop --server-contract",
   "agent-features-pending": "its baseline 1.1@005a0f63-agent-features was deployed on 2026-10-02 and is now current; drop --server-contract",
   "native-v2-pending": "its baseline 1.1@31cf8889 was deployed on 2026-09-27 is included in the current contract; drop --server-contract",
 };

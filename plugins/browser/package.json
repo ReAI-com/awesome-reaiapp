@@ -1,6 +1,6 @@
 {
   "name": "reai-browser-app",
-  "version": "1.0.4-dev.2",
+  "version": "1.0.5",
   "private": true,
   "type": "module",
   "reaiApp": {
@@ -12,9 +12,9 @@
     "build": "reai-app-i18n build .",
     "validate": "reai-app-i18n validate .",
     "test:contract": "reai-app contract-test . --host-api 1.19",
-    "pack": "reai-app-i18n pack . --out browser-1.0.4-dev.2.reaiapp",
+    "pack": "reai-app-i18n pack . --out browser-1.0.5.reaiapp",
     "check:submission": "bun ../../scripts/plugin-submission.ts check .",
-    "pack:submission": "bun ../../scripts/plugin-submission.ts pack . --out browser-1.0.4-dev.2-submission.reaiapp"
+    "pack:submission": "bun ../../scripts/plugin-submission.ts pack . --out browser-1.0.5-submission.reaiapp"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.0.0",

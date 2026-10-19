@@ -1,6 +1,6 @@
 import type { Range, WorkSheet } from "xlsx";
 import { utils } from "./generated/sheetjs-reader.mjs";
-import { VoiceAttachmentContentError } from "./voice-attachment-content";
+import { VoiceAttachmentContentError } from "./voice-attachment-policy";
 import { VOICE_DOCUMENT_LIMITS } from "./voice-document-policy";
 
 export type VoiceHyperlinkEvent = { kind: "range"; range: Range; expands: boolean } | { kind: "cell"; address: string } | { kind: "complete" };

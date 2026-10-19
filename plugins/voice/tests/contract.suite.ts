@@ -1,4 +1,52 @@
-import { defineContractSuite } from "@reai/app-test/v1";
+import { defineContractSuite, MockHost, type MockHostOptions } from "@reai/app-test/v1";
+import manifest from "../app.manifest.json";
+import { COMMAND_HISTORY_KEY, type VoiceCommandHistoryItem } from "../src/data";
+import { t } from "../src/voice-i18n";
+
+const ownedOpenRejections = "有主会话拒绝裸意图、过期来源、拒绝权限和未落地，提交失败保留未读";
+const ownedOpenScenarios = new Set([
+  "命令详情听写起跑尚未返回就离页会在 listening 到达后立即取消",
+  "toggle-command 本地识别后直接运行通用 Agent 并保存真实回复",
+  ownedOpenRejections,
+]);
+let ownedContractLoad = 0;
+function createOwnedContractHost() {
+  // Explicit synthetic admission only for these scenarios; default Host stays unavailable.
+  const source: NonNullable<MockHostOptions["ownedConversationOpen"]> = {
+    accountGeneration: "synthetic-voice-contract", packageDigest: "a".repeat(64),
+    admitted: true, decision: "granted", userCeiling: "system",
+  };
+  const roots: HTMLElement[] = [];
+  const entry = new URL(`../${manifest.runtime.components[0]!.entry}`, import.meta.url).href;
+  const host = new MockHost({ manifest: manifest as MockHostOptions["manifest"],
+    ownedConversationOpen: source,
+    loadApp: () => import(`${entry}?ownedContract=${++ownedContractLoad}`),
+    createRoot: () => {
+      const root = document.createElement("div");
+      document.body.append(root); roots.push(root); return root;
+    },
+  });
+  return { host, source, roots };
+}
+const ownedContractHosts = new WeakMap<MockHost, ReturnType<typeof createOwnedContractHost>>();
+async function syntheticCommandHistory(host: MockHost): Promise<VoiceCommandHistoryItem[]> {
+  const result = await host.bridge.request<{ found: boolean; value?: VoiceCommandHistoryItem[] }>(
+    "storage.get", { storeId: "voice-state", key: COMMAND_HISTORY_KEY },
+  );
+  return result.found && Array.isArray(result.value) ? structuredClone(result.value) : [];
+}
+async function syntheticCommandRow(host: MockHost, id: string): Promise<VoiceCommandHistoryItem> {
+  const row = (await syntheticCommandHistory(host)).find(entry => entry.id === id);
+  if (!row) throw new Error("真实命令历史没有该任务");
+  return row;
+}
+async function waitForCommandRead(host: MockHost, id: string): Promise<void> {
+  const deadline = Date.now() + 1_000;
+  while ((await syntheticCommandRow(host, id)).unread === true) {
+    if (Date.now() >= deadline) throw new Error("同 owner commit 后未读没有同步落旗");
+    await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
 
 async function waitUntil(condition: () => boolean, message: string, timeoutMs = 1_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -178,25 +226,40 @@ function configuredVoiceSuite(config: Parameters<typeof defineContractSuite>[0])
   return defineContractSuite({ ...config, scenarios: config.scenarios?.map(scenario => ({
     ...scenario,
     async run(api) {
-      const initial = await api.host.openSurface("main");
-      const root = initial.root;
-      if (!root) throw new Error("DOM 环境不可用");
-      await waitUntil(() => !!root.querySelector(".voice-recognition-setup"), "全新 Voice 没有提示选择识别方式");
-      root.querySelector<HTMLButtonElement>(".voice-recognition-choice button")!.click();
-      await waitUntil(() => !root.querySelector(".voice-recognition-setup"), "本地识别选择没有完成");
-      await api.host.unmountSurface(initial.surfaceMountId);
-      // Feature assertions measure their own configure/invoke operations, not
-      // the preceding setup interaction. Keep persistent settings intact.
-      api.host.voiceInputRequests.length = 0;
-      api.host.cloudRequests.length = 0;
-      await scenario.run(api);
+      const fixture = ownedOpenScenarios.has(scenario.name) ? createOwnedContractHost() : undefined;
+      const host = fixture?.host ?? api.host;
+      if (fixture) {
+        await api.host.disable();
+        ownedContractHosts.set(host, fixture);
+      }
+      try {
+        if (fixture) await host.installAndEnable();
+        const initial = await host.openSurface("main");
+        const root = initial.root;
+        if (!root) throw new Error("DOM 环境不可用");
+        if (initial.readyCount !== 1 || initial.failCount !== 0) throw new Error("前置 Surface 没有真实就绪");
+        await waitUntil(() => !!root.querySelector(".voice-recognition-setup"), "全新 Voice 没有提示选择识别方式");
+        root.querySelector<HTMLButtonElement>(".voice-recognition-choice button")!.click();
+        await waitUntil(() => !root.querySelector(".voice-recognition-setup"), "本地识别选择没有完成");
+        await host.unmountSurface(initial.surfaceMountId);
+        // Feature assertions measure their own configure/invoke operations, not
+        // the preceding setup interaction. Keep persistent settings intact.
+        host.voiceInputRequests.length = 0;
+        host.cloudRequests.length = 0;
+        await scenario.run({ ...api, host });
+      } finally {
+        if (fixture) {
+          try { await host.disable(); }
+          finally { for (const root of fixture.roots) root.remove(); ownedContractHosts.delete(host); }
+        }
+      }
     },
   })) });
 }
 
 export default configuredVoiceSuite({
   appDirectory: "..",
-  hostApi: "1.23.0",
+  hostApi: "1.25.0",
   expect: {
     surfaces: ["main"],
     commands: [
@@ -324,9 +387,6 @@ export default configuredVoiceSuite({
     {
       name: "命令详情听写起跑尚未返回就离页会在 listening 到达后立即取消",
       async run({ host }) {
-        const anyHost = host as unknown as {
-          handleRequest(method: string, params: unknown): Promise<unknown>;
-        };
         // 先走真实命令链落下一条可打开的历史；场景开始时插件已经激活，直接改 KV
         // 不会让内存状态重读，也就测不到详情页。
         await host.invokeCommand("com.reai.voice.toggle-command");
@@ -336,39 +396,53 @@ export default configuredVoiceSuite({
           "前置命令没有生成可打开的历史",
         );
 
-        const original = anyHost.handleRequest.bind(host);
+        const taskId = (host.agentRequests.find(request => request.method === "agent.v2.turn.start")?.params as
+          { idempotencyKey?: string } | undefined)?.idempotencyKey;
+        if (!taskId) throw new Error("前置真实命令缺少任务身份");
+        const original = host.bridge.request.bind(host.bridge);
         let intercepted = false;
+        let listeningSessionId: string | undefined;
         let releaseToggle: () => void = () => undefined;
         const toggleGate = new Promise<void>((resolve) => {
           releaseToggle = resolve;
         });
-        anyHost.handleRequest = async (method, params) => {
+        host.bridge.request = async <T>(method: Parameters<MockHost["bridge"]["request"]>[0], params: unknown, options?: { signal?: AbortSignal }): Promise<T> => {
           if (method === "voice.toggle" && !intercepted) {
             intercepted = true;
             await toggleGate;
           }
-          return original(method, params);
+          const response = await original<T>(method, params, options);
+          if (method === "voice.toggle") {
+            const listening = response as { phase?: string; sessionId?: string };
+            if (listening.phase === "listening") listeningSessionId = listening.sessionId;
+          }
+          return response;
         };
+        try {
+          const main = await host.openSurface("main");
+          const root = main.root;
+          if (!root || !root.isConnected || main.readyCount !== 1 || main.failCount !== 0) throw new Error("DOM Surface 没有真实就绪");
+          root.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')?.click();
+          root.querySelector<HTMLButtonElement>(".command-history-item")?.click();
+          await waitUntil(() => !!root.querySelector(".chat-mic"), "异步打开后命令详情没有听写麦克风");
+          await waitForCommandRead(host, taskId);
+          root.querySelector<HTMLButtonElement>(".chat-mic")!.click();
+          await waitUntil(() => intercepted, "听写起跑没有进入 voice.toggle");
 
-        const main = await host.openSurface("main");
-        const root = main.root;
-        if (!root) throw new Error("DOM 环境不可用");
-        root.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')?.click();
-        root.querySelector<HTMLButtonElement>(".command-history-item")?.click();
-        const mic = root.querySelector<HTMLButtonElement>(".chat-mic");
-        if (!mic) throw new Error("命令详情没有听写麦克风");
-        mic.click();
-        await waitUntil(() => intercepted, "听写起跑没有进入 voice.toggle");
-
-        // 此刻 App 的 dictationPhase 仍是 idle；返回动作必须记住取消意图。
-        await host.invokeCommand("com.reai.voice.back-to-root");
-        releaseToggle();
-        await waitUntil(
-          () => host.voiceInputRequests.some((request) => request.method === "voice.cancel"),
-          "迟到的 listening 没有被立即取消",
-        );
-        const status = await original("voice.status", {} as never) as { phase?: string };
-        if (status.phase !== "idle") throw new Error("取消竞态收口后 Host 仍处于 listening");
+          // 此刻 App 的 dictationPhase 仍是 idle；返回动作必须记住取消意图。
+          await host.invokeCommand("com.reai.voice.back-to-root");
+          releaseToggle();
+          await waitUntil(
+            () => !!listeningSessionId && host.voiceInputRequests.some((request) => request.method === "voice.cancel"
+              && (request.params as { sessionId?: string }).sessionId === listeningSessionId),
+            "迟到的 listening 精确会话没有被立即取消",
+          );
+          const status = await original<{ phase?: string }>("voice.status", {});
+          if (status.phase !== "idle") throw new Error("取消竞态收口后 Host 仍处于 listening");
+        } finally {
+          releaseToggle();
+          host.bridge.request = original;
+        }
       },
     },
     {
@@ -535,10 +609,16 @@ export default configuredVoiceSuite({
         if (!root.querySelector(".voice-settings-view")) {
           throw new Error("Host 标题栏动作没有进入独立设置页");
         }
-        // 稿 V1.7.3：录音来源是识别引擎卡里的 › 行，点一下在键盘 / 电脑麦克风之间切换。
+        // 录音来源是识别引擎卡里的 › 行，点开是五档单选（2026-10-11）。
         const source = root.querySelector<HTMLButtonElement>('[data-settings-target="source"]');
         if (!source) throw new Error("设置页缺少录音来源行");
         source.click();
+        const modes = Array.from(root.querySelectorAll<HTMLButtonElement>(".voice-source-option"))
+          .map((option) => option.dataset.audioSourceMode);
+        if (modes.join(",") !== "auto,prefer_board,prefer_computer,board_only,computer_only") {
+          throw new Error(`录音来源对话框应列出五档，实际：${modes.join(",")}`);
+        }
+        root.querySelector<HTMLButtonElement>('.voice-source-option[data-audio-source-mode="computer_only"]')?.click();
         await new Promise((resolve) => setTimeout(resolve, 0));
         if (!host.storageKeys().includes("com.reai.voice/voice-state/settings")) {
           throw new Error("音频来源修改没有写入 Voice 私有 KV");
@@ -623,26 +703,99 @@ export default configuredVoiceSuite({
         const sessionId = (run?.params as { sessionId?: string } | undefined)?.sessionId;
         if (!taskId || !actualTurnId || !sessionId) throw new Error("结果面板缺少任务或会话身份");
         const main = await host.openSurface("main");
-        await host.sendIntent(main.surfaceMountId, {
-          source: "host.taskConversation",
-          payload: { type: "task-conversation", entityId: actualTurnId },
-        });
-        await waitUntil(
-          () => host.voiceCommandRequests.some(
-            (request) =>
-              request.method === "voice.command.dismiss-task"
-              && (request.params as { taskId?: string }).taskId === taskId,
-          ),
-          "点开任务对应会话后没有撤掉 Voice 胶囊",
-        );
-        await waitUntil(
-          () => host.agentRequests.some(
-            (request) =>
-              request.method === "agent.v2.session.conversation-opened"
-              && (request.params as { sessionId?: string }).sessionId === sessionId,
-          ),
-          "点开任务后没有向 Host 上报真实 Agent 会话已打开",
-        );
+        const root = main.root;
+        if (!root || !root.isConnected || main.readyCount !== 1 || main.failCount !== 0) throw new Error("任务 Surface 没有真实就绪");
+        const row = await syntheticCommandRow(host, taskId);
+        if (row.agentSessionId !== sessionId || row.runId !== actualTurnId || row.unread !== true) throw new Error("结果历史缺少真实身份或未读旗");
+        const original = host.bridge.request.bind(host.bridge);
+        let paintedBeforeCommit = false;
+        let unreadBeforeCommit = false;
+        host.bridge.request = async <T>(method: Parameters<MockHost["bridge"]["request"]>[0], params: unknown, options?: { signal?: AbortSignal }): Promise<T> => {
+          if (method === "agent.v2.session.conversation-opened" && (params as { phase?: string }).phase === "commit") {
+            paintedBeforeCommit = root.isConnected && !!root.querySelector(".main-body .chat-mic")
+              && !!row.reply && root.textContent?.includes(row.reply) === true;
+            const saved = await original<{ found: boolean; value?: VoiceCommandHistoryItem[] }>(
+              "storage.get", { storeId: "voice-state", key: COMMAND_HISTORY_KEY },
+            );
+            unreadBeforeCommit = saved.value?.find(entry => entry.id === taskId)?.unread === true;
+          }
+          return original<T>(method, params, options);
+        };
+        try {
+          const receipt = await host.deliverOwnedConversationOpen(sessionId);
+          await waitUntil(() => host.ownedConversationCommits.length === 1, "真实 Host receipt 没有提交");
+          await waitForCommandRead(host, taskId);
+          const commit = host.ownedConversationCommits[0]!;
+          if (commit.sessionId !== sessionId || commit.openToken !== receipt.openToken
+            || !paintedBeforeCommit || !unreadBeforeCommit) throw new Error("提交没有绑定真实会话、原 receipt、已绘制详情和提交前未读");
+          await host.sendIntent(main.surfaceMountId, { source: "host.taskConversation", actionId: "open-conversation",
+            payload: { entityId: sessionId, openToken: receipt.openToken } });
+          if (host.ownedConversationCommits.length !== 1) throw new Error("重复 receipt 产生了第二次提交");
+          if (host.voiceCommandRequests.some(request => request.method === "voice.command.dismiss-task")) throw new Error("有主提交不应降级为 legacy dismiss");
+          if (host.agentRequests.some(request => (request.params as { phase?: string }).phase === "prepare")) throw new Error("Host receipt 被替换成本地 prepare");
+        } finally { host.bridge.request = original; }
+      },
+    },
+    {
+      name: ownedOpenRejections,
+      async run({ host }) {
+        const fixture = ownedContractHosts.get(host);
+        if (!fixture) throw new Error("拒绝测试缺少显式合成 owner fixture");
+        await host.invokeCommand("com.reai.voice.toggle-command");
+        await host.invokeCommand("com.reai.voice.toggle-command");
+        await waitUntil(() => host.voiceCommandRequests.some(request => request.method === "voice.command.present-answer"), "前置真实结果未完成");
+        const run = host.agentRequests.find(request => request.method === "agent.v2.turn.start")?.params as
+          { sessionId?: string; idempotencyKey?: string } | undefined;
+        const sessionId = run?.sessionId, taskId = run?.idempotencyKey;
+        if (!sessionId || !taskId) throw new Error("拒绝测试缺少真实任务来源");
+        const main = await host.openSurface("main"), root = main.root;
+        if (!root || !root.isConnected || main.readyCount !== 1 || main.failCount !== 0) throw new Error("拒绝 fixture 未就绪");
+        const unchanged = async () => {
+          if ((await syntheticCommandRow(host, taskId)).unread !== true || host.ownedConversationCommits.length !== 0
+            || host.voiceCommandRequests.some(request => request.method === "voice.command.dismiss-task")) throw new Error("拒绝路径误清未读或确认已打开");
+        };
+        await unchanged();
+        // Positive admission + attached DOM makes this fail on the old raw→prepare upgrade.
+        await host.sendIntent(main.surfaceMountId, { source: "host.taskConversation", payload: { entityId: sessionId } });
+        await waitUntil(() => root.querySelector(".inline-error")?.textContent?.includes(t("errors.conversationOpen.sourceStale")) === true, "裸意图没有明确拒绝");
+        if (root.querySelector(".chat-mic") || host.agentRequests.some(request => (request.params as { phase?: string }).phase === "prepare")) throw new Error("裸意图升级成了本地打开或详情预览");
+        await unchanged();
+
+        const stale = await host.bridge.request<{ openToken: string }>("agent.v2.session.conversation-opened", { sessionId, phase: "prepare" });
+        host.advanceOwnedConversationNotice(sessionId);
+        await host.sendIntent(main.surfaceMountId, { source: "host.taskConversation", actionId: "open-conversation",
+          payload: { entityId: sessionId, openToken: stale.openToken } });
+        await waitUntil(() => host.agentRequests.some(request => (request.params as { phase?: string; openToken?: string }).phase === "commit"
+          && (request.params as { openToken?: string }).openToken === stale.openToken) && !!root.querySelector(".voice-conversation-open-error"), "过期来源没有在真实提交处拒绝");
+        await unchanged();
+
+        await host.invokeCommand("com.reai.voice.back-to-root");
+        fixture.source.decision = "denied";
+        const prepares = host.agentRequests.filter(request => (request.params as { phase?: string }).phase === "prepare").length;
+        root.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+        await waitUntil(() => host.agentRequests.filter(request => (request.params as { phase?: string }).phase === "prepare").length > prepares
+          && !!root.querySelector(".voice-conversation-open-error"), "拒绝权限没有阻止真实 prepare");
+        await unchanged();
+
+        fixture.source.decision = "granted";
+        await host.invokeCommand("com.reai.voice.back-to-root");
+        root.remove();
+        const cancels = host.agentRequests.filter(request => (request.params as { phase?: string }).phase === "cancel").length;
+        root.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+        await waitUntil(() => host.agentRequests.filter(request => (request.params as { phase?: string }).phase === "cancel").length > cancels
+          && !!root.querySelector(".voice-conversation-open-error"), "未附着的真实详情没有取消 receipt");
+        await unchanged();
+        document.body.append(root);
+        await host.invokeCommand("com.reai.voice.back-to-root");
+        host.failNextConversationOpenCommit();
+        const receipt = await host.deliverOwnedConversationOpen(sessionId);
+        await waitUntil(() => !!root.querySelector(".voice-conversation-open-error button") && host.agentRequests.some(request =>
+          (request.params as { phase?: string; openToken?: string }).phase === "commit" && (request.params as { openToken?: string }).openToken === receipt.openToken), "持久提交失败没有反馈");
+        await unchanged();
+        root.querySelector<HTMLButtonElement>(".voice-conversation-open-error button")!.click();
+        await waitUntil(() => host.ownedConversationCommits.length === 1, "同 receipt 显式重试未成功");
+        await waitForCommandRead(host, taskId);
+        if (host.ownedConversationCommits[0]!.openToken !== receipt.openToken || host.ownedConversationCommits[0]!.sessionId !== sessionId) throw new Error("重试换了 receipt 或任务来源");
       },
     },
     {
@@ -1042,8 +1195,8 @@ export default configuredVoiceSuite({
         const configureCallsDuringToggles = host.voiceInputRequests.filter(
           (request) => request.method === "voice.configure",
         ).length - configureCallsBefore;
-        if (configureCallsDuringToggles !== 1) {
-          throw new Error("只有开始录音前可以配置；完成录音不得在 busy 状态重复 configure");
+        if (configureCallsDuringToggles !== 0) {
+          throw new Error("显式设置已经成功配置；开始与完成录音都不得重复 configure 覆盖 Host 音源");
         }
         // 落下回听片段之后必须再问一次权威的「录音缓存」状态：本地那次就地并入只让
         // 保留下沿往回走，而 Host 的下沿会随过期清理与配额淘汰前移。不追这一次，

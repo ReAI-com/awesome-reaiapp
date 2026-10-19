@@ -1,4 +1,9 @@
+import { createSurfaceNavigation } from "./navigation";
+import { browserEscapeEnvironment, createSurfaceEscapeResponder, SURFACE_ESCAPE_INGRESS } from "./surface-escape";
+import type { SurfaceBinding } from "./platform-contracts";
+import { isPlatformCapabilityAvailable, isPlatformMethodAvailable, type AudioConsumerReceipt } from "./platform-contracts";
 import type { AgentTurnSnapshot, AgentTurnRef } from "./agent-service";
+import type { AgentConversationOpenReceipt } from "./agent-session";
 /**
  * SDK 运行时：把 App 的声明接到 Bridge 上。
  *
@@ -26,6 +31,9 @@ import {
   type HostMessage,
   type RegistrationReport,
   type ServiceSettlement,
+  type TaskRequestMethod,
+  type AudioClipsRequestMethod,
+  type ResourceFilesRequestMethod,
 } from "./protocol";
 import type {
   AppContext,
@@ -70,6 +78,7 @@ interface MountState {
   surfaceId: string;
   settled: boolean;
   intentHandlers: Set<(intent: unknown) => void>;
+  presentationHandlers: Set<() => void>;
   /**
    * 最近一条还没人接的 intent（M6.1）。意图是状态不是流水——只留最新一条，
    * 首个 `onIntent` 注册时补发并清。没有它的话，handler 注册前到达的 intent
@@ -117,6 +126,55 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
     (event: import("./terminal-session").TerminalSessionEvent) => void
   >();
   const mounts = new Map<string, MountState>();
+  const presentations = new Map<string, SurfaceBinding>();
+  // surface.escape@1: inert unless the Host's real descriptor (environment.get) says it is
+  // available. Fetched lazily on the first Esc activity of each presentation (activation,
+  // remount and account switch all change the presentation), never on plain presentation.
+  const escapeDescriptors = new Map<string, { token: string; result: Promise<boolean>; value?: boolean }>();
+  const ensureEscapeDescriptor = (binding: SurfaceBinding): Promise<boolean> => {
+    // A stale (retired) presentation never touches the current cache.
+    const live = presentations.get(binding.surfaceMountId);
+    if (disposed || !mounts.has(binding.surfaceMountId) || live?.presentationToken !== binding.presentationToken
+      || live.runtimeSessionId !== binding.runtimeSessionId) return Promise.resolve(false);
+    const cached = escapeDescriptors.get(binding.surfaceMountId);
+    if (cached?.token === binding.presentationToken) return cached.result;
+    const entry: { token: string; result: Promise<boolean>; value?: boolean } = { token: binding.presentationToken, result: Promise.resolve(false) };
+    entry.result = wire.request<{ surfaceEscape?: { runtimeSessionId?: unknown; surfaceMountId?: unknown; platformCapabilities?: unknown } }>(RequestMethod.EnvironmentGet, {})
+      .then((environment) => {
+        const descriptor = environment?.surfaceEscape;
+        entry.value = !disposed && presentations.get(binding.surfaceMountId)?.presentationToken === binding.presentationToken
+          && descriptor?.runtimeSessionId === binding.runtimeSessionId && descriptor?.surfaceMountId === binding.surfaceMountId
+          && isPlatformCapabilityAvailable(descriptor?.platformCapabilities, "surface.escape@1");
+        return entry.value;
+      }, () => {
+        // Transient failure: forget it so the next Esc can ask again; this press fails closed.
+        if (escapeDescriptors.get(binding.surfaceMountId) === entry) escapeDescriptors.delete(binding.surfaceMountId);
+        return false;
+      });
+    escapeDescriptors.set(binding.surfaceMountId, entry);
+    if (escapeDescriptors.size > 16) escapeDescriptors.delete(escapeDescriptors.keys().next().value!);
+    return entry.result;
+  };
+  const escape = createSurfaceEscapeResponder({
+    wire: {
+      respond: (input) => wire.request(RequestMethod.SurfaceEscapeRespond, input),
+      ingress: (binding, hostLayer) => wire.notify(SURFACE_ESCAPE_INGRESS as NotifyMethod,
+        hostLayer === undefined ? binding : { ...binding, hostLayer }),
+    },
+    available: (binding) => {
+      const entry = escapeDescriptors.get(binding.surfaceMountId);
+      return entry?.token === binding.presentationToken && entry.value === true;
+    },
+    ensure: ensureEscapeDescriptor,
+    env: browserEscapeEnvironment,
+    binding: (surfaceMountId) => !disposed && mounts.has(surfaceMountId) ? presentations.get(surfaceMountId) : undefined,
+    presented: () => {
+      if (disposed) return undefined;
+      const live = [...presentations.values()].filter(binding => mounts.has(binding.surfaceMountId));
+      return live.length === 1 ? live[0] : undefined;
+    },
+  });
+  const endedPresentationMounts = new Set<string>();
   const inflight = new Map<string, AbortController>();
   const activeOperations = new Map<string, string>();
   const serviceInflight = new Map<string, AbortController>();
@@ -152,6 +210,266 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
   let environmentRevision = 0;
   let environmentSnapshot = { developerMode: false };
 
+  const audioReceipts = new Map<string, { epoch: number; session: string; mount: string; state: MountState }>();
+  const audioRequest = async <T>(method: typeof RequestMethod.AudioConsumersAcquire | typeof RequestMethod.AudioConsumersRelease | typeof RequestMethod.AudioConsumersStatus, input: unknown, releaseId?: string): Promise<T> => {
+    const epoch = activationEpoch;
+    const session = runtimeSessionId;
+    const entry = mounts.size === 1 ? mounts.entries().next().value : undefined;
+    if (!entry || !session || disposed) throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "音频调用界面已退出" });
+    const [mount, state] = entry;
+    const current = () => !disposed && activationEpoch === epoch && runtimeSessionId === session && mounts.get(mount) === state;
+    const previous = releaseId ? audioReceipts.get(releaseId) : undefined;
+    if (previous && (previous.epoch !== epoch || previous.session !== session || previous.mount !== mount || previous.state !== state)) {
+      throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "音频消费者属于旧界面" });
+    }
+    // Query this Host for every operation; the installed SDK version grants nothing.
+    // A withheld capability may still release a receipt acquired by this exact mount.
+    let environment: { audioCapture?: { runtimeSessionId?: string; surfaceMountId?: string; platformCapabilities?: unknown } } | undefined;
+    try { environment = await wire.request(RequestMethod.EnvironmentGet, {}); }
+    catch (error) { if (!previous) throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放音频采集", cause: error }); }
+    if (!current()) throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "音频调用界面已退出" });
+    const descriptor = environment?.audioCapture;
+    if (descriptor && (descriptor.runtimeSessionId !== session || descriptor.surfaceMountId !== mount)) {
+      throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "音频Host实例已变化" });
+    }
+    if (!previous && !isPlatformCapabilityAvailable(descriptor?.platformCapabilities, "audio.capture@1")) {
+      throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放音频采集" });
+    }
+    const result = await wire.request<T>(method, input);
+    if (!current()) throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "迟到音频回执已失效" });
+    if (releaseId) audioReceipts.delete(releaseId);
+    return result;
+  };
+
+  type ClipCallOwner = { epoch: number; session: string; mount: string; state: MountState };
+  // Advisory identities only. The current Host rechecks the original binding on every call.
+  const clipReceipts = new Map<string, ClipCallOwner>();
+  const rememberClipReceipt = (kind: string, id: string, owner: ClipCallOwner) => {
+    if (typeof id !== "string" || !/^[A-Za-z0-9_.:-]{1,128}$/.test(id)) throw new AppError({ code: "AUDIO_RANGE_INVALID", userMessage: "无效音频回执" });
+    const key = kind + ":" + id;
+    clipReceipts.delete(key); clipReceipts.set(key, owner);
+    if (clipReceipts.size > 256) clipReceipts.delete(clipReceipts.keys().next().value!);
+  };
+  const clipRequest = async <T>(method: AudioClipsRequestMethod, input: unknown, keys: readonly string[], receiptKind?: string, receiptId?: string): Promise<{ value: T; owner: ClipCallOwner }> => {
+    const entry = mounts.size === 1 ? mounts.entries().next().value : undefined;
+    if (!entry || !runtimeSessionId || disposed) throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "音频调用界面已退出" });
+    const owner: ClipCallOwner = { epoch: activationEpoch, session: runtimeSessionId, mount: entry[0], state: entry[1] };
+    const same = (old: ClipCallOwner) => old.epoch === owner.epoch && old.session === owner.session && old.mount === owner.mount && old.state === owner.state;
+    const current = () => !disposed && activationEpoch === owner.epoch && runtimeSessionId === owner.session && mounts.get(owner.mount) === owner.state;
+    const previous = receiptKind && receiptId ? clipReceipts.get(receiptKind + ":" + receiptId) : undefined;
+    if (previous && !same(previous)) throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "音频回执属于旧界面" });
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new AppError({ code: "AUDIO_RANGE_INVALID", userMessage: "无效音频请求" });
+    const record = input as Record<string, unknown>;
+    if (Object.keys(record).some(key => !keys.includes(key)) || keys.some(key => !(key in record))) throw new AppError({ code: "AUDIO_RANGE_INVALID", userMessage: "无效音频字段" });
+    for (const key of keys) {
+      const value = record[key];
+      const valid = key.endsWith("Ms") || key === "offset" || key === "maxBytes"
+        ? typeof value === "number" && Number.isSafeInteger(value) && value >= 0 && (key !== "maxBytes" || value >= 1 && value <= 262144)
+        : typeof value === "string" && /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
+      if (!valid) throw new AppError({ code: "AUDIO_RANGE_INVALID", userMessage: "无效音频参数" });
+    }
+    let environment: { audioClips?: { runtimeSessionId?: string; surfaceMountId?: string; platformCapabilities?: unknown } } | undefined;
+    try { environment = await wire.request(RequestMethod.EnvironmentGet, {}); }
+    catch (error) {
+      if (!current()) throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "音频调用界面已退出" });
+      if (error instanceof AppError && error.code !== "BRIDGE_UNKNOWN_METHOD") throw error;
+      throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放音频片段", cause: error });
+    }
+    if (!current()) throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "迟到音频描述符已失效" });
+    const descriptor = environment?.audioClips;
+    if (descriptor && (descriptor.runtimeSessionId !== owner.session || descriptor.surfaceMountId !== owner.mount)) throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "音频Host实例已变化" });
+    if (!isPlatformCapabilityAvailable(descriptor?.platformCapabilities, "audio.clips@1")) throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放音频片段" });
+    const value = await wire.request<T>(method, input);
+    if (!current()) throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "迟到音频回执已失效" });
+    return { value, owner };
+  };
+
+  // resources.files@1: requery the Host descriptor per call; results that arrive after
+  // the calling mount/runtime changed are discarded. The Host re-authorizes every call.
+  const resourceRequest = async <T>(method: ResourceFilesRequestMethod, input: unknown): Promise<T> => {
+    const entry = mounts.size === 1 ? mounts.entries().next().value : undefined;
+    const stale = (userMessage: string) => new AppError({ code: "RESOURCE_SCOPE_STALE", userMessage });
+    if (!entry || !runtimeSessionId || disposed) throw stale("文件调用界面已退出");
+    const owner = { epoch: activationEpoch, session: runtimeSessionId, mount: entry[0], state: entry[1] };
+    const current = () => !disposed && activationEpoch === owner.epoch && runtimeSessionId === owner.session && mounts.get(owner.mount) === owner.state;
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new AppError({ code: "RESOURCE_UNAVAILABLE", userMessage: "无效文件请求" });
+    let environment: { resourceFiles?: { runtimeSessionId?: string; surfaceMountId?: string; platformCapabilities?: unknown } } | undefined;
+    try { environment = await wire.request(RequestMethod.EnvironmentGet, {}); }
+    catch (error) {
+      if (!current()) throw stale("文件调用界面已退出");
+      if (error instanceof AppError && error.code !== "BRIDGE_UNKNOWN_METHOD") throw error;
+      throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放文件访问", cause: error });
+    }
+    if (!current()) throw stale("迟到文件描述符已失效");
+    const descriptor = environment?.resourceFiles;
+    if (descriptor && (descriptor.runtimeSessionId !== owner.session || descriptor.surfaceMountId !== owner.mount)) throw stale("文件Host实例已变化");
+    if (!isPlatformMethodAvailable(descriptor?.platformCapabilities, "resources.files@1", method)) throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放文件访问" });
+    let value: T;
+    try { value = await wire.request<T>(method, input); }
+    catch (error) {
+      // A late rejection belongs to the retired mount just like a late success.
+      if (!current()) throw stale("迟到文件回执已失效");
+      throw error;
+    }
+    if (!current()) throw stale("迟到文件回执已失效");
+    return value;
+  };
+
+  type TaskCallOwner = { epoch: number; session: string; mount: string; state: MountState };
+  // Bounded advisory receipt caches. Every operation still asks the current Host;
+  // these records cannot authorize a task, result, source or return intent.
+  const taskReceipts = new Map<string, TaskCallOwner>();
+  const resultReceipts = new Map<string, TaskCallOwner & { panelToken: string }>();
+  type OpenOwner = TaskCallOwner & { entity: string; presentation: SurfaceBinding; hostDelivered?: true };
+  const openReceipts = new Map<string, OpenOwner>();
+  const preparingOpens = new Map<string, object>();
+  const openMethod = (sessionId: string) => sessionId.startsWith("agent2-") ? RequestMethod.AgentV2ConversationOpened : RequestMethod.AgentSessionConversationOpened;
+  const staleOpen = () => new AppError({ code: "TASK_SOURCE_STALE", userMessage: "会话打开回执已失效" });
+  const currentOpen = (owner: OpenOwner) => !disposed && activationEpoch === owner.epoch && runtimeSessionId === owner.session
+    && mounts.get(owner.mount) === owner.state && presentations.get(owner.mount) === owner.presentation;
+  const cancelOpenToken = (token: string, owner: OpenOwner) => {
+    // Negative cleanup only. The Host still checks the original operation's
+    // source and cannot undo an already committed read. No legacy fallback.
+    if (currentOpen(owner)) void wire.request(openMethod(owner.entity), {
+      sessionId: owner.entity, phase: "cancel", openToken: token,
+    }).catch(() => undefined);
+  };
+  const retireOpenReceipts = (matches: (owner: OpenOwner) => boolean) => {
+    for (const [token, owner] of openReceipts) if (matches(owner)) {
+      openReceipts.delete(token);
+      cancelOpenToken(token, owner);
+    }
+  };
+  const captureOpenOwner = (entity: string): OpenOwner => {
+    const entry = mounts.size === 1 ? mounts.entries().next().value : undefined;
+    const presentation = entry ? presentations.get(entry[0]) : undefined;
+    if (!entry || !presentation || !runtimeSessionId || disposed || !/^[\x21-\x7e]{1,128}$/.test(entity)) throw staleOpen();
+    return { epoch: activationEpoch, session: runtimeSessionId, mount: entry[0], state: entry[1], entity, presentation };
+  };
+  const requireOpenDescriptor = async (owner: OpenOwner) => {
+    let environment: { ownedConversationOpen?: { version?: unknown; available?: unknown; runtimeSessionId?: unknown; surfaceMountId?: unknown; presentationToken?: unknown } };
+    try { environment = await wire.request(RequestMethod.EnvironmentGet, {}); }
+    catch (cause) {
+      if (!currentOpen(owner)) throw staleOpen();
+      if (cause instanceof AppError && cause.code !== "BRIDGE_UNKNOWN_METHOD") throw cause;
+      throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放会话确认", cause });
+    }
+    if (!currentOpen(owner)) throw staleOpen();
+    const descriptor = environment?.ownedConversationOpen;
+    if (!descriptor || descriptor.version !== 1 || descriptor.available !== true) throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放会话确认" });
+    if (descriptor.runtimeSessionId !== owner.session || descriptor.surfaceMountId !== owner.mount || descriptor.presentationToken !== owner.presentation.presentationToken) throw staleOpen();
+  };
+  const requireOpenReceipt = (entity: string, receipt: AgentConversationOpenReceipt): OpenOwner => {
+    const owner = openReceipts.get(receipt?.openToken);
+    if (!owner || owner.entity !== entity || !currentOpen(owner)) throw staleOpen();
+    return owner;
+  };
+  const registerOpenIntent = (mount: string, state: MountState, intent: unknown) => {
+    if (!intent || typeof intent !== "object" || (intent as any).source !== "host.taskConversation" || (intent as any).actionId !== "open-conversation") return;
+    const payload = (intent as { payload?: unknown }).payload;
+    if (!payload || typeof payload !== "object") return;
+    const { entityId, openToken } = payload as { entityId?: unknown; openToken?: unknown };
+    const presentation = presentations.get(mount);
+    if (!presentation || !runtimeSessionId || disposed || mounts.get(mount) !== state
+      || typeof entityId !== "string" || typeof openToken !== "string"
+      || ![entityId, openToken].every(value => /^[\x21-\x7e]{1,128}$/.test(value))) return;
+    const repeated = openReceipts.get(openToken);
+    if (repeated?.hostDelivered && repeated.entity === entityId && repeated.mount === mount && currentOpen(repeated)) return;
+    preparingOpens.delete(mount);
+    retireOpenReceipts(previous => !currentOpen(previous) || previous.mount === mount);
+    if (openReceipts.size >= 16) return;
+    openReceipts.set(openToken, { epoch: activationEpoch, session: runtimeSessionId, mount, state, entity: entityId, presentation, hostDelivered: true });
+  };
+  const requireTaskOwner = (owner: TaskCallOwner) => {
+    if (disposed || activationEpoch !== owner.epoch || runtimeSessionId !== owner.session || mounts.get(owner.mount) !== owner.state) {
+      throw new AppError({ code: "TASK_SOURCE_STALE", userMessage: "迟到任务回执已失效" });
+    }
+  };
+  type OpenCall = [string, OpenOwner];
+  const currentOpenCall = (open: OpenCall) => openReceipts.get(open[0]) === open[1] && currentOpen(open[1]);
+  const taskValue = <T>(reply: { value: T; owner: TaskCallOwner; opened?: OpenCall }): T => {
+    requireTaskOwner(reply.owner);
+    if (reply.opened && !currentOpenCall(reply.opened)) throw staleOpen();
+    return reply.value;
+  };
+  const rememberTaskReceipt = <T>(cache: Map<string, T>, id: string, value: T) => {
+    cache.delete(id);
+    cache.set(id, value);
+    if (cache.size > 128) cache.delete(cache.keys().next().value!);
+  };
+  // One correlated opened callback may consume a truthful partial Host descriptor.
+  // This never advertises the frozen full capability or admits sibling methods.
+  const supportsOwnedConversationOpened = (snapshot: unknown): boolean => {
+    const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+    if (!record(snapshot) || snapshot.version !== 1 || !Object.hasOwn(snapshot, "capabilities") || !record(snapshot.capabilities)
+      || !Object.hasOwn(snapshot.capabilities, "tasks.present@1")) return false;
+    const descriptor = snapshot.capabilities["tasks.present@1"];
+    return record(descriptor) && descriptor.version === 1 && descriptor.available === true
+      && Array.isArray(descriptor.methods) && descriptor.methods.every(m => typeof m === "string")
+      && descriptor.methods.includes(RequestMethod.TasksConversationOpened);
+  };
+  const taskRequest = async <T>(method: TaskRequestMethod, input: unknown, taskId?: string, resultId?: string, panelToken?: string): Promise<{ value: T; owner: TaskCallOwner; opened?: OpenCall }> => {
+    const entry = mounts.size === 1 ? mounts.entries().next().value : undefined;
+    if (!entry || !runtimeSessionId || disposed) throw new AppError({ code: "TASK_SOURCE_STALE", userMessage: "任务调用界面已退出" });
+    const owner = { epoch: activationEpoch, session: runtimeSessionId, mount: entry[0], state: entry[1] };
+    // Capture before the first await. An old renderer callback must never adopt
+    // a newer Host intent for the same entity while probing its descriptor.
+    const opened: OpenCall | undefined = method === RequestMethod.TasksConversationOpened && input && typeof input === "object"
+      ? [...openReceipts].find(([, receipt]) => receipt.hostDelivered && receipt.entity === (input as { entityId?: unknown }).entityId && currentOpen(receipt))
+      : undefined;
+    const same = (previous: TaskCallOwner) => previous.epoch === owner.epoch && previous.session === owner.session && previous.mount === owner.mount && previous.state === owner.state;
+    const current = () => !disposed && activationEpoch === owner.epoch && runtimeSessionId === owner.session && mounts.get(owner.mount) === owner.state
+      && (!opened || currentOpenCall(opened));
+    const task = taskId ? taskReceipts.get(taskId) : undefined;
+    const result = resultId ? resultReceipts.get(resultId) : undefined;
+    if (task && !same(task)) throw new AppError({ code: "TASK_SOURCE_STALE", userMessage: "任务回执属于旧界面" });
+    if (result && (!same(result) || result.panelToken !== panelToken)) throw new AppError({ code: "TASK_RESULT_STALE", userMessage: "结果回执已失效" });
+    let environment: { taskPresentation?: { runtimeSessionId?: string; surfaceMountId?: string; platformCapabilities?: unknown } } | undefined;
+    try { environment = await wire.request(RequestMethod.EnvironmentGet, {}); }
+    catch (error) {
+      if (!current()) throw new AppError({ code: "TASK_SOURCE_STALE", userMessage: "任务调用界面已退出" });
+      if (error instanceof AppError && error.code !== "BRIDGE_UNKNOWN_METHOD") throw error;
+      throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放任务呈现", cause: error });
+    }
+    if (!current()) throw new AppError({ code: "TASK_SOURCE_STALE", userMessage: "任务调用界面已退出" });
+    const descriptor = environment?.taskPresentation;
+    if (descriptor && (descriptor.runtimeSessionId !== owner.session || descriptor.surfaceMountId !== owner.mount)) throw new AppError({ code: "TASK_SOURCE_STALE", userMessage: "任务Host实例已变化" });
+    const full = isPlatformCapabilityAvailable(descriptor?.platformCapabilities, "tasks.present@1");
+    const partialOk = method === RequestMethod.TasksConversationOpened && opened !== undefined
+      && supportsOwnedConversationOpened(descriptor?.platformCapabilities);
+    if (!full && !partialOk) throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放任务呈现" });
+    let transport = input;
+    if (opened) transport = { ...input as object, openToken: opened[0] };
+    const value = await wire.request<T>(method, transport);
+    if (!current()) throw new AppError({ code: "TASK_SOURCE_STALE", userMessage: "迟到任务回执已失效" });
+    return { value, owner, ...(opened ? { opened } : {}) };
+  };
+
+
+  // `notifications.publish@1`: every call reads this Host's live descriptor; the installed SDK
+  // version grants nothing. The Host derives appId/account and rechecks approval + consent.
+  type NotificationMethod = typeof RequestMethod.NotificationsPublish | typeof RequestMethod.NotificationsHistoryList | typeof RequestMethod.NotificationsHistoryMarkRead;
+  const notificationRequest = async <T>(method: NotificationMethod, input: unknown): Promise<T> => {
+    const entry = mounts.size === 1 ? mounts.entries().next().value : undefined;
+    if (!entry || !runtimeSessionId || disposed) throw new AppError({ code: "NOTIFICATION_SOURCE_STALE", userMessage: "通知调用界面已退出" });
+    const owner = { epoch: activationEpoch, session: runtimeSessionId, mount: entry[0], state: entry[1] };
+    const current = () => !disposed && activationEpoch === owner.epoch && runtimeSessionId === owner.session && mounts.get(owner.mount) === owner.state;
+    if (!input || typeof input !== "object" || Array.isArray(input)) throw new AppError({ code: "NOTIFICATION_PAYLOAD_INVALID", userMessage: "通知请求不合法" });
+    let environment: { notificationPublish?: { runtimeSessionId?: string; surfaceMountId?: string; platformCapabilities?: unknown } } | undefined;
+    try { environment = await wire.request(RequestMethod.EnvironmentGet, {}); }
+    catch (error) {
+      if (!current()) throw new AppError({ code: "NOTIFICATION_SOURCE_STALE", userMessage: "通知调用界面已退出" });
+      if (error instanceof AppError && error.code !== "BRIDGE_UNKNOWN_METHOD") throw error;
+      throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放通知发布", cause: error });
+    }
+    if (!current()) throw new AppError({ code: "NOTIFICATION_SOURCE_STALE", userMessage: "迟到通知描述符已失效" });
+    const descriptor = environment?.notificationPublish;
+    if (descriptor && (descriptor.runtimeSessionId !== owner.session || descriptor.surfaceMountId !== owner.mount)) throw new AppError({ code: "NOTIFICATION_SOURCE_STALE", userMessage: "通知Host实例已变化" });
+    if (!isPlatformCapabilityAvailable(descriptor?.platformCapabilities, "notifications.publish@1")) throw new AppError({ code: "HOST_CAPABILITY_NOT_AVAILABLE", userMessage: "Host尚未开放通知发布" });
+    const value = await wire.request<T>(method, input);
+    if (!current()) throw new AppError({ code: "NOTIFICATION_SOURCE_STALE", userMessage: "迟到通知回执已失效" });
+    return value;
+  };
 
   const makeStore = (storeId: string): KeyValueStore => ({
     async get<T>(key: string) {
@@ -190,6 +508,75 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
   };
 
   const context: AppContext = {
+    tasks: {
+      async present(input) {
+        const { value, owner } = await taskRequest<import("./platform-contracts").TaskReceipt>(RequestMethod.TasksPresent, input);
+        requireTaskOwner(owner);
+        rememberTaskReceipt(taskReceipts, value.taskId, owner);
+        return value;
+      },
+      async progress(input) { taskValue(await taskRequest<void>(RequestMethod.TasksProgress, input, input.taskId)); },
+      async finish(input) { taskValue(await taskRequest<void>(RequestMethod.TasksFinish, input, input.taskId)); },
+      async dismiss(input) { taskValue(await taskRequest<void>(RequestMethod.TasksDismiss, input, input.taskId)); },
+      async conversationOpened(input) { return taskValue(await taskRequest<{ acknowledged: true }>(RequestMethod.TasksConversationOpened, input)); },
+      async presentResult(input) {
+        const { value, owner } = await taskRequest<import("./platform-contracts").ResultReceipt>(RequestMethod.ResultsPresent, input, input.taskId);
+        requireTaskOwner(owner);
+        rememberTaskReceipt(resultReceipts, value.resultId, { ...owner, panelToken: value.panelToken });
+        return value;
+      },
+      async continueResult(input) { return taskValue(await taskRequest<{ opened: true; acknowledged: true }>(RequestMethod.ResultsContinue, input, undefined, input.resultId, input.panelToken)); },
+      async dismissResult(input) { return taskValue(await taskRequest<{ acknowledged: boolean }>(RequestMethod.ResultsDismiss, input, undefined, input.resultId, input.panelToken)); },
+    },
+    audioClips: {
+      async start(input) {
+        const { value, owner } = await clipRequest<import("./platform-contracts").AudioRangeReceipt>(RequestMethod.AudioRangesStart, input, ["requestId", "consumerId", "startMs"]);
+        rememberClipReceipt("range", value.rangeId, owner); return value;
+      },
+      async finish(input) {
+        const { value, owner } = await clipRequest<import("./platform-contracts").AudioClipRef>(RequestMethod.AudioRangesFinish, input, ["requestId", "rangeId", "endMs"], "range", input?.rangeId);
+        rememberClipReceipt("clip", value.clipId, owner); return value;
+      },
+      async cancel(input) { await clipRequest<void>(RequestMethod.AudioRangesCancel, input, ["requestId", "rangeId"], "range", input?.rangeId); },
+      async read(input) { return (await clipRequest<import("./platform-contracts").BoundedBytes>(RequestMethod.AudioClipsRead, input, ["requestId", "clipId", "offset", "maxBytes"], "clip", input?.clipId)).value; },
+      async release(input) { await clipRequest<void>(RequestMethod.AudioClipsRelease, input, ["requestId", "clipId"], "clip", input?.clipId); },
+      async transcribe(input) {
+        const { value, owner } = await clipRequest<import("./platform-contracts").AudioTranscriptionReceipt>(RequestMethod.AudioClipsTranscribe, input, ["requestId", "clipId", "idempotencyKey"], "clip", input?.clipId);
+        rememberClipReceipt("job", value.jobId, owner); return value;
+      },
+      async transcriptionStatus(input) { return (await clipRequest<import("./platform-contracts").AudioTranscriptionReceipt>(RequestMethod.AudioClipsTranscriptionStatus, input, ["requestId", "jobId"], "job", input?.jobId)).value; },
+    },
+    resourceFiles: {
+      listRoots: (input) => resourceRequest(RequestMethod.ResourcesRootsList, input),
+      pickRoot: (input) => resourceRequest(RequestMethod.ResourcesRootsPick, input),
+      attachCloudProject: (input) => resourceRequest(RequestMethod.ResourcesRootsAttach, input),
+      revokeRoot: (input) => resourceRequest(RequestMethod.ResourcesRootsRevoke, input),
+      list: (input) => resourceRequest(RequestMethod.ResourcesList, input),
+      stat: (input) => resourceRequest(RequestMethod.ResourcesStat, input),
+      read: (input) => resourceRequest(RequestMethod.ResourcesRead, input),
+      startWrite: (input) => resourceRequest(RequestMethod.ResourcesWriteStart, input),
+      writeChunk: (input) => resourceRequest(RequestMethod.ResourcesWriteChunk, input),
+      commitWrite: (input) => resourceRequest(RequestMethod.ResourcesWriteCommit, input),
+      cancel: (input) => resourceRequest(RequestMethod.ResourcesCancel, input),
+      createFile: (input) => resourceRequest(RequestMethod.ResourcesCreateFile, input),
+      mkdir: (input) => resourceRequest(RequestMethod.ResourcesMkdir, input),
+      rename: (input) => resourceRequest(RequestMethod.ResourcesRename, input),
+      move: (input) => resourceRequest(RequestMethod.ResourcesMove, input),
+      delete: (input) => resourceRequest(RequestMethod.ResourcesDelete, input),
+    },
+    audioCapture: {
+      async acquire(input) {
+        const epoch = activationEpoch;
+        const session = runtimeSessionId;
+        const original = mounts.size === 1 ? mounts.entries().next().value : undefined;
+        const receipt = await audioRequest<AudioConsumerReceipt>(RequestMethod.AudioConsumersAcquire, input);
+        if (disposed || epoch !== activationEpoch || session !== runtimeSessionId || !original || mounts.get(original[0]) !== original[1]) throw new AppError({ code: "AUDIO_CONSUMER_STALE", userMessage: "音频调用实例已变化" });
+        audioReceipts.set(receipt.consumerId, { epoch, session, mount: original[0], state: original[1] });
+        return receipt;
+      },
+      async release(input) { await audioRequest<void>(RequestMethod.AudioConsumersRelease, input, input.consumerId); },
+      async status(input) { return await audioRequest<AudioConsumerReceipt>(RequestMethod.AudioConsumersStatus, input); },
+    },
     locale: locale.client,
     get runtimeSessionId() {
       return runtimeSessionId;
@@ -759,8 +1146,39 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
       async deleteSession(options) {
         return await wire.request(options.sessionId.startsWith("agent2-") ? RequestMethod.AgentV2Delete : RequestMethod.AgentSessionDelete, options);
       },
-      async reportConversationOpened(options) {
-        await wire.request(options.sessionId.startsWith("agent2-") ? RequestMethod.AgentV2ConversationOpened : RequestMethod.AgentSessionConversationOpened, options);
+      async prepareConversationOpen({ sessionId }) {
+        const owner = captureOpenOwner(sessionId);
+        const selection = {};
+        preparingOpens.set(owner.mount, selection);
+        retireOpenReceipts(previous => !currentOpen(previous) || previous.mount === owner.mount);
+        const current = () => currentOpen(owner) && preparingOpens.get(owner.mount) === selection;
+        try {
+          await requireOpenDescriptor(owner);
+          if (!current()) throw staleOpen();
+          if (openReceipts.size >= 16) throw new AppError({ code: "TASK_LIMIT_EXCEEDED", userMessage: "会话确认仍在处理中" });
+          const receipt = await wire.request<AgentConversationOpenReceipt>(openMethod(sessionId), { sessionId, phase: "prepare" });
+          if (!receipt || typeof receipt.openToken !== "string" || !/^[\x21-\x7e]{1,128}$/.test(receipt.openToken)) throw staleOpen();
+          if (!current()) { cancelOpenToken(receipt.openToken, owner); throw staleOpen(); }
+          openReceipts.set(receipt.openToken, owner);
+          return Object.freeze({ openToken: receipt.openToken });
+        } finally {
+          if (preparingOpens.get(owner.mount) === selection) preparingOpens.delete(owner.mount);
+        }
+      },
+      async reportConversationOpened({ sessionId, receipt }) {
+        if (!receipt) { await wire.request(openMethod(sessionId), { sessionId }); return; }
+        const owner = requireOpenReceipt(sessionId, receipt);
+        await requireOpenDescriptor(owner);
+        requireOpenReceipt(sessionId, receipt);
+        await wire.request(openMethod(sessionId), { sessionId, phase: "commit", openToken: receipt.openToken });
+        if (!currentOpen(owner)) throw staleOpen();
+        requireOpenReceipt(sessionId, receipt);
+      },
+      async cancelConversationOpen({ sessionId, receipt }) {
+        const owner = requireOpenReceipt(sessionId, receipt);
+        openReceipts.delete(receipt.openToken);
+        await wire.request(openMethod(sessionId), { sessionId, phase: "cancel", openToken: receipt.openToken });
+        if (!currentOpen(owner)) throw staleOpen();
       },
       async requireToolDependency(options) {
         await wire.request(options.schemaVersion === 2 ? RequestMethod.AgentV2ToolDependencyRequire : RequestMethod.AgentToolDependencyRequire, { tool: options.tool });
@@ -946,6 +1364,15 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
     notifications: {
       async post(options) {
         return await wire.request<NotificationPostResult>(RequestMethod.NotificationsPost, options);
+      },
+      async publish(input) {
+        return await notificationRequest<import("./platform-contracts").NotificationPublishReceipt>(RequestMethod.NotificationsPublish, input);
+      },
+      async listHistory(input) {
+        return await notificationRequest<import("./platform-contracts").NotificationHistoryPage>(RequestMethod.NotificationsHistoryList, input);
+      },
+      async markRead(input) {
+        await notificationRequest<void>(RequestMethod.NotificationsHistoryMarkRead, input);
       },
     },
     clipboard: {
@@ -1332,9 +1759,11 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
       surfaceId: message.surfaceId,
       settled: false,
       intentHandlers: new Set(),
+      presentationHandlers: new Set(),
       pendingIntent,
     };
     mounts.set(message.surfaceMountId, state);
+    registerOpenIntent(message.surfaceMountId, state, pendingIntent ?? message.initialIntent);
 
     const settle = (method: typeof NotifyMethod.SurfaceReady | typeof NotifyMethod.SurfaceFailed, payload: unknown) => {
       if (state.settled) return false;
@@ -1376,11 +1805,29 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
           error: toWireError(error),
         });
       },
+      get navigation() {
+        if (!presentations.has(message.surfaceMountId)) return undefined;
+        return createSurfaceNavigation(wire, () => !disposed && mounts.get(message.surfaceMountId) === state ? presentations.get(message.surfaceMountId) : undefined);
+      },
       reportNav(nav) {
+        if (disposed || mounts.get(message.surfaceMountId) !== state) return;
+        const binding = presentations.get(message.surfaceMountId);
         wire.notify(NotifyMethod.SurfaceNav, {
+          ...(binding ? {runtimeSessionId:binding.runtimeSessionId,presentationToken:binding.presentationToken} : {}),
           surfaceMountId: message.surfaceMountId,
           nav: nav === null ? null : { key: nav.key, label: nav.label },
         });
+      },
+      onPresentationChange(handler) {
+        if (disposed || mounts.get(message.surfaceMountId) !== state) return () => {};
+        // Each subscription owns its entry, even when callers reuse the same function.
+        const listener = () => {
+          try { handler(); }
+          catch (error) { console.error("[app-sdk] Surface 呈现通知处理失败", error); }
+        };
+        state.presentationHandlers.add(listener);
+        if (presentations.has(message.surfaceMountId)) listener();
+        return () => { state.presentationHandlers.delete(listener); };
       },
       onIntent(handler) {
         const fn = handler as (intent: unknown) => void;
@@ -1405,7 +1852,10 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
 
     try {
       const cleanup = await handler(handle);
-      if (typeof cleanup === "function") state.cleanup = cleanup;
+      if (typeof cleanup === "function") {
+        if (!disposed && mounts.get(message.surfaceMountId) === state) state.cleanup = cleanup;
+        else cleanup();
+      }
     } catch (thrown) {
       settle(NotifyMethod.SurfaceFailed, {
         surfaceMountId: message.surfaceMountId,
@@ -1415,10 +1865,19 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
   };
 
   const unmountSurface = (surfaceMountId: string) => {
+    preparingOpens.delete(surfaceMountId);
+    retireOpenReceipts(owner => owner.mount === surfaceMountId);
+    for (const [id, receipt] of audioReceipts) {
+      if (receipt.mount === surfaceMountId) audioReceipts.delete(id);
+    }
+    presentations.delete(surfaceMountId);
+    endedPresentationMounts.add(surfaceMountId);
+    if (endedPresentationMounts.size > 128) endedPresentationMounts.delete(endedPresentationMounts.values().next().value!);
     const state = mounts.get(surfaceMountId);
     if (!state) return;
     mounts.delete(surfaceMountId);
     state.intentHandlers.clear();
+    state.presentationHandlers.clear();
     try {
       state.cleanup?.();
     } catch (thrown) {
@@ -1530,6 +1989,29 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
         }
         return;
       }
+      case "surface.presentation": {
+        if (!runtimeSessionId || message.runtimeSessionId !== runtimeSessionId || endedPresentationMounts.has(message.surfaceMountId) || ![message.runtimeSessionId, message.surfaceMountId, message.presentationToken].every(v => typeof v === "string" && /^[\x21-\x7e]{1,128}$/.test(v))) return;
+        if (!presentations.has(message.surfaceMountId) && presentations.size >= 16) return;
+        const previous = presentations.get(message.surfaceMountId);
+        if (previous?.presentationToken === message.presentationToken && previous.runtimeSessionId === message.runtimeSessionId) return;
+        preparingOpens.delete(message.surfaceMountId);
+        retireOpenReceipts(owner => owner.mount === message.surfaceMountId);
+        const binding = { runtimeSessionId: message.runtimeSessionId, surfaceMountId: message.surfaceMountId, presentationToken: message.presentationToken };
+        presentations.set(message.surfaceMountId, binding);
+        const state = mounts.get(message.surfaceMountId);
+        if (state) for (const listener of [...state.presentationHandlers]) {
+          // A callback can unmount, replace the binding or unsubscribe another callback.
+          if (disposed || mounts.get(message.surfaceMountId) !== state || presentations.get(message.surfaceMountId) !== binding) break;
+          if (state.presentationHandlers.has(listener)) listener();
+        }
+        return;
+      }
+      case "surface.escape.request":
+        escape.handleRequest(message);
+        return;
+      case "surface.escape.hostLayer":
+        escape.handleHostLayer(message);
+        return;
       case "surface.mount": {
         if (queuedMounts.has(message.surfaceMountId) || mounts.has(message.surfaceMountId)) return;
         const epoch = activationEpoch;
@@ -1609,6 +2091,7 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
         if (queued) { queued.pendingIntent = message.intent; return; }
         const state = mounts.get(message.surfaceMountId);
         if (!state) return;
+        registerOpenIntent(message.surfaceMountId, state, message.intent);
         // handler 还没注册（mount 进行中）→ 缓冲最近一条，注册时补发；
         // 已有 handler → 正常直达，不进缓冲。
         if (state.intentHandlers.size === 0) {
@@ -1624,7 +2107,10 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
 
   function dispose(): Promise<void> {
     if (disposePromise) return disposePromise;
+    preparingOpens.clear();
+    retireOpenReceipts(() => true);
     disposed = true;
+    escape.uninstall();
     layerHandlers.tab.clear();
     layerHandlers.action.clear();
     environmentHandlers.clear();
@@ -1644,6 +2130,8 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
     serviceCancellations.clear();
     serviceEnvelopes.clear();
     for (const surfaceMountId of [...mounts.keys()]) unmountSurface(surfaceMountId);
+    presentations.clear();
+    endedPresentationMounts.clear();
     commands.clear();
     surfaces.clear();
     services.clear();
@@ -1658,6 +2146,7 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
       } finally {
         unsubscribe?.();
         unsubscribe = undefined;
+        escape.uninstall();
       }
     });
     return disposePromise;
@@ -1667,6 +2156,7 @@ export function runApp(definition: AppDefinition, bridge?: HostBridge): RunningA
   // hoisted cleanup function must already exist when that happens.
   unsubscribe = wire.subscribe(handle);
   if (disposed) { unsubscribe(); unsubscribe = undefined; }
+  else escape.install();
 
   return { dispose };
 }

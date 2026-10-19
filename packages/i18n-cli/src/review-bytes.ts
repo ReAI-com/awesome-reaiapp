@@ -34,11 +34,11 @@ function pendingFindings(root: string, manifest: Record<string, unknown>) {
   return findings;
 }
 
-export async function calculateReviewBytes(appDirectory: string, pin: ReviewInputPin, expectedBun: string, options: PackOptions = {}) {
+export async function calculateReviewBytes(appDirectory: string, pin: ReviewInputPin, expectedBun: string, options: PackOptions & { toolchainReceipt?: string } = {}) {
   const compression = parseCompression(options.compression);
   if (!expectedBun || Bun.version !== expectedBun) throw new Error("Review byte calculation requires the expected Bun version");
   const root = realpathSync(resolve(appDirectory));
-  const sourceFiles = assertInputs(root, pin), toolchain = collectReviewToolchain(root, compression);
+  const sourceFiles = assertInputs(root, pin), toolchain = collectReviewToolchain(root, compression, options.toolchainReceipt);
   assertSafeTree(root, APP_MANIFEST_NAME);
   const manifestBytes = readFileSync(join(root, APP_MANIFEST_NAME));
   const manifest = JSON.parse(manifestBytes.toString("utf8")) as Record<string, unknown>;
@@ -55,7 +55,7 @@ export async function calculateReviewBytes(appDirectory: string, pin: ReviewInpu
   if (localeFindings.length) throw new BuildError("Review archived locale validation failed", localeFindings);
   if (!Buffer.from(actual.get(APP_MANIFEST_NAME)!).equals(manifestBytes)) throw new Error("Review archived manifest differs");
   assertInputs(root, pin);
-  const finalToolchain = collectReviewToolchain(root, compression);
+  const finalToolchain = collectReviewToolchain(root, compression, options.toolchainReceipt);
   if (JSON.stringify(finalToolchain) !== JSON.stringify(toolchain)) throw new Error("Review toolchain changed during calculation");
   return { archive, calculation: { schemaVersion: 1, purpose: "unapproved-source-review-bytes", status: { validation: "NOT_VALIDATED", approval: "NOT_APPROVED", installation: "NOT_INSTALLABLE", publication: "NOT_PUBLISHED" }, runtimeGrant: false, platformApproval: false,
     identity: { appId: manifest.appId, publisherId: manifest.publisherId, oauthAppId: manifest.oauthAppId, version: manifest.version },

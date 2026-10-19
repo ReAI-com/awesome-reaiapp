@@ -14,11 +14,23 @@
     "close": "关闭标签"
   },
   "status": {
-    "loadFailed": "无法获取浏览器状态：{detail}"
+    "loadFailed": "无法获取浏览器状态，请刷新重试。",
+    "failed": "无法{action}，请刷新状态后重试。",
+    "timeout": "{action}超时，请刷新状态后重试。",
+    "disabled": "浏览器插件已停用，请启用后重试。",
+    "permission": "浏览器能力未获授权，请检查插件权限后重试。",
+    "unavailable": "浏览器暂时无法连接，请刷新重试。",
+    "waiting": "{activity} 已用 {seconds} 秒",
+    "diagnostic": "插件 {pluginVersion} · Host {hostVersion}\n对象：{state}\n生成时间：{generatedAt}\n{logs}\n{detail}",
+    "versionUnavailable": "无法读取版本",
+    "noCode": "无错误码",
+    "objectFailed": "浏览器操作失败",
+    "objectWaiting": "浏览器操作进行中",
+    "logsUnavailable": "日志位置：Host 未向插件提供日志路径。"
   },
   "errors": {
     "homeMountFailed": "浏览器主页初始化失败",
-    "bridgeMissing": "浏览器 bridge 未注入（不在插件 surface 上下文里）"
+    "bridgeMissing": "暂时无法连接浏览器，请重新打开插件。"
   },
   "metadata": {
     "name": "浏览器",
@@ -28,15 +40,29 @@
     "openCommand": "打开浏览器抽屉"
   },
   "metadataV2": {
-    "category": "工具",
+    "category": "开发",
     "tagline": "让 Agent 的每一步网页操作都看得见。",
     "longDescription": "内置受管浏览器：多标签、地址栏导航、后退/前进/刷新，Agent 经浏览器引擎窄口打开网页、观察元素、点击与填写，全部操作以半屏抽屉呈现给用户。只放行 https（本机开发地址可用 http），新窗口与下载默认拒绝，网页数据与主应用隔离。",
     "capability0Label": "多标签浏览",
     "capability0Detail": "地址栏、后退/前进/刷新、转系统浏览器",
     "capability1Label": "Agent 操作面",
     "capability1Detail": "打开网页、观察元素、点击、填写、按键",
-    "capability2Label": "需要的权限",
-    "capability2Detail": "安装并启用后生效；无麦克风等系统权限",
+    "capability2Label": "隔离浏览",
+    "capability2Detail": "网页使用独立配置；默认拒绝新窗口与下载",
     "caption0": "半屏抽屉里的多标签浏览器与 Agent 活动条"
+  },
+  "activity": {
+    "open": "正在打开浏览器…",
+    "new": "正在新建标签…",
+    "refresh": "正在读取标签状态…",
+    "select": "正在切换标签…",
+    "close": "正在关闭标签…"
+  },
+  "action": {
+    "open": "打开浏览器",
+    "new": "新建标签",
+    "refresh": "读取标签状态",
+    "select": "切换标签",
+    "close": "关闭标签"
   }
 }

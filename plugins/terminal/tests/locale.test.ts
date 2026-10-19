@@ -159,3 +159,19 @@ test("workspace locale changes retain Shell input and naming draft without creat
   expect(node.querySelector<HTMLButtonElement>('.terminal-tab-name-dialog button.primary')!.textContent).toBe("保存");
   await view.dispose(); expect(language.count()).toBe(0);
 });
+
+test("failed workspace startup releases preferences and partial DOM", async () => {
+  const { mountTerminalWorkspace } = await import("../src/terminal-workspace");
+  const node = root(); const preferences = store();
+  const subscribe = preferences.subscribe.bind(preferences);
+  let subscriptions = 0;
+  preferences.subscribe = (callback) => {
+    subscriptions++;
+    const stop = subscribe(callback);
+    return () => { subscriptions--; stop(); };
+  };
+  const client = { list: async () => { throw Error("Synthetic startup failure"); } } as unknown as TerminalSessionClient;
+  await expect(mountTerminalWorkspace(node, client, preferences)).rejects.toThrow("Synthetic startup failure");
+  expect(subscriptions).toBe(0);
+  expect(node.childNodes.length).toBe(0);
+});

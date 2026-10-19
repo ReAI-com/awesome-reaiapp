@@ -40,6 +40,8 @@ export interface SupportMatrix {
     lifecycleHooks: string[];
   };
   contributes: {
+    /** Declaration parser only; does not grant notifications.publish. */
+    notificationScenes?: { supported: boolean; minHostApi: string };
     surfaces: { maxCount: number; allowedIds: string[]; allowedLocations: string[] };
     titlebarActions: {
       maxCount: number;

@@ -1,6 +1,6 @@
 {
   "name": "@reai/app-test",
-  "version": "1.2.0",
+  "version": "1.4.0-v105.1",
   "private": true,
   "type": "module",
   "description": "ReAI App 合同测试：Mock Host + defineContractSuite",
@@ -15,12 +15,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@reai/app-contract": "1.24.0",
-    "@reai/app-sdk": "1.24.0"
+    "@reai/app-contract": "1.25.3-v105.1",
+    "@reai/app-sdk": "1.26.0-v105.1"
   },
   "devDependencies": {
     "typescript": "~5.6.0",
-    "@reai/app-sdk": "1.24.0"
+    "@reai/app-sdk": "1.26.0-v105.1"
   },
   "$depsNote": "精确版本在 platform workspace 内解析到同仓 SDK，pack 后保持可由 registry 或同批 tarball 安装，禁止把仓库相对 file: 路径带给第三方。"
 }

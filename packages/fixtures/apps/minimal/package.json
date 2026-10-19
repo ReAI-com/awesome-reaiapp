@@ -7,7 +7,7 @@
     "entry": "src/app.ts"
   },
   "devDependencies": {
-    "@reai/app-sdk": "1.22.0",
-    "@reai/app-test": "1.2.0"
+    "@reai/app-sdk": "1.26.0-v105.1",
+    "@reai/app-test": "1.4.0-v105.1"
   }
 }

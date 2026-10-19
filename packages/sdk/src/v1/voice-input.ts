@@ -14,8 +14,29 @@ export type VoiceSourceIssue =
 
 export type VoiceRecognitionEngine = "local" | "cloud";
 
+/**
+ * 用户可见的五档音源（2026-10-11）：自动（= 硬件优先，默认）/ 硬件优先 / 电脑优先 /
+ * 只用硬件麦 / 只用电脑麦（配合 `systemEndpointId` 选具体设备）。
+ */
+export type VoiceAudioSourceMode =
+  | "auto"
+  | "prefer_board"
+  | "prefer_computer"
+  | "board_only"
+  | "computer_only";
+
 export interface VoiceInputSettings {
   source: VoiceInputSource;
+  /**
+   * 显式选择的音源档位；只有用户主动选档时才写入 Host 全局策略。
+   * 旧 Host 只认识 `prefer_board` / `prefer_computer`；旧 `source` 字段继续兼容。
+   */
+  audioSourcePreference?: { kind: VoiceAudioSourceMode };
+  /**
+   * 激活时的准备性 configure：只同步业务设置，保留 Host 已持久的音源档位。
+   * 显式选档（带 `audioSourcePreference`）优先于它。旧 Host 忽略此字段。
+   */
+  preserveAudioSourcePreference?: boolean;
   systemEndpointId?: string | null;
   modelId: string;
   language: string;
@@ -150,8 +171,18 @@ export interface VoiceInputResult {
   /**
    * 本地识别文本。走 `retainAudio` 的云端路径时为 `null`——
    * 没跑本地识别就没有 transcript，不编一个空串假装识别过。
+   * 例外：Host 依据整段静音判定确认这段没有内容（带 `noSpeechReason`）时，
+   * 云端路径也返回 `""`，且不带 `audio`——没有可上传的音频。
    */
   transcript?: string | null;
+  /**
+   * Host 判定这段没有可写的内容（2026-10-16，#1291）：`too_short` = 有效录音不足 100ms 且没有
+   * 任何语音证据；`silence` = 整段静音；`suppressed` = 本地识别只得到纯标点或公认的静音幻觉整句。
+   * 出现时 `transcript` 为 `""`、不带 `audio`（不会上传计费），`warningCode` 为 `"no_speech"`；
+   * 中央胶囊由 Host 显示「没听到声音」并自行计时收起，调用方的确认或取消都不会提前收掉它。
+   * 调用方按「没听清」处理即可，不要写回、不要弹取回卡。旧 Host 不返回。
+   */
+  noSpeechReason?: "too_short" | "silence" | "suppressed";
   /** 只有 `retainAudio: true` 的那次录音才有。传给 `aiApi.transcribe`。 */
   audio?: VoiceAudioRef;
   /** 这次录音留下的回听片段；没留就没有。 */
@@ -201,6 +232,19 @@ export interface VoicePermissionInfo {
   microphoneRequired?: boolean;
   microphone: VoicePermissionState;
   accessibility: VoicePermissionState;
+  /** 五档音源的只读事实；旧 Host 不返回。查询不开端点、不请求权限。 */
+  audioSources?: VoiceAudioSourcesInfo;
+}
+
+export interface VoiceAudioSourcesInfo {
+  /** Host 持久策略的真值；`legacy_board_uac` 是旧 USB Audio 兼容态，不属于五档。 */
+  mode: VoiceAudioSourceMode | "legacy_board_uac";
+  /** 硬件麦（键盘 USB / 蓝牙）：可用 / 未连接 / 固件过旧 / 正在检查。 */
+  hardware: "available" | "disconnected" | "firmware_too_old" | "checking";
+  /** 电脑麦：可用（有设备且已授权）/ 有设备未授权 / 没有输入设备。 */
+  computer: "available" | "permission_required" | "missing";
+  /** 按当前档位，下一次录音会用哪一类麦。 */
+  resolved: "board" | "system" | "unavailable";
 }
 
 /** Optional visual identity; does not alter capture, delivery or command semantics.

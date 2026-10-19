@@ -19,7 +19,8 @@
   },
   "overrides": {
     "@reai/app-sdk": "workspace:*",
-    "@reai/app-contract": "workspace:*"
+    "@reai/app-contract": "workspace:*",
+    "@reai/app-test": "workspace:*"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.0.0",

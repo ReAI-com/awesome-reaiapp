@@ -127,7 +127,8 @@ describe("真实视图双语 DOM", () => {
     expect(close.getAttribute("title")).toBe("关闭标签");
     expect(close.getAttribute("aria-label")).toBe("关闭标签");
 
-    rows[1]!.focus();
+    const focused = rows[1]!.querySelector<HTMLButtonElement>(".rb-tab-select")!;
+    focused.focus();
     setBrowserLocale("en");
     applyBrowserHomeLocale(home);
     const rowsAfter = Array.from(home.listEl.querySelectorAll<HTMLElement>(".rb-tab"));
@@ -145,7 +146,7 @@ describe("真实视图双语 DOM", () => {
     expect(rowsAfter[1]!.querySelector<HTMLElement>(".rb-tab-badge.work")!.textContent).toBe("Working tab");
     expect(rowsAfter[0]!.querySelector<HTMLElement>(".rb-tab-close")!.getAttribute("title")).toBe("Close tab");
     expect(rowsAfter[0]!.classList.contains("active")).toBe(true);
-    expect(document.activeElement).toBe(rowsAfter[1]);
+    expect(document.activeElement).toBe(focused);
 
     // 重复应用同一语言幂等；未知语言回退英文。
     applyBrowserHomeLocale(home);
@@ -158,18 +159,18 @@ describe("真实视图双语 DOM", () => {
     }
   });
 
-  test("空态与失败态跟随语言，失败保留原始详情", () => {
+  test("空态与失败态跟随语言，普通模式隐藏原始详情", () => {
     setBrowserLocale("zh");
     const parent = document.createElement("div");
     const home = mountBrowserHome(parent, noOPHandlers);
     refreshBrowserHome(home, { tabs: [], activeTabId: null, agentTabId: null });
     expect(home.statusEl.textContent).toBe("还没有打开的标签。");
     refreshBrowserHome(home, null, "engine-offline-原始诊断");
-    expect(home.statusEl.textContent).toBe("无法获取浏览器状态：engine-offline-原始诊断");
+    expect(home.statusEl.textContent).toBe("浏览器暂时无法连接，请刷新重试。");
     expect(home.statusEl.classList.contains("error")).toBe(true);
     setBrowserLocale("en");
     applyBrowserHomeLocale(home);
-    expect(home.statusEl.textContent).toBe("Could not load browser state: engine-offline-原始诊断");
+    expect(home.statusEl.textContent).toBe("Cannot connect to Browser. Refresh to retry.");
     refreshBrowserHome(home, { tabs: [], activeTabId: null, agentTabId: null });
     expect(home.statusEl.textContent).toBe("No tabs are open yet.");
     expect(home.statusEl.classList.contains("error")).toBe(false);
@@ -179,12 +180,12 @@ describe("真实视图双语 DOM", () => {
 describe("受控错误随语言", () => {
   test("bridge 缺失错误使用当前语言文案", () => {
     setBrowserLocale("en");
-    expect(browserCall("browser.state").catch((cause: Error) => cause.message)).resolves.toBe(
-      "Browser bridge is not available (not in a plugin surface context)",
+    expect(browserCall("browser.state").catch((cause: { userMessage: string }) => cause.userMessage)).resolves.toBe(
+      "Cannot connect to Browser. Open the plugin again.",
     );
     setBrowserLocale("zh");
-    expect(browserCall("browser.state").catch((cause: Error) => cause.message)).resolves.toBe(
-      "浏览器 bridge 未注入（不在插件 surface 上下文里）",
+    expect(browserCall("browser.state").catch((cause: { userMessage: string }) => cause.userMessage)).resolves.toBe(
+      "暂时无法连接浏览器，请重新打开插件。",
     );
   });
 

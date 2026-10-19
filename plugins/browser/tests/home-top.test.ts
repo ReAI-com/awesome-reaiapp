@@ -22,13 +22,14 @@ describe("浏览器主页去重复页头", () => {
     expect(view).not.toContain("rb-head");
   });
 
-  test(".rb-home 正文首容器顶部留白收紧到 12px", () => {
-    const block = style.match(/\.rb-home\s*\{([^}]*)\}/s)?.[1];
+  test(".rb-content 保留 12px 顶部留白，滚动容器不重复累计", () => {
+    const block = style.match(/\.rb-content\s*\{([^}]*)\}/s)?.[1];
     expect(block).toBeDefined();
     const paddingValue = block!.match(/(?:^|\s|;)padding\s*:\s*([^;]+);/)?.[1]?.trim();
     expect(paddingValue).toBeDefined();
     const top = Number.parseFloat(paddingValue!.split(/\s+/)[0]);
     expect(top).toBeLessThanOrEqual(12);
+    expect(style).toMatch(/\.main-body\s*\{[^}]*padding:\s*0;/s);
   });
 
   test("根安全区仍消费 Host 注入的标题栏安全线变量", () => {

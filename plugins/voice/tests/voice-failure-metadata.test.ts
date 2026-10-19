@@ -25,6 +25,7 @@ async function harness(twoConversations = false) {
   let deferBrowserStatus = false;
   const browserStatusPending: Array<(value: AppDependencyStatus) => void> = [];
   const host = new MockHost({
+    ownedConversationOpen: { accountGeneration: "t09-synthetic", packageDigest: "a".repeat(64), admitted: true, decision: "granted", userCeiling: "in_app", sessionIds: ["session-a", "session-b"] },
     manifest: structuredClone(manifest) as never,
     loadApp: async () => {
       // A fresh plugin module models a new runtime, including deactivation cases.
@@ -71,6 +72,7 @@ async function harness(twoConversations = false) {
   const surface = await host.openSurface("main"), root = surface.root!;
   root.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
   Array.from(root.querySelectorAll<HTMLButtonElement>(".command-history-item")).find(row => row.textContent?.includes("old question"))!.click();
+    await waitForConversationFixture(root);
   return {
     host, root, requests, pending, browserStatusPending,
     deferNextBrowserStatus: () => { deferBrowserStatus = true; },
@@ -264,7 +266,7 @@ test("同一回合不同类型的工具调用（联网、浏览器、文件）�
     // 非联网工具失败不改写这条命令的结果（回答照常落地）；工具组自己的终态如实判红（W2）。
     expect(item.reply).toBe("**已打开**官网");
     expect(card.status).toBe("failed");
-    expect(card.label).toBe("读取文件未完成：工具授权不可用 · 错误码 AGENT_TOOL_AUTHORIZATION_UNAVAILABLE · 1 次失败");
+    expect(card.label).toBe("读取文件未完成：工具授权不可用 · 1 次失败");
     expect(h.root.querySelectorAll(".chat-status-card")).toHaveLength(1);
     expect(h.root.querySelector(".chat-status-card .chat-status-label")?.textContent).toBe("读取文件未完成：工具授权不可用");
     expect(h.root.querySelector(".chat-status-card .chat-status-meta")?.textContent)
@@ -313,7 +315,7 @@ test("非联网工具失败后同类以外的调用超过明细上限：失败�
     expect(card.totalCalls).toBe(21);
     expect(card.omittedCalls).toBe(1);
     expect(card.status).toBe("failed");
-    expect(card.label).toBe("读取文件未完成：未获准使用这个工具 · 错误码 AGENT_TOOL_NOT_GRANTED · 1 次失败");
+    expect(card.label).toBe("读取文件未完成：未获准使用这个工具 · 1 次失败");
     expect(item.status).toBe("completed");
   } finally { await h.cleanup(); }
 });
@@ -364,8 +366,8 @@ for (const mode of ["码先到", "结束先到", "只有结束"] as const) {
       if (card?.kind !== "tool-group") throw new Error("tool-group card missing");
       expect(card).toMatchObject({ status: "failed", totalCalls: 21, omittedCalls: 1, failedCalls: 1 });
       expect(card.calls[0]).toMatchObject({ callId: "r-1", status: "failed" });
-      expect(card.label).toBe(mode === "只有结束" ? "读取文件未完成：调用失败 · 无错误码 · 1 次失败"
-        : "读取文件未完成：命令执行超时 · 错误码 AGENT_EXEC_TIMEOUT · 1 次失败");
+      expect(card.label).toBe(mode === "只有结束" ? "读取文件未完成：调用失败 · 1 次失败"
+        : "读取文件未完成：命令执行超时 · 1 次失败");
     } finally { await h.cleanup(); }
   });
 }
@@ -579,6 +581,7 @@ test("two live tasks resolving in reverse order retain their own metadata", asyn
     h.root.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
     Array.from(h.root.querySelectorAll<HTMLButtonElement>(".command-history-item"))
       .find(row => row.textContent?.includes("SECOND CONVERSATION"))!.click();
+    await waitForConversationFixture(h.root);
     const second = await h.send("second pending");
     expect(h.requests[first]!.sessionId).toBe("session-a");
     expect(h.requests[second]!.sessionId).toBe("session-b");
@@ -598,3 +601,9 @@ test("two live tasks resolving in reverse order retain their own metadata", asyn
       .toMatchObject({ runtime: "codex", usage: { complete: false } });
   } finally { await h.cleanup(); }
 });
+
+/** Synthetic fixture waits for the actual asynchronous history/paint boundary. */
+async function waitForConversationFixture(root: Element) {
+ const end=Date.now()+2500; while(!root.querySelector(".main-body.chat-view,.main-body.translation-detail")&&Date.now()<end)await new Promise(r=>setTimeout(r,5));
+ expect(!!root.querySelector(".main-body.chat-view,.main-body.translation-detail")).toBeTrue();
+}

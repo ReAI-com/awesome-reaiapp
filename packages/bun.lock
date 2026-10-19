@@ -12,15 +12,15 @@
     },
     "cli": {
       "name": "@reai/app-cli",
-      "version": "1.3.0-upload.1",
+      "version": "1.4.1-v105.1",
       "bin": {
         "reai-app": "./src/cli.ts",
       },
       "dependencies": {
         "@happy-dom/global-registrator": "^20.0.0",
-        "@reai/app-contract": "1.24.0",
-        "@reai/app-sdk": "1.24.0",
-        "@reai/app-test": "1.2.0",
+        "@reai/app-contract": "1.25.3-v105.1",
+        "@reai/app-sdk": "1.26.0-v105.1",
+        "@reai/app-test": "1.4.0-v105.1",
       },
       "devDependencies": {
         "typescript": "~5.6.0",
@@ -28,57 +28,59 @@
     },
     "contract": {
       "name": "@reai/app-contract",
-      "version": "1.24.0",
+      "version": "1.25.3-v105.1",
     },
     "fixtures/apps/install-probe": {
       "name": "reai-fixture-install-probe",
       "version": "1.0.0",
       "devDependencies": {
-        "@reai/app-sdk": "1.22.0",
-        "@reai/app-test": "1.2.0",
+        "@reai/app-sdk": "1.26.0-v105.1",
+        "@reai/app-test": "1.4.0-v105.1",
       },
     },
     "fixtures/apps/minimal": {
       "name": "reai-fixture-minimal-app",
       "version": "1.0.0",
       "devDependencies": {
-        "@reai/app-sdk": "1.22.0",
-        "@reai/app-test": "1.2.0",
+        "@reai/app-sdk": "1.26.0-v105.1",
+        "@reai/app-test": "1.4.0-v105.1",
       },
     },
     "i18n-cli": {
       "name": "@reai/app-i18n-cli",
-      "version": "1.0.0",
+      "version": "1.1.1-v105.1",
       "bin": {
         "reai-app-i18n": "./src/cli.ts",
       },
       "dependencies": {
-        "@reai/app-cli": "1.3.0-upload.1",
-        "@reai/app-contract": "1.24.0",
+        "@reai/app-cli": "1.4.1-v105.1",
+        "@reai/app-contract": "1.25.3-v105.1",
         "fflate": "0.8.3",
       },
       "devDependencies": {
-        "@reai/app-contract": "1.24.0",
+        "@reai/app-contract": "1.25.3-v105.1",
         "typescript": "~5.6.0",
       },
     },
     "sdk": {
       "name": "@reai/app-sdk",
-      "version": "1.24.0",
+      "version": "1.26.0-v105.1",
+      "dependencies": {
+        "@reai/app-contract": "1.25.3-v105.1",
+      },
       "devDependencies": {
-        "@reai/app-contract": "1.24.0",
         "typescript": "~5.6.0",
       },
     },
     "test-kit": {
       "name": "@reai/app-test",
-      "version": "1.2.0",
+      "version": "1.4.0-v105.1",
       "dependencies": {
-        "@reai/app-contract": "1.24.0",
-        "@reai/app-sdk": "1.24.0",
+        "@reai/app-contract": "1.25.3-v105.1",
+        "@reai/app-sdk": "1.26.0-v105.1",
       },
       "devDependencies": {
-        "@reai/app-sdk": "1.24.0",
+        "@reai/app-sdk": "1.26.0-v105.1",
         "typescript": "~5.6.0",
       },
     },
@@ -94,6 +96,7 @@
   "overrides": {
     "@reai/app-contract": "workspace:*",
     "@reai/app-sdk": "workspace:*",
+    "@reai/app-test": "workspace:*",
   },
   "packages": {
     "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.12.0", "https://registry.npmmirror.com/@happy-dom/global-registrator/-/global-registrator-20.12.0.tgz", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.12.0" } }, "sha512-BUE55Rew3oMwBzwCwmUnV+Oxk51V3xolM39Ts6kGiBXNELjujiESwk9qc99JRr6cVrj3OTd9MJ5zQ2fpn+jy6g=="],

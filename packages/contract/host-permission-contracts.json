@@ -1,6 +1,22 @@
 {
   "schemaVersion": 1,
   "permissions": {
+    "audio.capture@1": {
+      "bridgeMethods": ["audio.consumers.acquire", "audio.consumers.release", "audio.consumers.status"],
+      "inputFields": ["requestId", "purpose", "consumerId"],
+      "outputFields": ["consumerId", "owner", "route"],
+      "dataCategories": ["shared_audio_route_state"],
+      "sideEffects": ["host_owned_capture_while_authorized_consumers_exist"],
+      "admission": "grant-gated; capability-review-approval-and-user-consent-required; no-persistent-os-permission-request"
+    },
+    "notifications.publish@1": {
+      "bridgeMethods": ["notifications.publish", "notifications.history.list", "notifications.history.markRead"],
+      "inputFields": ["requestId", "sceneKey", "requestedLevel", "title", "body", "dedupeKey", "taskId", "cursor", "pageSize", "notificationIds"],
+      "outputFields": ["notificationId", "stored", "requestedLevel", "effectiveLevel", "systemDelivery", "reason", "items", "nextCursor"],
+      "dataCategories": ["notification_content", "own_notification_history"],
+      "sideEffects": ["store_local_notification_history", "enqueue_system_notification_when_user_scene_and_os_allow"],
+      "admission": "grant-gated; capability-review-approval-user-consent-and-scene-decision-required; never-requests-os-permission"
+    },
     "account.status@1": {
       "bridgeMethods": [
         "account.status"
@@ -95,6 +111,49 @@
       "requiredMode": "yolo",
       "maxTimeoutMs": 30000,
       "maxBytesPerOutputStream": 65536
+    },
+    "tasks.present@1": {
+      "bridgeMethods": [
+        "tasks.present",
+        "tasks.progress",
+        "tasks.finish",
+        "tasks.dismiss",
+        "tasks.conversationOpened",
+        "results.present",
+        "results.continue",
+        "results.dismiss"
+      ],
+      "inputFields": [
+        "requestId",
+        "entityId",
+        "title",
+        "detail",
+        "taskId",
+        "stage",
+        "outcome",
+        "body",
+        "deferred",
+        "resultId",
+        "panelToken"
+      ],
+      "outputFields": [
+        "taskId",
+        "source",
+        "accepted",
+        "resultId",
+        "panelToken",
+        "deferred",
+        "opened",
+        "acknowledged"
+      ],
+      "dataCategories": [
+        "owned_task_presentation",
+        "read_only_result_text"
+      ],
+      "sideEffects": [
+        "task_and_result_presentation_only_after_host_authority_approval_and_consent"
+      ],
+      "admission": "grant-gated; capability-review-approval-and-user-consent-required; entity-must-be-caller-owned-agent-session; no-os-request"
     }
   }
 }

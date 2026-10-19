@@ -204,3 +204,27 @@ test("budget failures retain their actionable reason and never automatically res
     expect(f.calls).toEqual([{ method: "agent.v2.turn.start", params: { sessionId: reference.sessionId, idempotencyKey: "bounded-request", text: "Fixture" } }]);
   } finally { await f.dispose(); }
 });
+
+test('real SDK neutral opened injects only the Host-delivered token into explicit MockHost fixture', async () => {
+  const { MockHost } = await import('../../test-kit/src/v1/mock-host');
+  let context: AppContext | undefined;
+  const host = new MockHost({ manifest: { appId: 'com.example.opened',
+    contributes: { surfaces: [{ id: 'main' }], notificationScenes: [{ key: 'task.lifecycle', maxLevel: 'system' }] },
+    requires: { hostCapabilities: ['agent.session@2','tasks.present@1'] } },
+    ownedConversationOpen: { accountGeneration: 'synthetic-account', packageDigest: 'b'.repeat(64),
+      admitted: true, decision: 'granted', userCeiling: 'in_app', sessionIds: ['agent2-owned'] },
+    loadApp: async () => ({ default: defineApp({ activate(ctx) { context = ctx;
+      ctx.surfaces.register('main', surface => { surface.ready(); }); } }) }),
+  });
+  await host.installAndEnable(); await host.openSurface('main');
+  try {
+    await expect(context!.tasks.conversationOpened({ requestId: 'before-delivery', entityId: 'agent2-owned' })).rejects.toMatchObject({ code: 'HOST_CAPABILITY_NOT_AVAILABLE' });
+    await expect(context!.tasks.dismiss({ requestId: 'sibling-denied', taskId: 'synthetic-task' })).rejects.toMatchObject({ code: 'HOST_CAPABILITY_NOT_AVAILABLE' });
+    const receipt = await host.deliverOwnedConversationOpen('agent2-owned');
+    const input = { requestId: 'opened-after-delivery', entityId: 'agent2-owned' };
+    expect(await context!.tasks.conversationOpened(input)).toMatchObject({ acknowledged: true });
+    expect(input).toEqual({ requestId: 'opened-after-delivery', entityId: 'agent2-owned' });
+    expect(host.ownedConversationCommits).toEqual([{ sessionId: 'agent2-owned', openToken: receipt.openToken, revision: 0 }]);
+    expect(host.notificationRequests).toHaveLength(0);
+  } finally { await host.disable(); }
+});

@@ -172,10 +172,12 @@ export function toolProgressMeta(progress: ToolProgress, developerMode = true): 
   return parts.length > 0 ? parts.join(" · ") : undefined;
 }
 
-/** 一行纯文本（落盘标签、历史列表摘要用）：主句 + 右侧补充。 */
+/** 一行纯文本（落盘标签、桌面胶囊进度、历史列表摘要用）：主句 + 右侧补充。
+ * 会离开详情页、也会落盘，所以固定按普通模式生成：不带错误码与上游原文。 */
 export function toolProgressText(progress: ToolProgress): string {
-  const meta = toolProgressMeta(progress);
-  return meta ? `${toolProgressLabel(progress)} · ${meta}` : toolProgressLabel(progress);
+  const meta = toolProgressMeta(progress, false);
+  const label = toolProgressLabel(progress, false);
+  return meta ? `${label} · ${meta}` : label;
 }
 
 /** 回合结束后不再有「进行中」：没收到结束事件的调用如实记为未确认结束，图标也不再转。 */
@@ -273,10 +275,10 @@ export function mergeToolProgress(messages: ChatMessage[], entryStatus: EntrySta
   return out;
 }
 
-/** 列表摘要用：这个回合的过程折叠写成一行纯文本；没有工具卡时 undefined。 */
+/** 列表摘要用：这个回合的过程折叠写成一行纯文本（普通模式口径，不带错误码）；没有工具卡时 undefined。 */
 export function toolProgressSummary(messages: ReadonlyArray<{ card?: ChatStatusCard }>, entryStatus: EntryStatus): string | undefined {
   const cards = messages.flatMap((message): ChatMessage[] => message.card ? [{ from: "ai", text: "", at: 0, card: message.card }] : []);
-  const card = mergeToolProgress(cards, entryStatus).find((message) => message.card?.kind === "tool-group")?.card;
+  const card = mergeToolProgress(cards, entryStatus, false).find((message) => message.card?.kind === "tool-group")?.card;
   if (card?.kind !== "tool-group") return undefined;
   return card.meta ? `${card.label} · ${card.meta}` : card.label;
 }

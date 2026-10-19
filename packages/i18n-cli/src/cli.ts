@@ -2,11 +2,12 @@
 import { buildApp, packApp, parseCompression, validateManifestFile, readSourceReviewEvidence } from "./index";
 import { join, resolve } from "node:path";
 import { BuildError } from "@reai/app-cli";
+import { readFileSync } from "node:fs";
 const usage="reai-app-i18n validate <appDir> | build <appDir> | pack <appDir> --out <package.reaiapp> [--source-review <evidence.json>] [--compression store|deflate]";
 async function main(){
   const [command,directory,...args]=process.argv.slice(2);
   if(command==="--help"||command==="-h"){console.log(usage);return;}
-  if(command==="--version"){console.log("1.0.0");return;}
+  if(command==="--version"){console.log(JSON.parse(readFileSync(new URL("../package.json",import.meta.url),"utf8")).version);return;}
   if(!directory)throw new Error(usage);
   const options=new Map<string,string>();
   if(args.length%2)throw new Error(usage);

@@ -1,7 +1,7 @@
 {
   "$comment": "Host 能力支持矩阵 —— validator 与文档的单一事实源。任何合法但未实现的非空字段一律返回稳定错误码，不静默忽略。",
   "matrixVersion": 1,
-  "hostApi": "1.24.0",
+  "hostApi": "1.25.0",
   "environment": {
     "uiLocale": {
       "since": "1.16.0",
@@ -51,7 +51,8 @@
       "titlebar.action@1",
       "metadata.i18n@1",
       "apps.gateway@1",
-      "metadata.i18n@2"
+      "metadata.i18n@2",
+      "surface.navigation@1"
     ],
     "grantGated": [
       "agent.codex@1",
@@ -78,9 +79,15 @@
       "terminal.session@1",
       "surface.clipboard@1",
       "agent.session@2",
-      "local.terminal.exec@1"
+      "local.terminal.exec@1",
+      "audio.clips@1",
+      "audio.capture@1",
+      "tasks.present@1",
+      "notifications.publish@1",
+      "surface.escape@1",
+      "resources.files@1"
     ],
-    "grantGatedNote": "已实现但必须由机器可读 capability review policy 按插件版本与包摘要批准；不是 appId 代码特判。terminal.session@1 还必须通过同名用户 permission，只开放 Host 托管的交互式 Shell 会话，不允许插件指定 executable/argv/env。system.folder-pick@1 当前只批准 Codex Link 与 Codex App，以及 Voice（2.13.1-rc.1 起，作为 Agent 直接工作目录的授权入口）；Host 只返回用户亲手选择的工作目录，但获批插件可在后续流程中读写该目录。其他双层能力同样必须同时通过平台 grant 与用户同意。 local.terminal.exec@1 只允许 macOS 的 Agent 会话调用两类受 Host 范围约束的工具：mounted+yolo 的受控 run（awk/wc/sort/diff），以及 direct / app-private + yolo 的 command（/bin/sh -c，Seatbelt 限定只能读写工作范围与本次临时目录，范围外路径逐条由用户在 Host 主窗口单次确认）；两者都不是插件直接 exec，也不放开原生无限 shell。",
+    "grantGatedNote": "audio.clips@1 只对审核策略按插件版本批准的插件开放，且必须同时持有 audio.capture@1 的平台批准与两项同名用户同意；片段引用由 Host 签发、每次按原 owner 复核，不是可转让权限。已实现但必须由机器可读 capability review policy 按插件版本与包摘要批准；不是 appId 代码特判。terminal.session@1 还必须通过同名用户 permission，只开放 Host 托管的交互式 Shell 会话，不允许插件指定 executable/argv/env。system.folder-pick@1 当前只批准 Codex Link 与 Codex App，以及 Voice（2.13.1-rc.1 起，作为 Agent 直接工作目录的授权入口）；Host 只返回用户亲手选择的工作目录，但获批插件可在后续流程中读写该目录。其他双层能力同样必须同时通过平台 grant 与用户同意。 surface.escape@1 只在获批插件的已呈现主 Surface 上由 Host 发起单次 Esc 握手（插件仅能回执 consumed/pass/input-owned），未获批插件保持旧 Esc 行为。 local.terminal.exec@1 只允许 macOS 的 Agent 会话调用两类受 Host 范围约束的工具：mounted+yolo 的受控 run（awk/wc/sort/diff），以及 direct / app-private + yolo 的 command（/bin/sh -c，Seatbelt 限定只能读写工作范围与本次临时目录，范围外路径逐条由用户在 Host 主窗口单次确认）；两者都不是插件直接 exec，也不放开原生无限 shell。 audio.capture@1、tasks.present@1、notifications.publish@1（v1.0.5）同样只对按包摘要审核批准且用户同意的插件开放：audio.capture@1 只登记 Host 统一采音的消费者，不开放原始设备或持久系统麦授权；tasks.present@1 的 entityId 必须是调用插件自己的 Agent 会话，结果框「继续」回到该插件的会话；notifications.publish@1 另需插件通知总决定与场景深度，系统通知授权只能由用户在 Host 已有显式入口发起，系统不可用时降级为通知中心记录。 resources.files@1（v1.0.5 T20）只开放 local provider：插件经 resources.roots.pick 由 Host 原生面板让用户亲手选目录，Host 只回不透明 grantRef/workspaceId（不回绝对路径）；有界列目录/读/写/新建/重命名/移动/删除均以 expectedRevision 在 Host 内串行比较，撤回同意/批准或卸载即清除所选目录。cloud-project provider（v1.0.5 T21）：插件以自己的 OAuth 身份经 resources.roots.attach 指名云项目，Host 用该身份核验项目可访问后弹窗请用户确认才登记；后台逐请求校验 Project ACL，撤权/停用/关界面/换号即取消在途请求与上传。",
     "withheld": {
       "surface.worker@1": "无独立进程，给不了资源预算",
       "surface.file-picker@1": "不提供通用文件句柄；官方文本编辑器使用 grantGated 的 local.files@1 Host Broker，其他插件只能使用 system.folder-pick@1 获得用户选择的工作目录路径",
@@ -89,6 +96,22 @@
     "methods": {
       "surface.clipboard@1": [
         "clipboard.writeText"
+      ],
+      "surface.navigation@1": [
+        "surface.navigation.register",
+        "surface.navigation.clear"
+      ],
+      "audio.clips@1": [
+        "audio.ranges.start",
+        "audio.ranges.finish",
+        "audio.ranges.cancel",
+        "audio.clips.read",
+        "audio.clips.release",
+        "audio.clips.transcribe",
+        "audio.clips.transcriptionStatus"
+      ],
+      "surface.escape@1": [
+        "surface.escape.respond"
       ]
     }
   },
@@ -260,9 +283,72 @@
       "local.terminal.exec@1": {
         "subjectClass": "local-device",
         "bridgeMethods": []
+      },
+      "audio.clips@1": {
+        "subjectClass": "local-device",
+        "bridgeMethods": [
+          "audio.ranges.start",
+          "audio.ranges.finish",
+          "audio.ranges.cancel",
+          "audio.clips.read",
+          "audio.clips.release",
+          "audio.clips.transcribe",
+          "audio.clips.transcriptionStatus"
+        ]
+      },
+      "audio.capture@1": {
+        "subjectClass": "local-device",
+        "bridgeMethods": [
+          "audio.consumers.acquire",
+          "audio.consumers.release",
+          "audio.consumers.status"
+        ]
+      },
+      "tasks.present@1": {
+        "subjectClass": "local-device",
+        "bridgeMethods": [
+          "tasks.present",
+          "tasks.progress",
+          "tasks.finish",
+          "tasks.dismiss",
+          "tasks.conversationOpened",
+          "results.present",
+          "results.continue",
+          "results.dismiss"
+        ]
+      },
+      "notifications.publish@1": {
+        "subjectClass": "local-device",
+        "bridgeMethods": [
+          "notifications.publish",
+          "notifications.history.list",
+          "notifications.history.markRead"
+        ]
+      },
+      "resources.files@1": {
+        "subjectClass": "local-device",
+        "bridgeMethods": [
+          "resources.roots.list",
+          "resources.roots.pick",
+          "resources.roots.attach",
+          "resources.roots.revoke",
+          "resources.list",
+          "resources.stat",
+          "resources.read",
+          "resources.write.start",
+          "resources.write.chunk",
+          "resources.write.commit",
+          "resources.cancel",
+          "resources.mkdir",
+          "resources.rename",
+          "resources.move",
+          "resources.delete",
+          "resources.createFile"
+        ]
       }
     },
-    "withheld": {},
+    "withheld": {
+    },
     "stableErrors": [
       "BRIDGE_MESSAGE_TOO_LARGE",
       "BRIDGE_TOO_MANY_INFLIGHT",
@@ -562,6 +648,10 @@
       "maxToolBasePerFeature": 32,
       "minHostApi": "1.23.0",
       "$note": "C-AC：声明插件内 Agent 功能的默认值与可调范围（方案 B：promptTemplate 带 {slot}，槽位必须在 promptParams 登记；toolBase 是用户可勾选的基集上限，勾选不等于授权）。门在 manifest.rs + validator；声明时必须同时声明 agent.session@2 且 hostApi.range 下界 ≥ minHostApi（旧 Host 因未知字段整包拒装）。长度口径：id/参数名/模板按 UTF-8 字节，name/description 按字符数"
+    },
+    "notificationScenes": {
+      "supported": true,
+      "minHostApi": "1.25.0"
     }
   },
   "rejectWhenNonEmpty": [

@@ -50,12 +50,11 @@ describe("SDK 稳定错误码 ↔ 矩阵", () => {
 });
 
 describe("SDK 版本锚点", () => {
-  test("SDK_VERSION == package.json version == matrix.hostApi == HOST_API_VERSION", () => {
+  test("SDK 包身份与 Host API 合同分别精确对齐事实源", () => {
     const pkg = JSON.parse(
       readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8"),
     ) as { version: string };
     expect(SDK_VERSION).toBe(pkg.version);
     expect(HOST_API_VERSION).toBe(matrix.hostApi);
-    expect(SDK_VERSION).toBe(HOST_API_VERSION);
   });
 });
