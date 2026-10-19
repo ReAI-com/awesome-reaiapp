@@ -2205,7 +2205,7 @@ function tagMsg(m) { const mv = msgMinView(partsText(m.parts || [])); if (mv && 
 function msgMinView(text, r = role()) {
   if (!r.scope) return null;
   const hidden = clientsAll(r).filter((c) => !c.members.includes(r.user)).some((c) => text.includes(c.short) || text.includes(c.name));
-  return hidden ? S.view : null;
+  return hidden ? 'lead' : null; /* 只要提到员工看不到的客户，至少负责人视角才能看；与发起时的视角无关 */
 }
 function newIx(rs, o) { const id = nextId('ix'); rs.ix[id] = { id, state: 'pending', answer: null, scope: scopeKey(), ...o }; return id; }
 /* 让一组仍待回答的卡片终止（取消 / 过期）；已回答的卡保持原终态，不被改写 */
@@ -3293,7 +3293,7 @@ function confirmProposal(pid) {
     if (a.added[pid]) { c.state = 'done'; render(); return; }
     if (rs.profileVersion !== c.expect) { c.state = 'failed'; c.err = { code: 'PROPOSAL_EXPIRED', msg: `写入时岗位配置已是 v${rs.profileVersion}（提案基于 v${c.expect}），已拒绝，请重新生成。`, plain: PLAIN_EXPIRED }; render(); return; }
     const id = 'custom-' + pid.slice(5);
-    if (!rs.custom.some((b) => b.id === id)) { rs.custom.push({ ...p.board, id, custom: true, minView: rs.adjust.minView || null }); rs.enabled[id] = new Set(p.board.actions); }
+    if (!rs.custom.some((b) => b.id === id)) { rs.custom.push({ ...p.board, id, custom: true, minView: msgMinView(`${p.text || ''} ${p.board.title}`) }); rs.enabled[id] = new Set(p.board.actions); }
     a.added[pid] = id; c.state = 'done';
     render(); toast(`已添加「${p.board.title}」到导航`);
   }, 600);
@@ -3333,7 +3333,7 @@ const ACT = {
   'seg-view': (id) => {
     if (!VIEW_RANK.hasOwnProperty(id) || id === S.view) return;
     S.view = id;
-    Object.values(S.roles).forEach((x) => Object.keys(x.adjBy).forEach((k) => { const a = x.adjBy[k]; if (a.minView && VIEW_RANK[id] < VIEW_RANK[a.minView] && !a.gen) delete x.adjBy[k]; })); /* 提到看不到的客户的提案草稿不再保留 */
+    Object.values(S.roles).forEach((x) => Object.keys(x.adjBy).forEach((k) => { const a = x.adjBy[k], mv = msgMinView(`${a.text} ${Object.values(a.props).map((p) => `${p.text || ''} ${p.board.title}`).join(' ')}`); if (mv && VIEW_RANK[id] < VIEW_RANK[mv]) { a.gen = null; delete x.adjBy[k]; } })); /* 提到看不到的客户的提案草稿与进行中的生成一并取消 */
     if (S.route.page === 'workflow' && !isDev()) S.route = { page: 'dashboard' };
     if (!srcTabs().some((x) => x[0] === S.srcTab)) S.srcTab = 'mine';
     /* 不调用通用关闭：业务抽屉（记录、原件、检查结果等）原样保留，更正草稿与在途保存的令牌不受影响，render 只按新视角重绘内容 */
