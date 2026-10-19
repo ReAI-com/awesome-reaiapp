@@ -54,6 +54,17 @@ The Chinese specification lists ten example roles (finance, HR, sales, e-commerc
 | Agent configuration | Defaults come from a few stable `contributes.agentFeatures` entries (Host API 1.23 or later). User overrides live in the Host plugin agent configuration page. Adding a board does not change the Manifest or permissions. Developer mode no longer edits prompts, skills, or engines. |
 | Errors | Retryable, accepted-but-timed-out, receipt lost, unavailable or not approved, no permission, insufficient balance, conflict, and business rejection each have a defined recovery. Diagnostics are visible only in Host developer mode. |
 
+## Tenant, client, and matter isolation (v2.2)
+
+Added on 2026-10-19. One AI employee may serve several companies, and one role may serve several external clients. v2.2 makes isolation an invariant and uses row-level isolation: every row of A, B, C, D, and every Agent conversation carries `tenant_id`; roles that declare a client dimension also carry `client_id` and `matter_id`.
+
+- Every read applies `tenant_id = current tenant AND client_id = current client AND matter_id = current matter`; roles without a client dimension (finance, HR, and so on) compare the tenant only. Rows without a tenant are never visible (fail closed).
+- In roles with a client dimension, uploads must belong to a matter. Deduplication only runs inside the same scope. B inherits its scope from its source A; C tasks and D runs belong to one matter; reflowed `derived` A inherits the scope of its task.
+- The Agent only loads the current scope and keeps conversations, board proposals, added boards, and workflow logs per scope. Any scope change, including one caused by switching the permission view, discards results of operations started before it. It refuses requests that reach another tenant, client, or matter, and does not confirm that a client behind a conflict wall exists.
+- Staff see only the clients they handle; leads and admins see all clients of the tenant but still work in one scope at a time. Clients with conflicting interests are separated by a conflict wall. Cross-matter reading needs lead approval; cross-client reading is denied.
+
+The v2.2 design draft (`plugins/ai-employee/design/paradigm-v2.2.html`) demonstrates two tenants and a patent role with two competing clients; `paradigm-v2.html` stays at v2.1 because the restaurant demo is generated from it. Where the storage layer enforces the policy, and who maintains the client list, are open questions.
+
 ## Reuse rather than rebuild
 
 v2 reuses existing mechanisms: local original storage, the `SourceAdapter` contract, cloud workflows through `ctx.flowApi` (currently `FLOW_SCOPE_UNAVAILABLE`), [Agent Service v2](/en/agent-service-v2), the ni-chat and ROMP message models, and the JOJO project network for role-to-role flow. Availability statements for cloud services come from their own documentation and were not verified in this phase.

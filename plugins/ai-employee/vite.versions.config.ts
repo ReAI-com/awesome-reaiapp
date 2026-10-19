@@ -9,7 +9,7 @@ export default defineConfig({
     outDir: '../../.artifacts/employee-versions/dist', emptyOutDir: true,
     rollupOptions: {
       input: Object.fromEntries([
-        ['home', 'index.html'], ['generic', 'design/paradigm-v2.html'],
+        ['home', 'index.html'], ['generic', 'design/paradigm-v2.html'], ['generic22', 'design/paradigm-v2.2.html'],
         ['showcase', 'showcase.html'], ['restaurant', 'design/restaurant-v2.1.html'],
         ['template', 'preview.html'],
       ].map(([name, path]) => [name, fileURLToPath(new URL(path, import.meta.url))])),

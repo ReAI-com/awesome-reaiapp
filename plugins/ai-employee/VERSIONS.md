@@ -8,6 +8,8 @@
 | 原巴奴岗位版 | [showcase.html](showcase.html) | 回看 17 岗位需求和 83 个内置业务看板 | 当前浏览器按岗位保存 |
 | 餐饮 v2.1 | [design/restaurant-v2.1.html](design/restaurant-v2.1.html) | 以巴奴风格整合岗位内容与 v2 交互，继续迭代 | 独立内存演示，刷新重置 |
 
+通用 v2.2（[design/paradigm-v2.2.html](design/paradigm-v2.2.html)）在 v2 之上演示租户、客户与案件隔离，入口在主页页脚。`paradigm-v2.html` 保持 v2.1 原样，因为餐饮 v2.1 由它生成。
+
 主页卡片在新标签页打开，便于同时保留三个版本的演示会话。页脚另保留 [原始 v1 运行模板](preview.html)。这些页面均为本地 UI/UX 演示；源码合并不代表插件已安装、送审、上架或部署。
 
 ## 本地开发
