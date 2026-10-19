@@ -1,0 +1,228 @@
+{
+  "manifestVersion": "1.1",
+  "appId": "com.example.ai-patent-assistant",
+  "version": "0.1.0",
+  "publisherId": "22222222-2222-4222-8222-222222222222",
+  "name": "AI 专利助手",
+  "description": "把发明人材料、审查意见和专利文献整理成专利事项台账，协助挖掘专利点、起草交底书与申请文件、检索解读、对照分析和审查答复，所有草稿由人复核。",
+  "icon": "assets/icon.png",
+  "storeListing": {
+    "category": "Productivity",
+    "tagline": "中国专利交底、申请、检索与审查答复的 AI 员工",
+    "longDescription": "本地开发 Demo：把发明人材料、审查意见和专利文献整理成专利事项台账，按看板跟进交底书、申请文件、案卷会稿、检索解读、对照表、专利地图、审查答复与政策简报。预览使用规则演示，不调用大模型；真实平台 Agent 接入需另行能力批准，尚未上架。产出均为草稿，不构成法律意见。",
+    "capabilities": [
+      {
+        "label": "专利事项台账",
+        "detail": "本地保存原件、事项记录与修订历史"
+      },
+      {
+        "label": "九类专利工作看板",
+        "detail": "交底、申请、会稿、检索、解读、对照、地图、答复、政策"
+      },
+      {
+        "label": "岗位 Agent 要求",
+        "detail": "内置专利工作方式与红线；默认规则演示，不调用大模型"
+      }
+    ],
+    "screenshots": [
+      {
+        "gradient": "linear-gradient(135deg,#ececf5,#ffffff)",
+        "caption": "专利工作台看板与 Agent 对话界面",
+        "hasVideo": false
+      }
+    ]
+  },
+  "targets": [
+    {
+      "platform": "macos",
+      "architectures": [
+        "aarch64",
+        "x86_64"
+      ]
+    },
+    {
+      "platform": "windows",
+      "architectures": [
+        "aarch64",
+        "x86_64"
+      ]
+    }
+  ],
+  "hostApi": {
+    "range": ">=1.20.0 <2.0.0"
+  },
+  "requires": {
+    "hostCapabilities": [
+      "surface.main@1",
+      "sidebar.item@1",
+      "storage.kv@1",
+      "commands@1",
+      "apps.intent@1",
+      "apps.service@1",
+      "titlebar.action@1"
+    ],
+    "hardwareServices": [],
+    "appIntents": [],
+    "services": [
+      {
+        "id": "com.reai.voice/request-text@1",
+        "version": "^1.0.0",
+        "required": false,
+        "purpose": "为专利 Agent 输入获取语音文字"
+      }
+    ]
+  },
+  "runtime": {
+    "components": [
+      {
+        "id": "ui",
+        "kind": "web-surface",
+        "protocol": "web-surface@1",
+        "required": true,
+        "headless": false,
+        "activation": "on-demand",
+        "entry": "dist/app.js",
+        "dependsOn": [],
+        "lifecycle": {
+          "activate": "default.activate",
+          "deactivate": "default.deactivate"
+        }
+      }
+    ]
+  },
+  "permissions": [],
+  "requirementsVersion": "1.1",
+  "requirements": [],
+  "network": {
+    "policyVersion": 1,
+    "endpoints": []
+  },
+  "billing": {
+    "mode": "none"
+  },
+  "data": {
+    "privateStores": [
+      {
+        "id": "employee",
+        "schemaVersion": 1
+      }
+    ],
+    "imports": [],
+    "exports": []
+  },
+  "dataCompatibility": {
+    "rollbackFloor": "0.1.0"
+  },
+  "contributes": {
+    "surfaces": [
+      {
+        "id": "main",
+        "componentId": "ui",
+        "location": "app.main",
+        "title": "AI 专利助手"
+      }
+    ],
+    "sidebarItems": [
+      {
+        "id": "employee",
+        "label": "AI 专利助手",
+        "icon": "assets/icon.png",
+        "opens": "surface:main"
+      }
+    ],
+    "titlebarActions": [
+      {
+        "id": "settings",
+        "label": "设置",
+        "icon": "settings",
+        "showOnTitlebarHover": true,
+        "intent": {
+          "type": "open-settings"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "id": "com.example.ai-patent-assistant.open",
+        "componentId": "ui",
+        "title": "打开 AI 专利助手",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "ok"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "timeoutMs": 5000,
+        "supportsCancellation": true,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host",
+          "user"
+        ]
+      },
+      {
+        "id": "com.example.ai-patent-assistant.agent.voice",
+        "componentId": "ui",
+        "title": "向 AI 专利助手语音提问",
+        "bindingPickerTitle": "AI 专利助手语音输入",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "ok"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "timeoutMs": 5000,
+        "supportsCancellation": true,
+        "concurrency": "serial",
+        "idempotency": "not-idempotent",
+        "callers": [
+          "host",
+          "user"
+        ]
+      }
+    ],
+    "intents": [
+      {
+        "id": "open-settings",
+        "version": "1.0.0",
+        "componentId": "ui",
+        "opens": "surface:main",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      },
+      {
+        "id": "agent-voice",
+        "version": "1.0.0",
+        "componentId": "ui",
+        "opens": "surface:main",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        }
+      }
+    ]
+  }
+}
