@@ -1,5 +1,10 @@
 {
   "errors": {
+    "conversationOpen": {
+      "sourceStale": "The current task source for this conversation could not be confirmed. Its seen state was not updated. Reopen Voice and retry.",
+      "landingFailed": "The conversation could not finish opening. Its seen state was not updated. Please retry.",
+      "commitFailed": "The conversation is open, but its seen state has not been fully confirmed. Please retry."
+    },
     "message1": "Could not generate a reply right now. Your content is saved; send again a little later.",
     "message2": "Could not finish the translation right now. Your content is saved; retry a little later.",
     "message3": "Could not generate the summary right now. The original recording is saved; retry a little later.",
@@ -99,6 +104,8 @@
       "invalid": "The Agent received or returned invalid data. Send it again.",
       "session": "This Agent conversation has expired or was interrupted. Send it again.",
       "runtime": "The Agent runtime is unavailable. Check the runtime components under Installed in Driver, then try again.",
+      "workerOwnerStale": "The owner of this task has changed. Send it again.",
+      "workerUnavailable": "Task execution is temporarily unavailable. Try again a little later.",
       "config": "The Agent settings are invalid, unsupported, or just changed. Check the Agent settings and try again.",
       "tool": "The Agent could not use a tool. Send it again; if this keeps happening, check the extension permissions.",
       "exec": "The Agent could not run a command. Check the working folder and permission settings, then try again.",
@@ -118,6 +125,8 @@
         "invalid": "Invalid data",
         "session": "Conversation expired",
         "runtime": "Runtime unavailable",
+        "workerOwnerStale": "Task owner changed",
+        "workerUnavailable": "Task execution unavailable",
         "config": "Agent settings invalid",
         "tool": "Tool call failed",
         "exec": "Command failed",
@@ -348,7 +357,8 @@
     "cloudOptionRequired": "Choose and save an available cloud transcription option in Settings → Recording and recognition first.",
     "agentRuntimeSetupUnavailable": "Could not open runtime settings. Open Voice in Driver’s Installed page, allow it to use {backend} under Runtime Components, then retry.",
     "agentDefaultUnavailable": "Could not read the default Agent selection. Select a default Agent again in Driver settings, then retry.",
-    "agentReceiptUnknown": "The request may have started, but its receipt is missing. Use “Retry this request” in this record to avoid running it twice."
+    "agentReceiptUnknown": "The request may have started, but its receipt is missing. Use “Retry this request” in this record to avoid running it twice.",
+    "notCompletedTryAgainLater": "This could not be completed right now. Please try again later."
   },
   "view": {
     "copyText": "Copy text",
@@ -597,6 +607,31 @@
     "recordingSource": "Recording source",
     "usesTheKeyboardMicrophoneByDefaultSystem": "Uses the keyboard microphone by default; system microphone permission is requested only when using the computer microphone",
     "recordingSourceValueClickToSwitchTo": "Recording source: {value0}. Click to switch to {value1}.",
+    "autoPrefersTheKeyboardMicrophoneFallsBack": "Automatic prefers the keyboard microphone and falls back to an authorized computer microphone; recording never prompts for permission",
+    "chooseRecordingSource": "Choose recording source",
+    "chooseRecordingSourceSub": "Applied between recordings; a recording in progress never switches source",
+    "recordingSourceValueClickToChoose": "Recording source: {value0}. Click to choose.",
+    "audioModeAuto": "Automatic (recommended)",
+    "audioModeAutoDesc": "Same as hardware first",
+    "audioModePreferBoard": "Hardware first",
+    "audioModePreferBoardDesc": "Use the keyboard microphone when available; otherwise the computer microphone",
+    "audioModePreferComputer": "Computer first",
+    "audioModePreferComputerDesc": "Use the computer microphone when available; otherwise the keyboard microphone",
+    "audioModeBoardOnly": "Hardware microphone only",
+    "audioModeBoardOnlyDesc": "Only the keyboard microphone; no recording when it is unavailable",
+    "audioModeComputerOnly": "Computer microphone only",
+    "audioModeComputerOnlyDesc": "Only the computer microphone; choose the device below",
+    "audioSourceNoHardware": "No keyboard microphone detected",
+    "audioSourceNoComputer": "This computer has no input device",
+    "audioSourceNoMicrophone": "No microphone detected",
+    "audioSourceNeedsHostUpgrade": "Update ReAI Board to use this option",
+    "noMicrophoneAvailable": "No usable microphone was found, so voice input is unavailable. Connect the keyboard or a computer microphone.",
+    "computerMicrophoneNotGranted": "The computer microphone is not authorized. It is skipped until you allow it, and recording never prompts for permission.",
+    "computerMicrophoneDenied": "Computer microphone access was denied. Turn on ReAI Board in System Settings › Privacy & Security › Microphone.",
+    "grantComputerMicrophone": "Allow computer microphone",
+    "audioSourceUnavailable": "Unavailable",
+    "audioSourceLegacyUac": "USB audio compatibility mode",
+    "audioSourceNow": "{value0} · now: {value1}",
     "systemInputDevice": "System input device",
     "noSystemInputDevicesAvailable": "No system input devices available",
     "systemDefaultDevice": "System default device",
@@ -610,6 +645,7 @@
     "textInsertionPermissionIsDisabledInInstalled": "Text insertion permission is disabled in Installed Extensions → Voice Input → Permissions, so recognition results cannot be inserted. New recordings are blocked to prevent lost text. Enable permission, then change the polish level above to resume.",
     "blockedBeforeRecording": "Blocked before recording",
     "recordingRetention2": "Recording retention",
+    "allDayArchive": "All-day archive",
     "retentionPeriod": "Retention period",
     "keepsOnlyRecordingsWithValidTextFor": "Keeps only recordings with valid text, for 4 hours to 30 days",
     "storageUsed": "Storage used",
@@ -754,7 +790,17 @@
     "agentConfig": "Agent settings",
     "agentConfigTitle": "Plugin Agent settings",
     "agentConfigSub": "Default engine, prompt templates and tools (opens in Host settings)",
-    "agentConfigValue": "Open"
+    "agentConfigValue": "Open",
+    "keyboardDisconnectedHint": "Check that the keyboard is connected, or choose another recording source in Settings.",
+    "aiBoardUnavailableHint": "Try again in a moment, or choose another recording source in Settings.",
+    "reconnectCloud": "Reconnect",
+    "retryNow": "Retry",
+    "cloudRetryingHint": "Retrying automatically. It will work again once the network or sign-in recovers.",
+    "cloudRetryStoppedHint": "Automatic retries have stopped. You can try again now.",
+    "cloudReconnectHint": "The cloud service connection needs to be confirmed again.",
+    "previousCloudChoiceUnavailable": "Previous choice unavailable",
+    "noCloudOptionsYet": "No options available yet",
+    "cloudModelsRefreshing": "Updating cloud options"
   },
   "chatUi": {
     "message1": "Voice input",
@@ -989,6 +1035,12 @@
       },
       "agentSession": {
         "purpose": "Allow Voice to select Pi Agent or DSH Harness through the shared Agent service and use your account credits for commands and polishing."
+      },
+      "audioCapture": {
+        "purpose": "Subscribes to the Host's shared audio so voice input can include what you said just before pressing the voice key"
+      },
+      "audioClips": {
+        "purpose": "Takes the shared audio from key press to release (plus about 1.5 seconds afterwards) and transcribes it on this computer; the clip is held only during this recognition and released right after"
       }
     },
     "requirements": {
@@ -1067,7 +1119,7 @@
   },
   "service": {
     "hostUpgradeRequired": "Update ReAI Board before retrying voice input. This version cannot determine which recording permissions are required.",
-    "microphoneRequired": "Allow microphone access in System Settings, then retry dictation.",
+    "microphoneRequired": "Allow the computer microphone in Voice settings, then retry dictation.",
     "busy": "Another voice task is using recording. Try again shortly.",
     "cancelled": "Dictation was cancelled.",
     "timeout": "Dictation timed out. Start again.",
@@ -1180,7 +1232,9 @@
     "permission5": "Lets the Agent run commands inside your authorized workspace (the system restricts reads and writes to that folder); paths outside it are confirmed each time, and no shell is opened elsewhere",
     "requirement0": "ReAI DSH Runtime",
     "requirement1": "ReAI Pi Runtime",
-    "requirement2": "ReAI Codex Runtime"
+    "requirement2": "ReAI Codex Runtime",
+    "permission6": "Subscribes to the Host's shared audio so voice input can include what you said just before pressing the voice key",
+    "permission7": "Takes the shared audio from key press to release (plus about 1.5 seconds afterwards) and transcribes it on this computer; the clip is held only during this recognition and released right after"
   },
   "diagnostics": {
     "title": "Diagnostics",
@@ -1233,6 +1287,7 @@
       "invalidVersion": "The App returned a version in an unexpected format; omitted"
     },
     "step": {
+      "conversationOpen": "Opening the conversation",
       "statusLoad": "Reading voice status",
       "starting": "Starting the recording",
       "capture": "Recording",
@@ -1256,6 +1311,7 @@
       "replay": "Loading playback audio",
       "replayRetention": "Changing recording retention",
       "replayClear": "Clearing the recording cache",
+      "continuousRecording": "Turning the all-day archive on or off",
       "recordingDelete": "Deleting this recording",
       "actionMount": "Adding to the Action layer",
       "permission": "Requesting system permission",

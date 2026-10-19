@@ -56,6 +56,12 @@ describe("Mock Host", () => {
       .resolves.toMatchObject({ text: "测试云端转写" });
     await expect(host.bridge.request(RequestMethod.AiAudioTranscribe, { sessionId: start.sessionId }))
       .resolves.toMatchObject({ text: "测试云端转写" });
+    // #1291：Host 把幻觉文本置空时带 suppressedReason，用完即复位。
+    host.suppressNextAiAudioTranscribe("hallucination_phrase");
+    await expect(host.bridge.request(RequestMethod.AiAudioTranscribe, { sessionId: start.sessionId }))
+      .resolves.toMatchObject({ text: "", suppressedReason: "hallucination_phrase" });
+    await expect(host.bridge.request(RequestMethod.AiAudioTranscribe, { sessionId: start.sessionId }))
+      .resolves.not.toHaveProperty("suppressedReason");
     await expect(host.bridge.request(RequestMethod.AiAudioTranscribe, { sessionId: start.sessionId, model: "transcribe-removed" }))
       .rejects.toMatchObject({ code: "AI_INVALID_REQUEST" });
     host.setCloudModels([{ id: "transcribe-paid", kind: "transcribe", label: "Paid" }]);

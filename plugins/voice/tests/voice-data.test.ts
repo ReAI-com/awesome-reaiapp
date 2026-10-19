@@ -6,6 +6,7 @@ import {
   MAX_COMMAND_MESSAGES_JSON_BYTES,
   MAX_HISTORY_STORE_BYTES,
   DEFAULT_MODEL_ID,
+  DEFAULT_SETTINGS,
   POLISH_LIGHT_DEFAULT_MIGRATION_KEY,
   SOURCE_MIGRATION_KEY,
   SOURCE_MIGRATION_NOTICE,
@@ -54,6 +55,47 @@ function storeWith(values: Record<string, unknown>): KeyValueStore {
 }
 
 describe("Voice 插件私有数据归一化", () => {
+  test("音源档位只保留公开的五个严格 kind；不从最终音源猜偏好", async () => {
+    for (const [preference, expected] of [
+      [{ kind: "auto" }, { kind: "auto" }],
+      [{ kind: "prefer_board" }, { kind: "prefer_board" }],
+      [{ kind: "prefer_computer" }, { kind: "prefer_computer" }],
+      [{ kind: "board_only" }, { kind: "board_only" }],
+      [{ kind: "computer_only" }, { kind: "computer_only" }],
+      [{ kind: "legacy_board_uac" }, undefined],
+      [{ kind: "system" }, undefined], [{ kind: "prefer_board", extra: true }, undefined], [null, undefined],
+      [Object.assign([], { kind: "prefer_board" }), undefined],
+      [Object.create({ kind: "prefer_board" }, { extra: { value: true, enumerable: true } }), undefined],
+    ]) {
+      const repository = new VoiceStateRepository(storeWith({ [SOURCE_MIGRATION_KEY]: 1, [SOURCE_SELECTION_KEY]: 2 }));
+      await repository.saveSettings({ ...DEFAULT_SETTINGS, audioSourcePreference: preference } as never);
+      const settings = (await repository.load()).settings!;
+      expect(settings.audioSourcePreference as unknown).toEqual(expected);
+    }
+  });
+
+  test("显式选档终结 v1/v2 迁移：下次激活不再剥掉档位或重放旧迁移", async () => {
+    const store = storeWith({ settings: { ...DEFAULT_SETTINGS, source: "board", audioSourcePreference: { kind: "board_only" } } });
+    const repository = new VoiceStateRepository(store);
+    await repository.confirmAudioSourceMode();
+    const loaded = await repository.load();
+    expect(loaded.settings?.audioSourcePreference).toEqual({ kind: "board_only" });
+    expect(loaded.legacySourceMigration).toBe(false);
+    expect(loaded.boardSourceMigrationPending).toBe(false);
+  });
+
+  test("v1/v2 迁移移除残留自动偏好，完成后也不再回放 prefer_computer", async () => {
+    for (const source of ["board", "system"] as const) {
+      const store = storeWith({ settings: { ...DEFAULT_SETTINGS, source, audioSourcePreference: { kind: "prefer_computer" } } });
+      const repository = new VoiceStateRepository(store);
+      const initial = await repository.load();
+      expect(initial.settings?.audioSourcePreference).toBeUndefined();
+      if (source === "system") await repository.completeBoardSourceMigration(initial.settings!);
+      else await repository.completeSourceMigration(initial.settings!);
+      expect((await repository.load()).settings?.audioSourcePreference).toBeUndefined();
+      expect((await store.get<any>("settings")).audioSourcePreference).toBeUndefined();
+    }
+  });
   test("切换 Agent 后保留同一可见对话以及每条历史原来的运行归属", async () => {
     const repository = new VoiceStateRepository(storeWith({}));
     await repository.appendCommandHistory({ id: "a", conversationId: "conversation-a", agentSessionId: "pi-a", transcript: "first", reply: "answer", status: "completed", createdAt: "2026-09-20T09:00:00.000Z" });

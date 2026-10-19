@@ -90,6 +90,23 @@ describe("识别与插入解耦（Host API 1.22 consumedBy / command 会话可�
     ).resolves.toEqual({ committed: true });
   });
 
+  test("Host 判定没有内容：transcript 为空、不带 audio、带 noSpeechReason，用完即复位（#1291）", async () => {
+    const host = new MockHost({ manifest, loadApp: async () => ({ default: {} }) });
+    await host.bridge.request(RequestMethod.VoiceToggle, { mode: "input", insertText: false, retainAudio: true });
+    host.setNextVoiceNoSpeech("silence");
+    const done = await host.bridge.request(RequestMethod.VoiceToggle, { mode: "input" }) as Record<string, unknown>;
+    expect(done.transcript).toBe("");
+    expect(done.audio).toBeUndefined();
+    expect(done.noSpeechReason).toBe("silence");
+    expect(done.warningCode).toBe("no_speech");
+    expect(done.inserted).toBe(false);
+
+    await host.bridge.request(RequestMethod.VoiceToggle, { mode: "input", insertText: false });
+    const next = await host.bridge.request(RequestMethod.VoiceToggle, { mode: "input" }) as Record<string, unknown>;
+    expect(next.noSpeechReason).toBeUndefined();
+    expect(next.transcript).toBe("测试语音输入");
+  });
+
   test("command 会话的写回凭证可以 commit（插入不认业务分支）", async () => {
     const host = new MockHost({ manifest, loadApp: async () => ({ default: {} }) });
     const started = await host.bridge.request(RequestMethod.VoiceToggle, { mode: "command" }) as {

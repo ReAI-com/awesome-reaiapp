@@ -1,4 +1,18 @@
 import { t } from "./voice-i18n";
+import { VoiceAppError } from "./voice-app-error";
+
+/** 处理器自己的失败：插件固定文案，普通模式也能原样显示。 */
+function commandProcessorError(key: "message1" | "message2" | "message3"): VoiceAppError {
+  return new VoiceAppError({
+    code: "com.reai.voice/VOICE_COMMAND_FAILED",
+    get userMessage() {
+      if (key === "message1") return t("commandProcessor.message1");
+      if (key === "message2") return t("commandProcessor.message2");
+      return t("commandProcessor.message3");
+    },
+    retryable: key !== "message1",
+  }, undefined, { constantMessage: true });
+}
 /**
  * Voice Command 的运行编排：合同 `VoiceCommandProcessorPort` 的实现。
  *
@@ -172,12 +186,12 @@ export function createProcessor(deps: ProcessorDeps) {
       const confirmed: Promise<"user" | "auto_start"> = new Promise((resolve, reject) => {
         resolveConfirm = resolve;
         if (controller.signal.aborted) {
-          reject(new Error(t("commandProcessor.message1")));
+          reject(commandProcessorError("message1"));
           return;
         }
         controller.signal.addEventListener(
           "abort",
-          () => reject(new Error(t("commandProcessor.message1"))),
+          () => reject(commandProcessorError("message1")),
           { once: true },
         );
       });
@@ -215,7 +229,7 @@ export function createProcessor(deps: ProcessorDeps) {
           if (wantsPlan) {
             if (!planned) {
               // 第一段没能形成可确认的计划：如实失败，用户什么都没授权，重试无风险。
-              throw new Error(t("commandProcessor.message2"));
+              throw commandProcessorError("message2");
             }
             const by = await confirmed;
             queue.push({ ...baseOf(ctx), type: "plan.confirmed", by });
@@ -244,11 +258,11 @@ export function createProcessor(deps: ProcessorDeps) {
           // 取消过就一定不能报成功。底层适配器若不尊重 signal（换一条通道就可能
           // 如此），流会照跑到底 —— 那时"取消了却返回成功结果"，比不让取消更糟。
           if (controller.signal.aborted) {
-            throw new Error(t("commandProcessor.message1"));
+            throw commandProcessorError("message1");
           }
           const deliverable = answer || polished;
           if (!deliverable && request.command.steps.length > 0) {
-            throw new Error(t("commandProcessor.message3"));
+            throw commandProcessorError("message3");
           }
           const polishedText = polished || transcript;
           resolveResult({

@@ -24,7 +24,8 @@ test("expired or invalid account quote is unavailable, never converted to a free
 });
 test("account contract does not fall back to legacy free default or move explicit free-only", () => {
  const legacy = { id: "transcribe-legacy", kind: "transcribe" as const, label: "Legacy", isDefault: true, billingPolicy: "free" as const };
- expect(preferredCloudOption([{ ...model, isDefault: false }, legacy], "")).toBeUndefined();
+ expect(preferredCloudOption([{ ...model, isDefault: false }, legacy], "")?.id).toBe(model.id);
+ expect(preferredCloudOption([{ ...model, billingPolicy: "metered", isDefault: false }, legacy], "")).toBeUndefined();
  expect(preferredCloudOption([model], "transcribe-stale", "free-only")).toBeUndefined();
  expect(preferredCloudOption([legacy], "")?.id).toBe("transcribe-legacy");
  expect(cloudSelectionBillingPolicy(legacy, "")).toBe("free-only");

@@ -363,14 +363,18 @@ describe("录音来源和全天存档说明", () => {
     harness.view.dispose();
   });
 
-  test("记录保留不再暴露全天存档开关，只保留时长与清空", () => {
+  test("「未开启」胶囊直达的记录保留里有全天存档开关（显示关着），另有时长与清空", () => {
     const harness = mount({ timeline: timeline({ continuousRecordingEnabled: false, recordingState: "disabled" }) });
     harness.view.openSettings("replay-cache");
     const section = harness.root.querySelector('[data-settings-target="replay-cache"]');
     expect(section?.textContent).toContain("4 小时");
     expect(section?.textContent).toContain("30 天");
     expect(section?.textContent).toContain("立刻清空语音记录");
-    expect(section?.querySelector(".settings-switch")).toBeNull();
+    const switches = Array.from(section?.querySelectorAll(".settings-switch") ?? []);
+    // 只断言数量与状态，不把 DOM 节点交给 expect（失败时 bun 会把整棵树打印出来）。
+    expect(switches.length).toBe(1);
+    expect(switches[0]?.getAttribute("aria-label")).toBe("全天存档");
+    expect(switches[0]?.getAttribute("aria-checked")).toBe("false");
     harness.view.dispose();
   });
 });

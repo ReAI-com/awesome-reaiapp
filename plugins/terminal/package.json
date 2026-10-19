@@ -1,6 +1,6 @@
 {
   "name": "reai-terminal-app",
-  "version": "1.0.4-k03.1",
+  "version": "1.0.5-dev.2",
   "private": true,
   "type": "module",
   "reaiApp": {
@@ -11,10 +11,10 @@
     "typecheck": "tsc --noEmit",
     "build": "reai-app-i18n build .",
     "validate": "reai-app-i18n validate .",
-    "test:contract": "reai-app contract-test . --host-api 1.16",
-    "pack": "reai-app-i18n pack . --out terminal-1.0.4-k03.1.reaiapp",
+    "test:contract": "reai-app contract-test . --host-api 1.25",
+    "pack": "reai-app-i18n pack . --out terminal-1.0.5-dev.2.reaiapp",
     "check:submission": "bun ../../scripts/plugin-submission.ts check .",
-    "pack:submission": "bun ../../scripts/plugin-submission.ts pack . --out terminal-1.0.4-k03.1-submission.reaiapp"
+    "pack:submission": "bun ../../scripts/plugin-submission.ts pack . --out terminal-1.0.5-dev.2-submission.reaiapp"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.11.0",

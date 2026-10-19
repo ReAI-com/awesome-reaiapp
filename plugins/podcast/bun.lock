@@ -23,74 +23,59 @@
     "@reai/app-test": "file:../../packages/test-kit",
   },
   "packages": {
-    "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.12.0", "https://registry.npmmirror.com/@happy-dom/global-registrator/-/global-registrator-20.12.0.tgz", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.12.0" } }, "sha512-BUE55Rew3oMwBzwCwmUnV+Oxk51V3xolM39Ts6kGiBXNELjujiESwk9qc99JRr6cVrj3OTd9MJ5zQ2fpn+jy6g=="],
+    "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.14.6", "https://registry.npmmirror.com/@happy-dom/global-registrator/-/global-registrator-20.14.6.tgz", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.14.6" } }, "sha512-Xd2FwCdm0cAZ+EG0upp69tpxBT9jtvVxaZv1lnbgWsNaZyEuPs0PojYgvCmtQ1RRdRCYCyWTeLjn3Z0aSxDchA=="],
 
-    "@reai/app-cli": ["@reai/app-cli@file:../../packages/cli", { "dependencies": { "@happy-dom/global-registrator": "^20.0.0", "@reai/app-contract": "1.15.0", "@reai/app-sdk": "1.15.0", "@reai/app-test": "1.2.0" }, "devDependencies": { "typescript": "~5.6.0" }, "bin": { "reai-app": "./src/cli.ts" } }],
+    "@reai/app-cli": ["@reai/app-cli@file:../../packages/cli", { "dependencies": { "@happy-dom/global-registrator": "^20.0.0", "@reai/app-contract": "1.25.3-v105.1", "@reai/app-sdk": "1.26.0-v105.1", "@reai/app-test": "1.4.0-v105.1" }, "devDependencies": { "typescript": "~5.6.0" }, "bin": { "reai-app": "./src/cli.ts" } }],
 
     "@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
 
-    "@reai/app-i18n-cli": ["@reai/app-i18n-cli@file:../../packages/i18n-cli", { "dependencies": { "@reai/app-cli": "1.2.0", "@reai/app-contract": "1.20.0" }, "devDependencies": { "typescript": "~5.6.0" }, "bin": { "reai-app-i18n": "./src/cli.ts" } }],
+    "@reai/app-i18n-cli": ["@reai/app-i18n-cli@file:../../packages/i18n-cli", { "dependencies": { "@reai/app-cli": "1.4.1-v105.1", "@reai/app-contract": "1.25.3-v105.1", "fflate": "0.8.3" }, "devDependencies": { "@reai/app-contract": "1.25.3-v105.1", "typescript": "~5.6.0" }, "bin": { "reai-app-i18n": "./src/cli.ts" } }],
 
-    "@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.15.0", "typescript": "~5.6.0" } }],
+    "@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "dependencies": { "@reai/app-contract": "1.25.3-v105.1" }, "devDependencies": { "typescript": "~5.6.0" } }],
 
-    "@reai/app-test": ["@reai/app-test@file:../../packages/test-kit", { "dependencies": { "@reai/app-sdk": "1.15.0" }, "devDependencies": { "typescript": "~5.6.0" } }],
+    "@reai/app-test": ["@reai/app-test@file:../../packages/test-kit", { "dependencies": { "@reai/app-contract": "1.25.3-v105.1", "@reai/app-sdk": "1.26.0-v105.1" }, "devDependencies": { "@reai/app-sdk": "1.26.0-v105.1", "typescript": "~5.6.0" } }],
 
-    "@types/bun": ["@types/bun@1.4.0", "https://registry.npmmirror.com/@types/bun/-/bun-1.4.0.tgz", { "dependencies": { "bun-types": "1.4.0" } }, "sha512-K+lZULY23vRgK/CfTjFIV+tyifaNdSMlPh9j+6mQ/cLfpOznLyAuzgV/JQysyECpkBQLVMSyvjlr2fBUSA9wFQ=="],
+    "@types/bun": ["@types/bun@1.4.3", "https://registry.npmmirror.com/@types/bun/-/bun-1.4.3.tgz", { "dependencies": { "bun-types": "1.4.3" } }, "sha512-N67Pqy8JXbAY/j0tNraS3V5mubGvc6rrrNDmDCtZLlFzccbUJPDb0tvgUBC5q4m8ybkP93Jcn1QB+RYQ6PvBhw=="],
 
-    "@types/node": ["@types/node@26.4.0", "https://registry.npmmirror.com/@types/node/-/node-26.4.0.tgz", { "dependencies": { "undici-types": "~8.3.0" } }, "sha512-faiGnoIrLH/V8cibOMEAZ8pMw6oXqSukl29ra4mN8GdaB2ZewzeaLj+INpV5N+Z1eKWzY+IzaIZH2EIR6YZRNQ=="],
+    "@types/node": ["@types/node@26.6.5", "https://registry.npmmirror.com/@types/node/-/node-26.6.5.tgz", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg=="],
 
     "@types/whatwg-mimetype": ["@types/whatwg-mimetype@3.0.2", "https://registry.npmmirror.com/@types/whatwg-mimetype/-/whatwg-mimetype-3.0.2.tgz", {}, "sha512-c2AKvDT8ToxLIOUlN51gTiHXflsfIFisS4pO7pDPoKouJCESkhZnEy623gwP9laCy5lnLDAw1vAzu2vM2YLOrA=="],
 
-    "@types/ws": ["@types/ws@8.18.1", "https://registry.npmmirror.com/@types/ws/-/ws-8.18.1.tgz", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
+    "@types/ws": ["@types/ws@8.18.2", "https://registry.npmmirror.com/@types/ws/-/ws-8.18.2.tgz", { "dependencies": { "@types/node": "*" } }, "sha512-67MQl+fpWKVTT1NYdnmo3U4sc/xPo/zQBncVnI74qmQa0z/b+1g6iYqNmGCPbxO+zz2aklb08a0oHfegiVd0/w=="],
 
     "buffer-image-size": ["buffer-image-size@0.6.4", "https://registry.npmmirror.com/buffer-image-size/-/buffer-image-size-0.6.4.tgz", { "dependencies": { "@types/node": "*" } }, "sha512-nEh+kZOPY1w+gcCMobZ6ETUp9WfibndnosbpwB1iJk/8Gt5ZF2bhS6+B6bPYz424KtwsR6Rflc3tCz1/ghX2dQ=="],
 
-    "bun-types": ["bun-types@1.4.0", "https://registry.npmmirror.com/bun-types/-/bun-types-1.4.0.tgz", { "dependencies": { "@types/node": "*" } }, "sha512-iIKw23BspnQQYd3prITOBxeUsxBHnwzX6YJfGMuNOZzeNcMmVqzIIVGRm1l69ogaPQmb4wB6BN8mA5bE9YuC5Q=="],
+    "bun-types": ["bun-types@1.4.3", "https://registry.npmmirror.com/bun-types/-/bun-types-1.4.3.tgz", { "dependencies": { "@types/node": "*", "undici-types": "*" } }, "sha512-tinRJNGOmUN+tEAsn2y2e942n9JHRHR42iUYzDH75NmhJqVBokGSQkkfSFdNWwsANIdrK6ACH9t01M452YyTwg=="],
 
     "entities": ["entities@7.0.1", "https://registry.npmmirror.com/entities/-/entities-7.0.1.tgz", {}, "sha512-TWrgLOFUQTH994YUyl1yT4uyavY5nNB5muff+RtWaqNVCAK408b5ZnnbNAUEWLTCpum9w6arT70i1XdQ4UeOPA=="],
 
-    "happy-dom": ["happy-dom@20.12.0", "https://registry.npmmirror.com/happy-dom/-/happy-dom-20.12.0.tgz", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-7uMYJu2SEwwL8vVcKp0C0lnt6d2LSGGe+T+oY79PiCJNNSgFpbxW8n5KuzpDQvrU4mt+fYiK1+Jy7Z2v39YR6g=="],
+    "fflate": ["fflate@0.8.3", "https://registry.npmmirror.com/fflate/-/fflate-0.8.3.tgz", {}, "sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA=="],
+
+    "happy-dom": ["happy-dom@20.14.6", "https://registry.npmmirror.com/happy-dom/-/happy-dom-20.14.6.tgz", { "dependencies": { "@types/node": ">=20.0.0", "@types/whatwg-mimetype": "^3.0.2", "@types/ws": "^8.18.1", "buffer-image-size": "^0.6.4", "entities": "^7.0.1", "whatwg-mimetype": "^3.0.0", "ws": "^8.21.0" } }, "sha512-5DDsf4QmEIlRL6NkCv/fxSjYHHkZceL/IaYQdJc2h3G7DRTEai++VTjbfL0LB9geW2VrA3+vrjF3Efx+OTtX0Q=="],
 
     "typescript": ["typescript@5.6.3", "https://registry.npmmirror.com/typescript/-/typescript-5.6.3.tgz", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-hjcS1mhfuyi4WW8IWtjP7brDrG2cuDZukyrYrSauoXGNgx0S7zceP07adYkJycEr56BOUTNPzbInooiN3fn1qw=="],
 
-    "undici-types": ["undici-types@8.3.0", "https://registry.npmmirror.com/undici-types/-/undici-types-8.3.0.tgz", {}, "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ=="],
+    "undici-types": ["undici-types@8.9.0", "https://registry.npmmirror.com/undici-types/-/undici-types-8.9.0.tgz", {}, "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg=="],
 
     "whatwg-mimetype": ["whatwg-mimetype@3.0.0", "https://registry.npmmirror.com/whatwg-mimetype/-/whatwg-mimetype-3.0.0.tgz", {}, "sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q=="],
 
-    "ws": ["ws@8.21.3", "https://registry.npmmirror.com/ws/-/ws-8.21.3.tgz", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw=="],
+    "ws": ["ws@8.22.0", "https://registry.npmmirror.com/ws/-/ws-8.22.0.tgz", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg=="],
 
     "@reai/app-cli/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
 
-    "@reai/app-cli/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.15.0", "typescript": "~5.6.0" } }],
+    "@reai/app-cli/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", {}],
 
-    "@reai/app-cli/@reai/app-test": ["@reai/app-test@file:../../packages/test-kit", { "dependencies": { "@reai/app-sdk": "1.15.0" }, "devDependencies": { "typescript": "~5.6.0" } }],
+    "@reai/app-cli/@reai/app-test": ["@reai/app-test@file:../../packages/test-kit", {}],
 
-    "@reai/app-i18n-cli/@reai/app-cli": ["@reai/app-cli@file:../../packages/cli", { "dependencies": { "@happy-dom/global-registrator": "^20.0.0", "@reai/app-contract": "1.15.0", "@reai/app-sdk": "1.15.0", "@reai/app-test": "1.2.0" }, "devDependencies": { "typescript": "~5.6.0" }, "bin": { "reai-app": "./src/cli.ts" } }],
+    "@reai/app-i18n-cli/@reai/app-cli": ["@reai/app-cli@file:../../packages/cli", {}],
 
     "@reai/app-i18n-cli/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
 
     "@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
 
-    "@reai/app-test/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.15.0", "typescript": "~5.6.0" } }],
+    "@reai/app-test/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
 
-    "@reai/app-cli/@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
+    "@reai/app-test/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", {}],
 
-    "@reai/app-cli/@reai/app-test/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.15.0", "typescript": "~5.6.0" } }],
-
-    "@reai/app-i18n-cli/@reai/app-cli/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-i18n-cli/@reai/app-cli/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.15.0", "typescript": "~5.6.0" } }],
-
-    "@reai/app-i18n-cli/@reai/app-cli/@reai/app-test": ["@reai/app-test@file:../../packages/test-kit", { "dependencies": { "@reai/app-sdk": "1.15.0" }, "devDependencies": { "typescript": "~5.6.0" } }],
-
-    "@reai/app-test/@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-cli/@reai/app-test/@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-i18n-cli/@reai/app-cli/@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-i18n-cli/@reai/app-cli/@reai/app-test/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.15.0", "typescript": "~5.6.0" } }],
-
-    "@reai/app-i18n-cli/@reai/app-cli/@reai/app-test/@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
   }
 }

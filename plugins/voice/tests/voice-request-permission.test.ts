@@ -9,17 +9,16 @@ const messages = { cancelled: "cancelled", upgrade: "update Driver", microphone:
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 function harness(info: VoicePermissionInfo) {
   const calls: string[] = [];
-  let answer!: (value: VoicePermissionState) => void;
-  const permission = new Promise<VoicePermissionState>((resolve) => { answer = resolve; });
-  const voice: Pick<VoiceInputClient, "configure" | "checkPermissions" | "requestPermission"> = {
+  const voice: Pick<VoiceInputClient, "configure" | "checkPermissions"> & { requestPermission(kind: string): Promise<VoicePermissionState> } = {
     async configure() { calls.push("configure"); },
     async checkPermissions() { calls.push("check"); return info; },
-    async requestPermission(kind) { calls.push(kind); return permission; },
+    // 准备链不该碰它：留着只为断言「从未请求」。
+    async requestPermission(kind) { calls.push(kind); return "granted"; },
   };
   const controller = new AbortController();
   const prepare = (signal = controller.signal, report = () => { calls.push("waiting"); }) =>
     prepareVoiceRequest(voice, DEFAULT_SETTINGS, signal, report, messages);
-  return { calls, voice, answer, controller, prepare };
+  return { calls, voice, controller, prepare };
 }
 
 describe("request-text uses Host route permission requirements", () => {
@@ -40,15 +39,12 @@ describe("request-text uses Host route permission requirements", () => {
     await h.prepare();
     expect(h.calls).toEqual(["configure", "check"]);
   });
-  for (const answer of ["granted", "denied"] as VoicePermissionState[]) {
-    test(`Host-required microphone waits for real permission: ${answer}`, async () => {
-      const h = harness({ microphone: "denied", accessibility: "granted", microphoneRequired: true });
-      const op = h.prepare();
-      await tick();
-      expect(h.calls).toEqual(["configure", "check", "waiting", "microphone"]);
-      h.answer(answer);
-      if (answer === "granted") await op;
-      else await expect(op).rejects.toMatchObject({ code: "com.reai.voice/VOICE_MIC_PERMISSION_REQUIRED" });
+  for (const microphone of ["denied", "not_determined"] as VoicePermissionState[]) {
+    test(`Host-required microphone never prompts while starting a recording: ${microphone}`, async () => {
+      // 2026-10-11：录音开始链路只检查不请求，未授权直接失败、去 Voice 设置里授权。
+      const h = harness({ microphone, accessibility: "granted", microphoneRequired: true });
+      await expect(h.prepare()).rejects.toMatchObject({ code: "com.reai.voice/VOICE_MIC_PERMISSION_REQUIRED", userMessage: messages.microphone });
+      expect(h.calls).toEqual(["configure", "check"]);
     });
   }
   test("cancellation during permission read never prompts", async () => {
@@ -58,7 +54,7 @@ describe("request-text uses Host route permission requirements", () => {
     await expect(h.prepare()).rejects.toMatchObject({ code: "SERVICE_CANCELLED" });
     expect(h.calls).toEqual(["configure", "check"]);
   });
-  test("provider cancellation during real preparation isolates a late grant and permits a new request", async () => {
+  test("a provider request with an unauthorized required microphone fails without prompting and frees the slot", async () => {
     const h = harness({ microphone: "denied", accessibility: "granted", microphoneRequired: true });
     const admission = await VoiceRequestAdmission.open({ read: async () => undefined, write: async () => undefined });
     let busy = false;
@@ -75,23 +71,12 @@ describe("request-text uses Host route permission requirements", () => {
     const caller = { appId: "consumer", surfaceMountId: "surface", runtimeSessionId: "runtime", accountGeneration: "epoch" };
     const input = { requestId: `${Date.now()}:${crypto.randomUUID()}` };
     try {
-      const op = provider.request({ caller, input, signal: h.controller.signal }).catch((error) => error);
-      await tick();
-      expect(provider.status(caller, input).phase).toBe("waiting_permission");
-      h.controller.abort();
-      expect(await op).toMatchObject({ code: "SERVICE_CANCELLED" });
-      h.answer("granted");
-      await tick();
+      const error = await provider.request({ caller, input, signal: h.controller.signal }).catch((cause) => cause);
+      expect(error).toMatchObject({ code: "com.reai.voice/VOICE_MIC_PERMISSION_REQUIRED" });
+      expect(h.calls).not.toContain("microphone");
+      expect(h.calls).not.toContain("waiting");
       expect(h.calls).not.toContain("start");
-      expect(provider.status(caller, input).phase).toBe("cancelled");
       expect(busy).toBe(false);
-      const nextInput = { requestId: `${Date.now()}:${crypto.randomUUID()}` };
-      const next = provider.request({ caller, input: nextInput, signal: new AbortController().signal }).catch((error) => error);
-      await tick();
-      expect(provider.status(caller, nextInput).phase).toBe("listening");
-      expect(h.calls.filter((call) => call === "start")).toHaveLength(1);
-      provider.cancel(caller, nextInput);
-      await next;
     } finally { provider.dispose(); }
   });
 });

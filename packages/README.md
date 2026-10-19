@@ -41,9 +41,8 @@ Mock Host 合同测试、源码审查、平台批准、真实 Host 安装、用�
 `.github/workflows/plugin-toolchain.yml` 从公开仓库 checkout 开始，使用 Bun `1.3.11`、冻结锁文件和 `--ignore-scripts` 安装依赖。各 job 最长运行 20 分钟，GitHub 权限仅为 `contents: read`。
 
 - 共享工具运行测试和类型检查。
-- 4 个示例与 14 个普通插件分别运行测试、类型检查、校验、构建、合同测试和打包。
-- Voice 运行测试和类型检查，再执行独立的源码审核拒绝门禁。该门禁要求 `validate`、`build` 和 `pack` 全部只返回 `surface.clipboard@1`、`agent.session@2`、`system.folder-pick@1`、`local.terminal.exec@1` 四项 `APP_CAPABILITY_NOT_GRANTED`。出现其他错误、意外通过或生成包都会让 CI 失败。
+- 4 个示例与 18 个插件（16 个官方插件和 2 个 AI 员工 Demo）分别运行测试、类型检查、校验、构建、合同测试和打包。Voice 需要的受控能力已由能力审核种子中的源码审核记录覆盖，按普通插件验证。
 
-Voice 拒绝门禁通过表示公开 clone 保留了源码审核边界，不表示 Voice 编译或出包成功。CI 不读取私人审核材料，也不生成替代审核记录或运行批准。需要出包时，另用绑定真实精确输入的合法独立审核记录验证；该结果与公开 CI 分开记录。以上 job 不启动 Host，也不访问生产环境。
+CI 不读取私人审核材料，也不生成替代审核记录或运行批准。以上 job 不启动 Host，也不访问生产环境。
 
 能力审核种子是离线合同 fixture，不能作为当前产物已获得平台批准或已上架的证据。

@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.reai.voice",
-  "version": "2.14.5-dev.3",
+  "version": "2.14.7",
   "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
   "name": "语音输入法",
   "description": "按下语音键开始录音，再按一次完成识别并把文字写入当前应用",
@@ -57,11 +57,12 @@
     }
   ],
   "hostApi": {
-    "range": ">=1.23.0 <2.0.0"
+    "range": ">=1.25.0 <2.0.0"
   },
   "requires": {
     "hostCapabilities": [
       "surface.main@1",
+      "surface.navigation@1",
       "sidebar.item@1",
       "storage.kv@1",
       "commands@1",
@@ -80,7 +81,10 @@
       "surface.clipboard@1",
       "agent.session@2",
       "system.folder-pick@1",
-      "local.terminal.exec@1"
+      "local.terminal.exec@1",
+      "audio.capture@1",
+      "audio.clips@1",
+      "surface.escape@1"
     ],
     "hardwareServices": [],
     "appIntents": [
@@ -147,6 +151,16 @@
       "id": "local.terminal.exec@1",
       "purpose": "让 Agent 在你授权的工作目录内运行命令（系统层限定只能读写该目录）；范围外路径逐次确认，不开放任意位置的 shell",
       "required": false
+    },
+    {
+      "id": "audio.capture@1",
+      "purpose": "订阅 Host 的共享收音，让语音输入能补上按下语音键之前的话",
+      "required": false
+    },
+    {
+      "id": "audio.clips@1",
+      "purpose": "按下到松开（含松开后约 1.5 秒）截取一段共享录音在本机转成文字；片段只在本次识别期间持有，用完即释放",
+      "required": false
     }
   ],
   "requirementsVersion": "1.2",
@@ -162,7 +176,8 @@
         "capability:agent.session@2"
       ],
       "platforms": [
-        "macos"
+        "macos",
+        "windows"
       ],
       "channels": [
         "direct"
@@ -202,7 +217,8 @@
         "capability:agent.session@2"
       ],
       "platforms": [
-        "macos"
+        "macos",
+        "windows"
       ],
       "channels": [
         "direct"
@@ -242,7 +258,8 @@
         "capability:agent.session@2"
       ],
       "platforms": [
-        "macos"
+        "macos",
+        "windows"
       ],
       "channels": [
         "direct"
@@ -880,6 +897,17 @@
         "description": "当日总结与分段摘要（DSH 持续会话，引擎锁定）",
         "runtime": "dsh",
         "promptTemplate": "你是 ReAI Board Voice 的总结助手。严格按用户本轮给出的总结指令处理内容，只输出要求的要点。"
+      }
+    ],
+    "notificationScenes": [
+      {
+        "key": "task.lifecycle",
+        "label": "后台任务",
+        "description": "查看 Agent 等待确认或完成的任务",
+        "trigger": "任务等待确认或完成时",
+        "format": "text",
+        "defaultLevel": "in_app",
+        "maxLevel": "system"
       }
     ]
   },

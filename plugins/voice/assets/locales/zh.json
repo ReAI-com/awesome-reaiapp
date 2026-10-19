@@ -1,5 +1,10 @@
 {
   "errors": {
+    "conversationOpen": {
+      "sourceStale": "暂时无法确认这条会话的当前任务来源，已看过状态未更新。请重新打开 Voice 后重试。",
+      "landingFailed": "这次未能完成会话打开，已看过状态未更新。请重试。",
+      "commitFailed": "会话已打开，但已看过状态还未完成确认。请重试。"
+    },
     "message1": "暂时无法生成回复。你的内容已保存，请稍后重新发送。",
     "message2": "暂时无法完成翻译。你的内容已保存，请稍后重试。",
     "message3": "暂时无法生成总结。原始记录已保存，请稍后重试。",
@@ -99,6 +104,8 @@
       "invalid": "Agent 收到或返回的数据无效，请重新发送。",
       "session": "这段 Agent 对话已失效或被中断，请重新发送。",
       "runtime": "Agent 运行组件不可用，请在 Driver「已安装」中检查运行组件后重试。",
+      "workerOwnerStale": "这次任务的归属已变化，请重新发送。",
+      "workerUnavailable": "任务执行入口暂不可用，请稍后重试。",
       "config": "Agent 设置无效、不受支持或刚刚变化，请检查 Agent 设置后重试。",
       "tool": "Agent 调用工具失败，请重新发送；反复出现时请检查扩展权限。",
       "exec": "Agent 执行命令失败，请检查工作目录与权限设置后重试。",
@@ -118,6 +125,8 @@
         "invalid": "数据无效",
         "session": "对话已失效",
         "runtime": "运行组件不可用",
+        "workerOwnerStale": "任务归属已变化",
+        "workerUnavailable": "任务暂不可执行",
         "config": "Agent 设置无效",
         "tool": "工具调用失败",
         "exec": "命令执行失败",
@@ -348,7 +357,8 @@
     "cloudOptionRequired": "请先在设置 › 录音与识别中选择并保存有效的云端转写选项。",
     "agentRuntimeSetupUnavailable": "未能打开运行组件设置。请在 Driver「已安装」中打开 Voice 的运行组件，允许使用 {backend} 后重试。",
     "agentDefaultUnavailable": "无法读取默认 Agent 选择。请在 Driver 设置中重新选择默认 Agent 后重试。",
-    "agentReceiptUnknown": "还没确认请求是否已开始。请在这条记录中点“重试这次请求”，避免重复执行。"
+    "agentReceiptUnknown": "还没确认请求是否已开始。请在这条记录中点“重试这次请求”，避免重复执行。",
+    "notCompletedTryAgainLater": "暂时没能完成，请稍后重试。"
   },
   "view": {
     "copyText": "复制文本",
@@ -597,6 +607,31 @@
     "recordingSource": "录音来源",
     "usesTheKeyboardMicrophoneByDefaultSystem": "默认使用键盘麦克风；改用电脑麦克风时才请求系统麦克风权限",
     "recordingSourceValueClickToSwitchTo": "录音来源：{value0}，点击切换到{value1}",
+    "autoPrefersTheKeyboardMicrophoneFallsBack": "自动优先用键盘麦克风；键盘不可用时改用已授权的电脑麦克风，录音时不会弹出授权",
+    "chooseRecordingSource": "选择录音来源",
+    "chooseRecordingSourceSub": "会话之间按这里的选择自动切换；正在录音时不会中途换来源",
+    "recordingSourceValueClickToChoose": "录音来源：{value0}，点击选择",
+    "audioModeAuto": "自动（推荐）",
+    "audioModeAutoDesc": "等同于硬件优先",
+    "audioModePreferBoard": "硬件优先",
+    "audioModePreferBoardDesc": "有键盘麦克风就用；不可用时改用电脑麦克风",
+    "audioModePreferComputer": "电脑优先",
+    "audioModePreferComputerDesc": "电脑麦克风可用就用；否则改用键盘麦克风",
+    "audioModeBoardOnly": "只用硬件麦克风",
+    "audioModeBoardOnlyDesc": "只用键盘麦克风；不可用时不录音",
+    "audioModeComputerOnly": "只用电脑麦克风",
+    "audioModeComputerOnlyDesc": "只用电脑麦克风，可在下方指定设备",
+    "audioSourceNoHardware": "未检测到键盘麦克风",
+    "audioSourceNoComputer": "这台电脑没有可用的输入设备",
+    "audioSourceNoMicrophone": "未检测到任何麦克风",
+    "audioSourceNeedsHostUpgrade": "需要更新 ReAI Board 才能使用",
+    "noMicrophoneAvailable": "未检测到可用的麦克风，语音输入暂不可用。请连接键盘，或给电脑接上麦克风。",
+    "computerMicrophoneNotGranted": "电脑麦克风尚未授权：未授权时不会使用它，录音时也不会弹出授权。",
+    "computerMicrophoneDenied": "电脑麦克风已被拒绝：请到「系统设置 › 隐私与安全性 › 麦克风」里开启 ReAI Board。",
+    "grantComputerMicrophone": "授权电脑麦克风",
+    "audioSourceUnavailable": "暂不可用",
+    "audioSourceLegacyUac": "USB 音频兼容模式",
+    "audioSourceNow": "{value0} · 当前：{value1}",
     "systemInputDevice": "系统输入设备",
     "noSystemInputDevicesAvailable": "没有可用的系统输入设备",
     "systemDefaultDevice": "系统默认设备",
@@ -610,6 +645,7 @@
     "textInsertionPermissionIsDisabledInInstalled": "还没有在「已安装扩展 → 语音输入法 → 权限」里开启写回权限，识别结果写不进去；为避免继续丢字，新的录音会在开始前拦住。开启权限后把上面的档位切一下即可恢复。",
     "blockedBeforeRecording": "录音前拦截",
     "recordingRetention2": "记录保留多久",
+    "allDayArchive": "全天存档",
     "retentionPeriod": "保留多久",
     "keepsOnlyRecordingsWithValidTextFor": "只保存有有效文字的语音记录；最短 4 小时，最长 30 天",
     "storageUsed": "已占用",
@@ -754,7 +790,17 @@
     "agentConfig": "Agent 配置",
     "agentConfigTitle": "插件 Agent 配置",
     "agentConfigSub": "默认引擎、提示词模板与工具（在 Host 设置中打开）",
-    "agentConfigValue": "配置"
+    "agentConfigValue": "配置",
+    "keyboardDisconnectedHint": "检查键盘是否已连接，或在设置里换一个录音来源。",
+    "aiBoardUnavailableHint": "稍后再试，或在设置里换一个录音来源。",
+    "reconnectCloud": "重新连接",
+    "retryNow": "重试",
+    "cloudRetryingHint": "正在自动重试，网络或登录状态恢复后就能用。",
+    "cloudRetryStoppedHint": "已停止自动重试，可以手动再试一次。",
+    "cloudReconnectHint": "云服务连接需要重新确认。",
+    "previousCloudChoiceUnavailable": "之前的选择暂不可用",
+    "noCloudOptionsYet": "暂无可用选项",
+    "cloudModelsRefreshing": "正在更新云端选项"
   },
   "chatUi": {
     "message1": "语音输入",
@@ -989,6 +1035,12 @@
       },
       "agentSession": {
         "purpose": "让 Voice 通过通用 Agent 服务选择 Pi Agent 或 DSH Harness，并使用你的账户额度处理命令与润色"
+      },
+      "audioCapture": {
+        "purpose": "订阅 Host 的共享收音，让语音输入能补上按下语音键之前的话"
+      },
+      "audioClips": {
+        "purpose": "按下到松开（含松开后约 1.5 秒）截取一段共享录音在本机转成文字；片段只在本次识别期间持有，用完即释放"
       }
     },
     "requirements": {
@@ -1067,7 +1119,7 @@
   },
   "service": {
     "hostUpgradeRequired": "请先升级 ReAI Board，再重试语音输入。当前版本无法确认录音权限要求。",
-    "microphoneRequired": "请先在系统设置中允许麦克风访问，再重试听写。",
+    "microphoneRequired": "请先在 Voice 设置中授权电脑麦克风，再重试听写。",
     "busy": "已有语音任务正在使用录音，请稍后重试",
     "cancelled": "听写已取消",
     "timeout": "听写已超时，请重新开始",
@@ -1180,7 +1232,9 @@
     "permission5": "让 Agent 在你授权的工作目录内运行命令（系统层限定只能读写该目录）；范围外路径逐次确认，不开放任意位置的 shell",
     "requirement0": "ReAI DSH 运行组件",
     "requirement1": "ReAI Pi 运行组件",
-    "requirement2": "ReAI Codex 运行组件"
+    "requirement2": "ReAI Codex 运行组件",
+    "permission6": "订阅 Host 的共享收音，让语音输入能补上按下语音键之前的话",
+    "permission7": "按下到松开（含松开后约 1.5 秒）截取一段共享录音在本机转成文字；片段只在本次识别期间持有，用完即释放"
   },
   "diagnostics": {
     "title": "诊断信息",
@@ -1233,6 +1287,7 @@
       "invalidVersion": "App 返回的版本号格式不符，已省略"
     },
     "step": {
+      "conversationOpen": "打开会话",
       "statusLoad": "读取语音状态",
       "starting": "启动录音",
       "capture": "录音",
@@ -1256,6 +1311,7 @@
       "replay": "加载回听音频",
       "replayRetention": "修改录音保留时长",
       "replayClear": "清空录音缓存",
+      "continuousRecording": "切换全天存档",
       "recordingDelete": "删除这段录音",
       "actionMount": "挂到 Action 层",
       "permission": "请求系统权限",

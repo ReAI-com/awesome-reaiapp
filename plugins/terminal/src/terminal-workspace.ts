@@ -58,6 +58,7 @@ export interface TerminalWorkspace {
   restartActive(): Promise<void>;
   stopActive(): Promise<void>;
   refresh(): void;
+  showFooter(visible: boolean): void;
   dispose(): Promise<void>;
 }
 
@@ -92,6 +93,7 @@ export async function mountTerminalWorkspace(
   terminalClient: TerminalSessionClient,
   preferenceStore: TerminalPreferencesStore,
   messages: TerminalMessages = createTerminalMessages(),
+  footer?: HTMLElement,
 ): Promise<TerminalWorkspace> {
   root.innerHTML = `
     <main class="terminal-main-frame">
@@ -131,6 +133,8 @@ export async function mountTerminalWorkspace(
   const tabsElement = root.querySelector<HTMLElement>(".terminal-tabs")!;
   const workspaceElement = root.querySelector<HTMLElement>(".terminal-workspace-shell")!;
   const statusElement = root.querySelector<HTMLElement>(".terminal-statusbar")!;
+  const statusParent = statusElement.parentElement!;
+  if (footer) footer.append(statusElement);
   const toastElement = root.querySelector<HTMLElement>(".terminal-toast")!;
   const toastText = toastElement.querySelector<HTMLElement>("span")!;
   const menuTrigger = root.querySelector<HTMLButtonElement>(".terminal-layout-trigger")!;
@@ -737,40 +741,60 @@ export async function mountTerminalWorkspace(
     }
   };
   const onDocumentKey = (event: KeyboardEvent) => {
-    if (event.key !== "Escape") return;
+    if (event.key !== "Escape" || event.isComposing || (event.target as HTMLElement | null)?.closest(".xterm")) return;
+    // Claim the press only when an inner layer actually closed: an unclaimed Esc is
+    // handed to the Host's single-Esc order (surface.escape@1) to go back one level.
     if (!dialogElement.hidden) dialogElement.hidden = true;
     else if (!contextElement.hidden) contextElement.hidden = true;
-    else {
+    else if (layoutMenuOpen) {
       layoutMenuOpen = false;
       menuElement.classList.remove("open");
       menuTrigger.classList.remove("on");
-    }
+    } else return;
+    event.preventDefault();
   };
+  try {
+    const existing = await terminalClient.list();
+    if (existing.length === 0) {
+      const info = await terminalClient.create({ rows: 24, cols: 80 });
+      await createView(info);
+      const tab = createTerminalTab(uniqueId("tab"), messages.t("defaultTab", { number: nextTabNumber++ }), paneFromSession(info));
+      generatedNames.set(tab.id, { key: "defaultTab", params: { number: nextTabNumber - 1 } });
+      tabs = [tab];
+      activeTabId = tab.id;
+    } else {
+      const results = await Promise.allSettled(existing.map(createView));
+      const failed = results.find(result => result.status === "rejected");
+      if (failed?.status === "rejected") throw failed.reason;
+      const [first, ...rest] = existing;
+      let recovered = createTerminalTab(uniqueId("tab"), messages.t("recovered"), paneFromSession(first!));
+      for (const info of rest) {
+        const target = flattenTerminalPaneIds(recovered.root).at(-1)!;
+        recovered = splitTerminalPane(recovered, target, paneFromSession(info), "horizontal");
+      }
+      generatedNames.set(recovered.id, { key: "recovered", params: {} });
+      tabs = [recovered];
+      activeTabId = recovered.id;
+      nextTabNumber = 2;
+    }
+    render();
+  } catch (error) {
+    disposed = true;
+    stopPreferences();
+    layoutObservers.forEach(observer => observer.disconnect());
+    await Promise.all([...views.values()].map(async view => {
+      view.observer.disconnect();
+      view.disposables.forEach(item => item.dispose());
+      view.terminal.dispose();
+      await terminalClient.detach(view.info.id, view.token).catch(() => undefined);
+    }));
+    views.clear();
+    statusElement.remove();
+    root.replaceChildren();
+    throw error;
+  }
   document.addEventListener("pointerdown", onDocumentPointer);
   document.addEventListener("keydown", onDocumentKey);
-
-  const existing = await terminalClient.list();
-  if (existing.length === 0) {
-    const info = await terminalClient.create({ rows: 24, cols: 80 });
-    await createView(info);
-    const tab = createTerminalTab(uniqueId("tab"), messages.t("defaultTab", { number: nextTabNumber++ }), paneFromSession(info));
-    generatedNames.set(tab.id, { key: "defaultTab", params: { number: nextTabNumber - 1 } });
-    tabs = [tab];
-    activeTabId = tab.id;
-  } else {
-    await Promise.all(existing.map(createView));
-    const [first, ...rest] = existing;
-    let recovered = createTerminalTab(uniqueId("tab"), messages.t("recovered"), paneFromSession(first!));
-    for (const info of rest) {
-      const target = flattenTerminalPaneIds(recovered.root).at(-1)!;
-      recovered = splitTerminalPane(recovered, target, paneFromSession(info), "horizontal");
-    }
-    generatedNames.set(recovered.id, { key: "recovered", params: {} });
-    tabs = [recovered];
-    activeTabId = recovered.id;
-    nextTabNumber = 2;
-  }
-  render();
   const stopLocale = messages.subscribe(() => {
     messages.update(root);
     Terminal.strings.promptLabel = messages.t("terminalInput");
@@ -799,6 +823,7 @@ export async function mountTerminalWorkspace(
         if (path) path.textContent = messages.t("defaultDirectory");
       }
     }
+    messages.update(statusElement);
     const tab = activeTab();
     const activeLabel = statusElement.querySelector<HTMLElement>(".terminal-active-label");
     if (tab && activeLabel) activeLabel.textContent = paneLabel(tab, tab.activePaneId);
@@ -827,6 +852,11 @@ export async function mountTerminalWorkspace(
       const tab = activeTab();
       if (tab) await closePane(tab.id, tab.activePaneId);
     },
+    showFooter(visible) {
+      if (!footer) return;
+      if (visible) footer.append(statusElement);
+      else statusParent.append(statusElement);
+    },
     refresh() {
       render();
       queueMicrotask(() => {
@@ -848,6 +878,7 @@ export async function mountTerminalWorkspace(
         await terminalClient.detach(view.info.id, view.token).catch(() => undefined);
       }));
       views.clear();
+      statusElement.remove();
       root.replaceChildren();
     },
   };

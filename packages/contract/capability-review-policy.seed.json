@@ -11,6 +11,7 @@
     "com.reai.developer-center",
     "com.reai.device-doctor",
     "com.reai.dsh-agent",
+    "com.reai.files",
     "com.reai.local-tts",
     "com.reai.pi-agent",
     "com.reai.podcast",
@@ -52,6 +53,16 @@
       ]
     },
     {
+      "reviewId": "v105-files-local-provider",
+      "appId": "com.reai.files",
+      "publisherId": "reai",
+      "version": "*",
+      "packageSha256": null,
+      "approvedHostCapabilities": [
+        "resources.files@1"
+      ]
+    },
+    {
       "reviewId": "legacy-codex-link",
       "appId": "com.reai.codex-link",
       "publisherId": "reai",
@@ -68,24 +79,6 @@
       "appId": "com.reai.voice",
       "publisherId": "reai",
       "version": "*",
-      "packageSha256": null,
-      "approvedHostCapabilities": [
-        "voice.input@1",
-        "voice.command@1",
-        "voice.deliver@1",
-        "voice.recordings@1",
-        "activation.startup@1",
-        "cloud.model.invoke@1",
-        "agent.dsh@1",
-        "agent.session@1",
-        "voice.context@1"
-      ]
-    },
-    {
-      "reviewId": "voice-2.12.35-builtin",
-      "appId": "com.reai.voice",
-      "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
-      "version": "2.12.35",
       "packageSha256": null,
       "approvedHostCapabilities": [
         "voice.input@1",
@@ -806,6 +799,102 @@
       ]
     },
     {
+      "reviewId": "voice-2.14.6-dev.6-t14-audio-clips-escape-source-review",
+      "appId": "com.reai.voice",
+      "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
+      "version": "2.14.6-dev.6",
+      "packageSha256": null,
+      "approvedHostCapabilities": [
+        "voice.input@1",
+        "voice.command@1",
+        "voice.deliver@1",
+        "voice.context@1",
+        "voice.recordings@1",
+        "activation.startup@1",
+        "cloud.model.invoke@1",
+        "agent.session@1",
+        "surface.clipboard@1",
+        "agent.session@2",
+        "system.folder-pick@1",
+        "local.terminal.exec@1",
+        "audio.capture@1",
+        "audio.clips@1",
+        "surface.escape@1"
+      ]
+    },
+    {
+      "reviewId": "voice-2.14.6-dev.7-presentation-source-review",
+      "appId": "com.reai.voice",
+      "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
+      "version": "2.14.6-dev.7",
+      "packageSha256": null,
+      "approvedHostCapabilities": [
+        "voice.input@1",
+        "voice.command@1",
+        "voice.deliver@1",
+        "voice.context@1",
+        "voice.recordings@1",
+        "activation.startup@1",
+        "cloud.model.invoke@1",
+        "agent.session@1",
+        "surface.clipboard@1",
+        "agent.session@2",
+        "system.folder-pick@1",
+        "local.terminal.exec@1",
+        "audio.capture@1",
+        "audio.clips@1",
+        "surface.escape@1"
+      ]
+    },
+    {
+      "reviewId": "voice-2.14.6-archive-switch-source-review",
+      "appId": "com.reai.voice",
+      "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
+      "version": "2.14.6",
+      "packageSha256": null,
+      "approvedHostCapabilities": [
+        "voice.input@1",
+        "voice.command@1",
+        "voice.deliver@1",
+        "voice.context@1",
+        "voice.recordings@1",
+        "activation.startup@1",
+        "cloud.model.invoke@1",
+        "agent.session@1",
+        "surface.clipboard@1",
+        "agent.session@2",
+        "system.folder-pick@1",
+        "local.terminal.exec@1",
+        "audio.capture@1",
+        "audio.clips@1",
+        "surface.escape@1"
+      ]
+    },
+    {
+      "reviewId": "voice-2.14.7-pdf-budget-fast-fail-source-review",
+      "appId": "com.reai.voice",
+      "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
+      "version": "2.14.7",
+      "packageSha256": null,
+      "approvedHostCapabilities": [
+        "voice.input@1",
+        "voice.command@1",
+        "voice.deliver@1",
+        "voice.context@1",
+        "voice.recordings@1",
+        "activation.startup@1",
+        "cloud.model.invoke@1",
+        "agent.session@1",
+        "surface.clipboard@1",
+        "agent.session@2",
+        "system.folder-pick@1",
+        "local.terminal.exec@1",
+        "audio.capture@1",
+        "audio.clips@1",
+        "surface.escape@1"
+      ]
+    },
+    {
       "reviewId": "voice-2.13.0-rc.1-agent-v2-source-review",
       "appId": "com.reai.voice",
       "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
@@ -826,24 +915,6 @@
       ]
     },
     {
-      "reviewId": "voice-2.12.37-builtin",
-      "appId": "com.reai.voice",
-      "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
-      "version": "2.12.37",
-      "packageSha256": null,
-      "approvedHostCapabilities": [
-        "voice.input@1",
-        "voice.command@1",
-        "voice.deliver@1",
-        "voice.recordings@1",
-        "activation.startup@1",
-        "cloud.model.invoke@1",
-        "agent.dsh@1",
-        "agent.session@1",
-        "voice.context@1"
-      ]
-    },
-    {
       "reviewId": "browser-1.0.2-a821f556",
       "appId": "com.reai.browser",
       "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
@@ -861,6 +932,17 @@
       "packageSha256": "3ca873b106dba91d189f56176890552887269be01caef0737d99685494d19019",
       "approvedHostCapabilities": [
         "terminal.session@1"
+      ]
+    },
+    {
+      "reviewId": "terminal-1.0.5-dev.2-v105-escape",
+      "appId": "com.reai.terminal",
+      "publisherId": "reai",
+      "version": "1.0.5-dev.2",
+      "packageSha256": null,
+      "approvedHostCapabilities": [
+        "terminal.session@1",
+        "surface.escape@1"
       ]
     },
     {
@@ -906,6 +988,34 @@
       "packageSha256": "7330ba6804f8fef1270e953c7add3b2c85d9d9b9ee7b3b028b6d1935b150a336",
       "approvedHostCapabilities": [
         "agent.dsh-observe@1"
+      ]
+    },
+    {
+      "reviewId": "pi-agent-1.0.5-dev.2-v105-folder-escape",
+      "appId": "com.reai.pi-agent",
+      "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
+      "version": "1.0.5-dev.2",
+      "packageSha256": null,
+      "approvedHostCapabilities": [
+        "agent.pi-management@1",
+        "surface.escape@1",
+        "agent.session@2",
+        "cloud.model.invoke@1",
+        "resources.files@1"
+      ]
+    },
+    {
+      "reviewId": "dsh-agent-1.2.8-dev.3-v105-folder-escape",
+      "appId": "com.reai.dsh-agent",
+      "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
+      "version": "1.2.8-dev.3",
+      "packageSha256": null,
+      "approvedHostCapabilities": [
+        "agent.dsh-observe@1",
+        "surface.escape@1",
+        "agent.session@2",
+        "cloud.model.invoke@1",
+        "resources.files@1"
       ]
     },
     {
@@ -979,6 +1089,40 @@
         "agent.session@2",
         "system.folder-pick@1",
         "local.terminal.exec@1"
+      ]
+    },
+    {
+      "reviewId": "voice-2.14.6-26798cc3",
+      "appId": "com.reai.voice",
+      "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
+      "version": "2.14.6",
+      "packageSha256": "26798cc3873a26ef3a160e04f6d1b5d18e078a4315a6075c49199561c237af41",
+      "approvedHostCapabilities": [
+        "voice.input@1",
+        "voice.command@1",
+        "voice.deliver@1",
+        "voice.context@1",
+        "voice.recordings@1",
+        "activation.startup@1",
+        "cloud.model.invoke@1",
+        "agent.session@1",
+        "surface.clipboard@1",
+        "agent.session@2",
+        "system.folder-pick@1",
+        "local.terminal.exec@1",
+        "audio.capture@1",
+        "audio.clips@1",
+        "surface.escape@1"
+      ]
+    },
+    {
+      "reviewId": "browser-1.0.5-47a11893",
+      "appId": "com.reai.browser",
+      "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
+      "version": "1.0.5",
+      "packageSha256": "47a11893d18dd0464712fb899426ee820002b65576ae40e668c4786de814406d",
+      "approvedHostCapabilities": [
+        "browser.engine@1"
       ]
     }
   ]

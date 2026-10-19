@@ -1,0 +1,165 @@
+/* 「文件夹任务」子页。只用 Host 注入的主题 token（明暗由 Host 重写 :root），
+   44px 标题栏安全区由 .plugin-main-frame / SDK frame 统一处理，这里不再累计。
+   与 dsh-agent 的同名文件逐字一致。 */
+/* 自带完整布局合同：不依赖宿主插件主样式里的 .plugin-main-frame 规则（两插件框架不同）。 */
+.ft-frame {
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ft-frame .ft-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 10px 24px 20px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  line-height: 1.5;
+  color: var(--text-primary, #1c1c2e);
+}
+.ft-frame [hidden] { display: none !important; }
+.ft-intro .ft-title { font-size: 20px; line-height: 24px; font-weight: 600; }
+.ft-intro .ft-sub { margin-top: 3px; font-size: 12px; color: var(--text-secondary, #6b6b80); }
+.ft-workspace { display: flex; flex-direction: column; gap: 12px; flex: 1 1 auto; min-height: 0; }
+.ft-panel {
+  padding: 14px 16px;
+  border: 1px solid var(--divider, rgba(92, 92, 224, .08));
+  border-radius: 12px;
+  background: var(--card-bg, rgba(255, 255, 255, .9));
+  font-size: 13px;
+  color: var(--text-secondary, #6b6b80);
+}
+.ft-panel b { color: var(--text-primary, #1c1c2e); }
+.ft-panel p { margin: 6px 0 0; }
+.ft-panel-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.ft-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border: 1px solid var(--divider, rgba(92, 92, 224, .08));
+  border-radius: 12px;
+  background: var(--accent-soft, rgba(92, 92, 224, .07));
+}
+.ft-folder-copy { min-width: 0; }
+.ft-label { font-size: 11px; font-weight: 600; letter-spacing: .6px; color: var(--text-tertiary, #a5a5b8); }
+.ft-folder-name { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ft-muted { color: var(--text-tertiary, #a5a5b8); font-weight: 400; }
+.ft-folder-actions { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+.ft-select {
+  max-width: 220px;
+  height: 30px;
+  padding: 0 8px;
+  border: 1px solid var(--divider, rgba(92, 92, 224, .08));
+  border-radius: 8px;
+  background: var(--panel-bg, rgba(255, 255, 255, .9));
+  color: var(--text-primary, #1c1c2e);
+  font-size: 12px;
+}
+.ft-btn {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--divider, rgba(92, 92, 224, .08));
+  border-radius: 8px;
+  background: var(--card-bg, #fff);
+  color: var(--text-primary, #1c1c2e);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ft-btn.primary { background: var(--accent, #5c5ce0); border-color: var(--accent, #5c5ce0); color: #fff; }
+.ft-btn.danger { color: var(--alert, #ff3b30); border-color: var(--alert-line, rgba(255, 59, 48, .32)); }
+.ft-btn.ghost { background: transparent; }
+.ft-btn:disabled { opacity: .5; cursor: not-allowed; }
+.ft-btn:focus-visible, .ft-mode:focus-visible, .ft-link:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent, #5c5ce0) 45%, transparent);
+  outline-offset: 2px;
+}
+.ft-modes { display: inline-flex; align-self: flex-start; gap: 2px; padding: 2px; border-radius: 9px; background: var(--accent-soft, rgba(92, 92, 224, .07)); }
+.ft-mode {
+  height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary, #6b6b80);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ft-mode.active { background: var(--card-bg, #fff); color: var(--accent, #5c5ce0); font-weight: 600; }
+.ft-mode:disabled { cursor: not-allowed; }
+.ft-mode-hint { font-size: 11px; color: var(--text-tertiary, #a5a5b8); margin-top: -6px; }
+.ft-warn {
+  padding: 8px 12px;
+  border: 1px solid var(--warn-line, rgba(255, 159, 10, .32));
+  border-radius: 10px;
+  background: var(--warn-soft, rgba(255, 159, 10, .08));
+  color: var(--text-primary, #1c1c2e);
+  font-size: 12px;
+}
+.ft-link { border: 0; padding: 0; background: none; color: var(--accent, #5c5ce0); font-size: 12px; cursor: pointer; text-decoration: underline; }
+.ft-log {
+  flex: 1 1 160px;
+  min-height: 120px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--divider, rgba(92, 92, 224, .08));
+  border-radius: 12px;
+  background: var(--card-bg, rgba(255, 255, 255, .9));
+}
+.ft-empty { margin: auto; font-size: 12px; color: var(--text-tertiary, #a5a5b8); text-align: center; }
+.ft-msg { max-width: 100%; }
+.ft-msg-who { font-size: 11px; font-weight: 600; color: var(--text-tertiary, #a5a5b8); }
+.ft-msg-text { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.ft-msg.user .ft-msg-text { color: var(--accent, #5c5ce0); }
+.ft-msg.notice .ft-msg-text { color: var(--text-secondary, #6b6b80); font-size: 12px; }
+.ft-msg.error .ft-msg-text { color: var(--alert, #ff3b30); }
+.ft-markdown { white-space: normal; }
+.ft-markdown > :first-child { margin-top: 0; }
+.ft-markdown > :last-child { margin-bottom: 0; }
+.ft-markdown p, .ft-markdown ul, .ft-markdown ol, .ft-markdown blockquote, .ft-markdown pre, .ft-markdown table { margin: 6px 0; }
+.ft-markdown h1, .ft-markdown h2, .ft-markdown h3, .ft-markdown h4 { margin: 10px 0 4px; font-size: 14px; line-height: 1.4; }
+.ft-markdown ul, .ft-markdown ol { padding-left: 20px; }
+.ft-markdown blockquote { padding-left: 10px; border-left: 3px solid var(--divider, rgba(92, 92, 224, .08)); color: var(--text-secondary, #6b6b80); }
+.ft-markdown code { padding: 1px 4px; border-radius: 4px; background: var(--accent-soft, rgba(92, 92, 224, .07)); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.ft-markdown pre { overflow-x: auto; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft, rgba(92, 92, 224, .07)); white-space: pre; }
+.ft-markdown pre code { padding: 0; background: none; }
+.ft-markdown table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 12px; }
+.ft-markdown th, .ft-markdown td { padding: 4px 8px; border: 1px solid var(--divider, rgba(92, 92, 224, .08)); }
+.ft-markdown .ft-align-center { text-align: center; }
+.ft-markdown .ft-align-right { text-align: right; }
+.ft-markdown .ft-md-source { color: var(--text-tertiary, #a5a5b8); overflow-wrap: anywhere; }
+.ft-composer { display: flex; flex-direction: column; gap: 8px; }
+.ft-input {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--divider, rgba(92, 92, 224, .08));
+  border-radius: 10px;
+  background: var(--panel-bg, rgba(255, 255, 255, .9));
+  color: var(--text-primary, #1c1c2e);
+  font: inherit;
+  font-size: 13px;
+}
+.ft-input:focus { outline: none; border-color: var(--accent, #5c5ce0); }
+.ft-input:disabled { opacity: .6; }
+.ft-actions { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+
+@media (max-width: 560px) {
+  .ft-frame .ft-body { padding: 10px 14px 16px; }
+  .ft-card { flex-direction: column; align-items: stretch; }
+  .ft-folder-actions { flex-wrap: wrap; }
+  .ft-select { max-width: none; flex: 1 1 auto; }
+  .ft-modes { align-self: stretch; }
+  .ft-mode { flex: 1 1 0; padding: 0 6px; }
+}

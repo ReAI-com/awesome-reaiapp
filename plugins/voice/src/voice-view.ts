@@ -1,10 +1,13 @@
 import type { PreparedVoiceAttachment, VoiceAttachmentTarget } from "./voice-attachment-input";
+import * as surfaceSdk from "@reai/app-sdk/v1";
+import type { AgentConversationOpenReceipt } from "@reai/app-sdk/v1";
 import { selectedCloudOption, validCloudOptionId } from "./cloud-selection";
 import { voiceCloudFailureMessage } from "./voice-user-errors";
 import { contextCharacterCount, contextTime, hasUnfinishedContextStatus, isEmptyContextRecording, isEmptyContextText, isContextFiller, projectContextUtterances } from "./context-display";
 import { TRANSLATION_LANGUAGES, translationTarget, translationLabel, type TranslationTarget } from "./voice-translation";
 import { t, bindText, bindAttribute, localizedTextNode, releaseLocaleBindings, readText, onVoiceLocaleChange, voiceLocale, type TextSource } from "./voice-i18n";
 import type {
+  VoiceAudioSourceMode,
   VoiceInputSettings,
   VoiceModelInfo,
   VoicePermissionKind,
@@ -40,6 +43,17 @@ import {
   SOURCE_MIGRATION_NOTICE,
 } from "./data";
 import { createVoiceChatDetail } from "./voice-chat-detail";
+import {
+  AUDIO_SOURCE_MODES,
+  audioSourceModeDisabledReason,
+  audioSourceModePatch,
+  currentAudioSourceMode,
+  hostSupportsFiveModes,
+  isLegacyCompatibilityMode,
+  noMicrophoneAvailable,
+  shouldOfferComputerMicrophoneGrant,
+  type AudioSourceDisabledReason,
+} from "./voice-audio-source";
 import { BUILTIN_VOICE_COMMANDS } from "./voice-ai-contract";
 import { interruptedLabel } from "./voice-stop-copy";
 import {
@@ -148,6 +162,93 @@ const REPLAY_RETENTIONS: Array<{
 
 const REPLAY_WAVE_BAR_COUNT = 58;
 
+/** One selected conversation, from real hydration through durable Host acknowledgement. */
+export function createOwnedConversationOpenController<T extends { id: string; agentSessionId?: string }>(ports: {
+  load(entityId: string, current: () => boolean): Promise<T | undefined>;
+  prepare(item: T): Promise<AgentConversationOpenReceipt | undefined>;
+  land(item: T, current: () => boolean): Promise<boolean>;
+  commit(item: T, receipt: AgentConversationOpenReceipt | undefined): Promise<void>;
+  cancel(sessionId: string, receipt: AgentConversationOpenReceipt): Promise<void>;
+  completed(item: T, current: () => boolean): Promise<void>;
+  failed(error: unknown, item?: T, phase?: "hydrate" | "prepare" | "land" | "commit" | "complete"): void;
+}) {
+  type Selection = {
+    entity: string; session: string; receipt?: AgentConversationOpenReceipt;
+    pending?: Promise<boolean>; committed: boolean; completed: boolean;
+    cancelledToken?: string;
+  };
+  let selected: Selection | undefined;
+  const cancel = (selection: Selection) => {
+    const receipt = selection.receipt;
+    if (!receipt || selection.committed || selection.cancelledToken === receipt.openToken) return;
+    selection.cancelledToken = receipt.openToken;
+    void ports.cancel(selection.session, receipt).catch(() => undefined);
+  };
+  const retire = () => {
+    const previous = selected;
+    selected = undefined;
+    if (previous) cancel(previous);
+  };
+  const open = (entity: string, receipt?: AgentConversationOpenReceipt): Promise<boolean> => {
+    let selection = selected;
+    if (!selection || selection.entity !== entity
+      || (receipt && receipt.openToken !== selection.receipt?.openToken)
+      || (selection.completed && !receipt)) {
+      retire();
+      selection = { entity, session: entity, receipt, committed: false, completed: false };
+      selected = selection;
+    }
+    if (selection.pending) return selection.pending;
+    if (selection.completed) return Promise.resolve(true);
+    const operation = selection;
+    const current = () => selected === operation;
+    const run = async () => {
+      let committing = false;
+      let item: T | undefined;
+      let phase: "hydrate" | "prepare" | "land" | "commit" | "complete" = "hydrate";
+      try {
+        item = await ports.load(entity, current);
+        if (!current()) return false;
+        if (!item || (receipt && item.agentSessionId !== entity)) {
+          throw { code: "TASK_SOURCE_STALE" };
+        }
+        operation.session = item.agentSessionId ?? entity;
+        if (!operation.receipt && !operation.committed) {
+          phase = "prepare";
+          operation.receipt = await ports.prepare(item);
+          if (!current()) { cancel(operation); return false; }
+        }
+        phase = "land";
+        if (!await ports.land(item, current)) throw { code: "TASK_NAVIGATION_FAILED" };
+        if (!current()) return false;
+        if (!operation.committed) {
+          committing = true;
+          phase = "commit";
+          await ports.commit(item, operation.receipt);
+          operation.committed = true;
+        }
+        if (!current()) return false;
+        phase = "complete";
+        await ports.completed(item, current);
+        if (!current()) return false;
+        operation.completed = true;
+        return true;
+      } catch (error) {
+        if (current()) {
+          // A failed durable commit keeps the exact receipt for a same-selection retry.
+          // A navigation/hydration failure grants no acknowledgement.
+          if (!committing && !operation.committed) { cancel(operation); selected = undefined; }
+          ports.failed(error, item, phase);
+        }
+        return false;
+      }
+    };
+    operation.pending = run().finally(() => { operation.pending = undefined; });
+    return operation.pending;
+  };
+  return { open, retire };
+}
+
 export interface VoiceView {
   update(state: VoiceViewState): void;
   openSettings(target?: VoiceSettingsTarget): void;
@@ -156,8 +257,12 @@ export interface VoiceView {
    * 打开后光标直接落在输入框（用户明确点了「继续」「打开会话」，接下来就是打字）。
    */
   openConversation(entityId: string, options?: { focusComposer?: boolean }): boolean;
+  setConversationOpenPending(pending: boolean): void;
+  waitForConversationLanding(entityId: string, current: () => boolean): Promise<boolean>;
   /** 触发事件管理三级页返回 Voice 设置主面；供 Host 中间面包屑命令调用。 */
   navigateSettings(): void;
+  /** Trusted Host settings action toggles back to root, including settings descendants. */
+  toggleSettings(): void;
   /**
    * 回主列表（B2-2 面包屑返回键的落点）：Host 的 back-to-root command 调它。
    * 与设置页返回钮同一套收口（声音、聊天瞬态），幂等——已在主列表时是空操作。
@@ -166,12 +271,19 @@ export interface VoiceView {
   dispose(): void;
 }
 
+/** 设置保存的附加意图：五档对话框里的显式选档（旧 Host 上 wire 可能不带档位）。 */
+export interface VoiceSettingsChangeOptions {
+  audioSourceMode?: VoiceAudioSourceMode;
+}
+
 export interface VoiceViewActions {
   onPrepareAttachments?(conversation?: VoiceAgentConversationRef): Promise<VoiceAttachmentTarget>;
   onUploadAttachment?(file: File, target: VoiceAttachmentTarget, signal: AbortSignal): Promise<PreparedVoiceAttachment>;
   onReleaseAttachment?(file: PreparedVoiceAttachment): Promise<void>;
   /** 用户打开历史详情时重试可见 Surface 的 Host 版本读取；不由 render 触发。 */
   onOpenHistory?(): void;
+  onOpenConversation?(entityId: string): Promise<boolean>;
+  onConversationNavigation?(): void;
   onCopyText?(text: string): Promise<void>;
   /** 复制诊断前补读 Host 版本（复用在途请求，最多等 3 秒）。 */
   onEnsureHostVersion?(): Promise<void>;
@@ -185,7 +297,7 @@ export interface VoiceViewActions {
   onCommandToggle(commandId?: string, conversation?: VoiceAgentConversationRef): Promise<unknown>;
   onOpenSystemTask(): Promise<void>;
   onRefresh(): Promise<void>;
-  onSettingsChanged(settings: Partial<VoiceInputSettings>): Promise<void>;
+  onSettingsChanged(settings: Partial<VoiceInputSettings>, options?: VoiceSettingsChangeOptions): Promise<void>;
   onFeatureSettingsChanged(settings: Partial<VoiceFeatureSettings>): Promise<void>;
   onAgentExperimentChanged(settings: VoiceAgentExperimentSettings): Promise<void>;
   /** F02/F04：对话页范围面板——刷新 backend 快照 / 只改当前对话的 Agent（工作目录入口已按 2026-09-30 用户裁定移除）。 */
@@ -194,10 +306,7 @@ export interface VoiceViewActions {
   onDownloadModel(modelId: string): Promise<void>;
   onCancelModelDownload(modelId: string): Promise<void>;
   onRequestPermission(kind: VoicePermissionKind): Promise<void>;
-  /**
-   * 全天存档开关（R4：Context 档没有控制条，唯一出口在设置页——那一页归车道 D，
-   * 这个 action 留在合同里给它接）。
-   */
+  /** 全天存档开关（R4：Context 档没有控制条，唯一出口在设置 › 记录保留这一颗开关）。 */
   onContinuousRecording(enabled: boolean): Promise<void>;
   /** §5D：用户在截图同意对话框里勾选并确认后触发；app 侧读当前 epoch 并持久化。 */
   onScreenshotConsentConfirm(): Promise<void>;
@@ -329,6 +438,7 @@ export function mountVoiceView(
   let agentConfigJumpError: TextSource | undefined;
   let focusedSettingsTarget: VoiceSettingsTarget | undefined;
   let languageDialogOpen = false;
+  let sourceDialogOpen = false;
   let summaryConsentOpen = false;
   let screenshotConsentOpen = false;
   let settingsFocusRevealed = false;
@@ -407,6 +517,7 @@ export function mountVoiceView(
   // 已用时间每秒就地刷新（不整页重渲染）；跨过慢阈值的活动行由它切到强调样式。
   const elapsedTicker = window.setInterval(() => { if (!disposed) tickVoiceElapsed(root); }, 1000);
   let noticeReported = false;
+  let conversationOpenPending = false;
   let pendingNoticeElement: HTMLElement | undefined;
   const reportNoticeWhenVisible = () => {
     // 延后一轮：mount 返回后 App 会先处理 initialIntent。若任务深链立刻换到对话页，
@@ -414,6 +525,7 @@ export function mountVoiceView(
     queueMicrotask(() => {
       if (
         disposed
+        || conversationOpenPending
         || noticeReported
         || !pendingNoticeElement?.isConnected
         || document.visibilityState === "hidden"
@@ -515,8 +627,9 @@ export function mountVoiceView(
     });
     const userMessage = () => typeof source?.userMessage === "string" ? source.userMessage.trim() : "";
     const browserMessage = typeof source?.message === "string" ? source.message.trim() : "";
-    const message = () => ownedMessage?.() || userMessage()
-      || (browserMessage && /[\u3400-\u9fff]/u.test(browserMessage) ? browserMessage : "")
+    // Host / 浏览器原文只在开发者模式进主句；普通模式只用插件自己的文案。
+    const message = () => ownedMessage?.() || (state.developerMode ? userMessage() : "")
+      || (state.developerMode && browserMessage && /[\u3400-\u9fff]/u.test(browserMessage) ? browserMessage : "")
       || (source?.name === "NotAllowedError"
         ? t("view.playbackIsCurrentlyBlockedByTheSystem")
         : t("view.audioCouldNotPlayReopenThisRecording"));
@@ -611,8 +724,16 @@ export function mountVoiceView(
     }
   };
 
-  const shell = el("div", "voice-page plugin-main-frame voice-main-frame");
-  root.replaceChildren(shell);
+  root.replaceChildren();
+  // Older injected SDKs can lack the helper; keep their original frame fallback.
+  const layout = typeof surfaceSdk.createSurfaceLayout === "function" ? surfaceSdk.createSurfaceLayout(root) : undefined;
+  const frame = layout?.frame ?? el("div", "voice-page plugin-main-frame voice-main-frame");
+  frame.classList.add("voice-page", "plugin-main-frame", "voice-main-frame");
+  const shell = layout?.body ?? frame;
+  if (layout) {
+    shell.classList.add("voice-surface-body");
+    Object.assign(shell.style, { display: "flex", flexDirection: "column", overflow: "hidden" });
+  } else root.append(frame);
 
   /* B2-3 面包屑合同：每次页面变化都上报（去重同页重复 render），含挂载初始态。 */
   let lastReportedPage: Page | null | undefined;
@@ -748,8 +869,18 @@ export function mountVoiceView(
     textEl,
   });
 
+  let pendingConversation: { id: string; startedAt: number } | undefined;
+  let navigationKey: string | undefined;
+  let openingConversation = false;
   const render = () => {
     if (disposed) return;
+    const nextNavigation = `${page}:${selectedId ?? ""}`;
+    if (navigationKey !== undefined && nextNavigation !== navigationKey && !openingConversation) {
+      pendingConversation = undefined;
+      conversationOpenPending = false;
+      actions.onConversationNavigation?.();
+    }
+    navigationKey = nextNavigation;
     // Host 轮询不能拆掉正在拖动的原生 range；只延后仍有效的同一详情。
     if (releaseReplaySeek) {
       const item = page === "detail" ? state.history.find((entry) => entry.id === selectedId)
@@ -795,6 +926,27 @@ export function mountVoiceView(
     else if (page === "chat") renderChat();
     else if (page === "context") renderContextDetail();
     else renderHistory();
+    if ((page === "chat" || page === "translation") && state.error && state.errorDetail?.step === "conversationOpen") {
+      const item = state.commandHistory.find(entry => entry.id === selectedId);
+      const feedback = inlineErrorBlock("inline-error");
+      feedback.classList.add("chat-send-error", "voice-conversation-open-error");
+      if (item?.agentSessionId && actions.onOpenConversation) {
+        const retry = textEl("button", "dev-btn", () => t("common.retry"));
+        retry.type = "button";
+        retry.addEventListener("click", () => {
+          if (retry.disabled) return;
+          retry.disabled = true;
+          bindText(retry, () => t("common.loading"));
+          void actions.onOpenConversation!(item.agentSessionId!).finally(() => {
+            retry.disabled = false;
+          });
+        });
+        feedback.append(retry);
+      }
+      const header = shell.querySelector(".main-body > header");
+      if (header) header.after(feedback);
+      else (shell.querySelector(".main-body") ?? shell).prepend(feedback);
+    }
     renderedPage = page;
     // 先恢复媒体控件的可用态，避免向仍 disabled 的新 range 恢复焦点。
     syncReplayButton();
@@ -843,6 +995,7 @@ export function mountVoiceView(
   const markOpenedCommandRead = () => {
     if (page !== "chat" && page !== "translation") return;
     const item = state.commandHistory.find((entry) => entry.id === selectedId);
+    if (item?.agentSessionId && actions.onOpenConversation) return;
     if (!item?.unread || markReadInFlight === item.id) return;
     markReadInFlight = item.id;
     void actions.onMarkCommandRead(item.id).catch(() => undefined).finally(() => {
@@ -1360,6 +1513,11 @@ export function mountVoiceView(
     });
   };
 
+  /** 重新登录后插件授权仍未恢复，且自动重试已停：需要用户去连接一次云服务。 */
+  const cloudNeedsReconnect = () => state.cloudModelsFailureCode === "PLUGIN_OAUTH_REAUTH_REQUIRED" && state.cloudModelsRetryExhausted === true;
+  /** 普通模式下云端选项读不到时的人话：区分自动重试中、已停、需要重新连接。 */
+  const cloudUnavailableHint = () => cloudNeedsReconnect() ? t("view.cloudReconnectHint")
+    : state.cloudModelsRetryExhausted ? t("view.cloudRetryStoppedHint") : t("view.cloudRetryingHint");
   const voiceWarnRows = (): HTMLElement[] => {
     const rows: HTMLElement[] = [];
     if (state.statusLoad === "loading") return rows;
@@ -1378,7 +1536,9 @@ export function mountVoiceView(
     if (keyboardOff(state)) {
       rows.push(warnRow(
         () => t("view.keyboardDisconnected"),
-        () => t("diagnostics.sourceReason", { source: sourceLabel(), issue: state.sourceIssue ?? t("diagnostics.hostNoCode") }),
+        () => state.developerMode
+          ? t("diagnostics.sourceReason", { source: sourceLabel(), issue: state.sourceIssue ?? t("diagnostics.hostNoCode") })
+          : t("view.keyboardDisconnectedHint"),
         () => t("view.openSettings"),
         () => openSettings("source"),
         "keyboard",
@@ -1398,11 +1558,13 @@ export function mountVoiceView(
     }
     if (state.settings.engine === "cloud" && state.commandLoggedIn && !state.cloudModelsLoading
       && state.cloudModelsUnavailable && !selectedCloudOption(state.cloudModels, state.featureSettings.cloudModelId)) {
+      const reconnect = cloudNeedsReconnect() && !!actions.onOpenAppPermissions;
       rows.push(warnRow(
         () => t("view.cloudOptionsUnavailable"),
-        () => t("diagnostics.cloudModelsReason"),
-        () => t("view.openSettings"),
-        () => openSettings("engine"),
+        () => state.developerMode ? t("diagnostics.cloudModelsReason") : cloudUnavailableHint(),
+        () => state.developerMode ? t("view.openSettings") : reconnect ? t("view.reconnectCloud") : t("view.retryNow"),
+        () => state.developerMode ? openSettings("engine")
+          : reconnect ? fire(() => actions.onOpenAppPermissions!()) : fire(() => actions.onRefresh()),
         "cloud-models",
         errorDiagnostics(`warn:cloud-models:${state.cloudModelsErrorDetail?.at ?? ""}`, state.cloudModelsErrorDetail),
       ));
@@ -1439,8 +1601,10 @@ export function mountVoiceView(
       } else {
         rows.push(warnRow(
           () => t("view.aiBoardIsTemporarilyUnavailable"),
-          // 说真实原因（当前音源 + Host 报告的状态），不再只写「请检查设备后重试」。
-          () => t("diagnostics.sourceReason", { source: sourceLabel(), issue: state.sourceIssue ?? t("diagnostics.hostNoCode") }),
+          // 开发者模式说真实原因（当前音源 + Host 报告的状态）；普通模式只给人话与下一步。
+          () => state.developerMode
+            ? t("diagnostics.sourceReason", { source: sourceLabel(), issue: state.sourceIssue ?? t("diagnostics.hostNoCode") })
+            : t("view.aiBoardUnavailableHint"),
           () => t("view.openSettings"),
           () => openSettings("source"),
           "source",
@@ -1466,7 +1630,7 @@ export function mountVoiceView(
       } else if (model.state === "failed") {
         rows.push(warnRow(
           () => t("view.localVoiceModelDownloadFailed"),
-          () => model.error ?? t("view.voiceInputCannotRecognizeYourSpeechRight"),
+          () => (state.developerMode ? model.error : undefined) ?? t("view.voiceInputCannotRecognizeYourSpeechRight"),
           () => t("view.openSettings"),
           () => openSettings("model"),
           "model",
@@ -1711,8 +1875,29 @@ export function mountVoiceView(
       if (ai) copyRow.append(taskCopyButton(translated ? "view.copyTranslation" : "view.copyAnswer", ai));
       if (copyRow.childNodes.length > 0) meta.append(copyRow);
     }
+    if (pendingConversation?.id === item.id) {
+      row.setAttribute("aria-busy", "true");
+      row.setAttribute("aria-disabled", "true");
+      const activity = info.querySelector<HTMLElement>(".task-preview")!;
+      releaseLocaleBindings(activity);
+      activity.replaceChildren();
+      bindText(activity, () => t("common.loading"));
+      activity.setAttribute("role", "status");
+      activity.append(elapsedNode({ sinceMs: pendingConversation.startedAt, sinceObserved: true }, undefined, true));
+    }
     row.append(avatar, info, meta);
     const open = () => {
+      if (item.agentSessionId && actions.onOpenConversation) {
+        if (pendingConversation?.id === item.id) return;
+        const pending = { id: item.id, startedAt: Date.now() };
+        pendingConversation = pending;
+        render();
+        actions.onOpenHistory?.();
+        void actions.onOpenConversation(item.agentSessionId).finally(() => {
+          if (pendingConversation === pending) { pendingConversation = undefined; render(); }
+        });
+        return;
+      }
       // 换一条就换一个对话：草稿与原地错误不跨条目串门，续接观察窗也从新一条算起。
       chatDetail.reset();
       releaseReplayAudio();
@@ -2983,6 +3168,7 @@ export function mountVoiceView(
     view.append(intro, content);
     shell.append(view);
     if (languageDialogOpen) shell.append(languageDialog());
+    if (sourceDialogOpen) shell.append(sourceDialog());
     if (summaryConsentOpen) shell.append(summaryConsentDialog());
     if (screenshotConsentOpen) shell.append(screenshotConsentDialog());
   };
@@ -3009,7 +3195,7 @@ export function mountVoiceView(
       void actions
         .onOpenAgentConfig()
         .catch((cause) => {
-          agentConfigJumpError = () => jumpErrorText("agent-config", cause);
+          agentConfigJumpError = () => jumpErrorText("agent-config", cause, state.developerMode);
         })
         .finally(() => render());
     });
@@ -3152,6 +3338,7 @@ export function mountVoiceView(
       languageDialogOpen = false;
       render();
     });
+    closeDialogOnEscape(layer, () => cancel.click());
     dialog.append(
       title,
       textEl("div", "voice-dialog-sub", () => t("view.currentModelValue", { value0: modelName() })),
@@ -3214,6 +3401,7 @@ export function mountVoiceView(
       summaryConsentOpen = false;
       render();
     });
+    closeDialogOnEscape(layer, () => cancel.click());
     const foot = el("div", "voice-dialog-foot");
     foot.append(cancel, confirm);
     dialog.append(
@@ -3268,6 +3456,7 @@ export function mountVoiceView(
       screenshotConsentOpen = false;
       render();
     });
+    closeDialogOnEscape(layer, () => cancel.click());
     const foot = el("div", "voice-dialog-foot");
     foot.append(cancel, confirm);
     dialog.append(
@@ -3392,7 +3581,7 @@ export function mountVoiceView(
       void actions
         .onOpenKeymap()
         .catch((cause) => {
-          keymapJumpError = () => keymapJumpErrorText(cause);
+          keymapJumpError = () => keymapJumpErrorText(cause, state.developerMode);
           keymapJumpErrorDetail = errorDetailFrom("keymap", cause);
         })
         .finally(() => render());
@@ -3465,9 +3654,11 @@ export function mountVoiceView(
       const selected = selectedCloudOption(models, state.featureSettings.cloudModelId);
       if (!selected) {
         const retainedId = state.featureSettings.cloudModelId;
-        const unavailable = option(() => retainedId
+        // 内部模型编号只在开发者模式出现；普通模式只说状态。
+        const unavailable = option(() => state.developerMode && retainedId
           ? `${retainedId} · ${t("view.cloudOptionsUnavailable")}`
-          : state.cloudModelsLoading ? t("view.cloudModelsLoading") : t("view.cloudDefaultUnavailable"),
+          : state.cloudModelsLoading ? t("view.cloudModelsLoading")
+            : retainedId && validCloudOptionId(retainedId) ? t("view.previousCloudChoiceUnavailable") : t("view.noCloudOptionsYet"),
           retainedId || "cloud-unavailable");
         unavailable.disabled = true;
         select.append(unavailable);
@@ -3476,18 +3667,27 @@ export function mountVoiceView(
       for (const model of models) select.append(option(() => model.label, model.id));
       select.value = selected?.id ?? (state.featureSettings.cloudModelId || "cloud-unavailable");
       select.disabled = !!state.cloudModelsLoading || models.length === 0;
-      select.setAttribute("aria-busy", String(!!state.cloudModelsLoading));
+      // 后台刷新（已有列表）不禁用、不换占位，只在旁边转圈。
+      select.setAttribute("aria-busy", String(!!state.cloudModelsLoading || !!state.cloudModelsRefreshing));
       select.addEventListener("change", () => {
         fire(() => actions.onFeatureSettingsChanged({ cloudModelId: select.value }));
       });
       const selectShell = el("div", "settings-select-shell");
       selectShell.append(select, iconEl("span", "settings-select-chevron", chevronDownIcon()));
+      if (state.cloudModelsRefreshing && !state.cloudModelsLoading) {
+        const refreshing = el("span", "settings-cloud-refreshing");
+        refreshing.setAttribute("role", "status");
+        bindAttribute(refreshing, "aria-label", () => t("view.cloudModelsRefreshing"));
+        selectShell.append(refreshing);
+      }
       card.append(settingsRow(
         () => t("view.cloudModel"),
         () => state.cloudModelsLoading ? t("view.cloudModelsLoading")
           : selected ? (state.featureSettings.cloudModelBillingPolicy === "free-only" ? t("view.cloudModelFreeOnly") : t("view.cloudOptionSaved"))
-          : models.length === 0 && validCloudOptionId(state.featureSettings.cloudModelId)
-            ? t("view.cloudSelectionRetained") : t("view.cloudDefaultUnavailable"),
+          : models.length === 0 && !state.developerMode
+            ? cloudUnavailableHint()
+            : models.length === 0 && validCloudOptionId(state.featureSettings.cloudModelId)
+              ? t("view.cloudSelectionRetained") : t("view.cloudDefaultUnavailable"),
         selectShell,
       ));
       if (models.length === 0 || !selected || state.errorDetail?.step === "settingsSave") {
@@ -3496,8 +3696,17 @@ export function mountVoiceView(
         reload.disabled = !!state.cloudModelsLoading;
         reload.addEventListener("click", () => fire(() => actions.onRefresh()));
         card.append(reload);
+        if (models.length === 0 && cloudNeedsReconnect() && actions.onOpenAppPermissions) {
+          const openPermissions = actions.onOpenAppPermissions;
+          const reconnect = textEl("button", "settings-link-btn", () => t("view.reconnectCloud")) as HTMLButtonElement;
+          reconnect.type = "button";
+          reconnect.dataset.action = "reconnect-cloud";
+          reconnect.addEventListener("click", () => fire(() => openPermissions()));
+          card.append(reconnect);
+        }
       }
-      // §6.0：读取云端选项的等待与失败在设置里同样说清步骤、已用时间、真实码与两端版本。
+      // §6.0：读取云端选项的等待与失败在设置里同样说清步骤、已用时间、真实码与两端版本（开发者模式）；
+      // 普通模式等待只剩中性的步骤与转圈，失败不挂诊断。
       if (state.cloudModelsLoading) {
         card.append(diagnosticsBlock("settings:cloud-models:loading", {
           state: "waiting", step: () => t("diagnostics.step.cloudModels"), ...waitSince("settings:cloud-models"),
@@ -3508,6 +3717,8 @@ export function mountVoiceView(
     }
 
     card.append(sourceRow());
+    const sourceNotice = sourceAvailabilityNotice();
+    if (sourceNotice) card.append(sourceNotice);
     if (state.settings.source === "system") card.append(systemEndpointRow());
     card.append(languageRow());
     return card;
@@ -3535,36 +3746,152 @@ export function mountVoiceView(
     return row;
   };
 
+  /** 五档的标题与说明（顺序即对话框顺序）。 */
+  const audioModeCopy: Record<VoiceAudioSourceMode, { label: () => string; desc: () => string }> = {
+    auto: { label: () => t("view.audioModeAuto"), desc: () => t("view.audioModeAutoDesc") },
+    prefer_board: { label: () => t("view.audioModePreferBoard"), desc: () => t("view.audioModePreferBoardDesc") },
+    prefer_computer: { label: () => t("view.audioModePreferComputer"), desc: () => t("view.audioModePreferComputerDesc") },
+    board_only: { label: () => t("view.audioModeBoardOnly"), desc: () => t("view.audioModeBoardOnlyDesc") },
+    computer_only: { label: () => t("view.audioModeComputerOnly"), desc: () => t("view.audioModeComputerOnlyDesc") },
+  };
+  const audioDisabledCopy: Record<AudioSourceDisabledReason, () => string> = {
+    no_hardware: () => t("view.audioSourceNoHardware"),
+    no_computer: () => t("view.audioSourceNoComputer"),
+    no_microphone: () => t("view.audioSourceNoMicrophone"),
+    host_upgrade: () => t("view.audioSourceNeedsHostUpgrade"),
+  };
+
   /**
-   * 稿 `data-vssource`：录音来源 › 行。值照稿三种说法：键盘 · USB / 键盘 · 蓝牙 /
-   * 电脑自带麦克风；键盘这边的 USB / 蓝牙按 Host 解析出的真实路由写，路由未知时只写「键盘麦克风」。
-   * 点击在键盘与电脑麦克风之间切换（稿同样是轮换演示）。
+   * 稿 `data-vssource`：录音来源 › 行。值写「档位 · 当前实际来源」：键盘这边的 USB / 蓝牙
+   * 按 Host 解析出的真实路由写，路由未知时只写「键盘麦克风」。点击打开五档单选对话框。
    */
   const sourceRow = (): HTMLElement => {
-    const board = state.settings.source !== "system";
+    const mode = currentAudioSourceMode(state.settings, state.permissions);
+    const info = state.permissions.audioSources;
     const route = state.timeline?.route;
-    const value = () => board
-      ? route === "usb_vendor_hid" || route === "usb_uac"
-        ? t("view.keyboardUsb")
-        : route === "ble_gatt"
-          ? t("view.keyboardBluetooth")
-          : t("view.keyboardMicrophone")
-      : t("view.computerMicrophone");
+    const boardValue = () => route === "usb_vendor_hid" || route === "usb_uac"
+      ? t("view.keyboardUsb")
+      : route === "ble_gatt"
+        ? t("view.keyboardBluetooth")
+        : t("view.keyboardMicrophone");
+    const resolved = info?.resolved
+      ?? (state.settings.source === "system" ? "system" : "board");
+    const now = () => resolved === "system"
+      ? t("view.computerMicrophone")
+      : resolved === "unavailable" ? t("view.audioSourceUnavailable") : boardValue();
+    const modeLabel = () => isLegacyCompatibilityMode(state.permissions)
+      ? t("view.audioSourceLegacyUac")
+      : audioModeCopy[mode].label();
+    const value = () => t("view.audioSourceNow", { value0: modeLabel(), value1: now() });
     const row = settingsLinkRow(
       () => t("view.recordingSource"),
-      () => t("view.usesTheKeyboardMicrophoneByDefaultSystem"),
+      () => t("view.autoPrefersTheKeyboardMicrophoneFallsBack"),
       () => value(),
       () => {
-        const nextSource = board ? "system" : "board";
-        // endpoint 列表在 Board 来源下刻意不加载；默认 UID 由 app 层在串行保存
-        // operation 内异步补全，view 只表达用户的切源意图。
-        fire(() => saveSettings({ source: nextSource }));
+        sourceDialogOpen = true;
+        render();
       },
     );
     row.dataset.settingsTarget = "source";
+    row.dataset.audioSourceMode = mode;
+    row.setAttribute("aria-haspopup", "dialog");
     if (focusedSettingsTarget === "source") row.classList.add("settings-target-flash");
-    bindAttribute(row, "aria-label", () => t("view.recordingSourceValueClickToSwitchTo", { value0: value(), value1: board ? t("view.computerMicrophone") : t("view.keyboardMicrophone") }));
+    bindAttribute(row, "aria-label", () => t("view.recordingSourceValueClickToChoose", { value0: value() }));
     return row;
+  };
+
+  /**
+   * 来源行下方的状态说明：两类麦都没有 → 语音不可用；电脑麦在场但未授权且当前档位可能用到它
+   * → 授权引导（用户点按钮才请求系统权限；录音过程中从不请求）。
+   */
+  const sourceAvailabilityNotice = (): HTMLElement | undefined => {
+    const info = state.permissions.audioSources;
+    const mode = currentAudioSourceMode(state.settings, state.permissions);
+    if (noMicrophoneAvailable(info)) {
+      const note = el("div", "settings-note settings-note-warn voice-audio-source-note");
+      note.dataset.audioSourceNotice = "no-microphone";
+      note.append(textEl("span", "", () => t("view.noMicrophoneAvailable")));
+      return note;
+    }
+    if (!shouldOfferComputerMicrophoneGrant(mode, info)) return undefined;
+    const note = el("div", "settings-note voice-audio-source-note");
+    note.dataset.audioSourceNotice = "grant-computer-microphone";
+    const denied = state.permissions.microphone === "denied";
+    note.append(textEl("span", "", () => denied ? t("view.computerMicrophoneDenied") : t("view.computerMicrophoneNotGranted")));
+    if (!denied) {
+      const grant = textEl("button", "settings-link-btn", () => t("view.grantComputerMicrophone")) as HTMLButtonElement;
+      grant.type = "button";
+      grant.dataset.grantComputerMicrophone = "";
+      grant.addEventListener("click", () => fire(() => actions.onRequestPermission("microphone")));
+      note.append(grant);
+    }
+    return note;
+  };
+
+  /** 五档单选。机器上没有某类麦时对应档 disabled 并写明原因。 */
+  const sourceDialog = (): HTMLElement => {
+    const layer = el("div", "voice-dialog-layer");
+    const dialog = el("div", "voice-dialog voice-source-dialog");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "voice-source-title");
+    const title = textEl("div", "voice-dialog-title", () => t("view.chooseRecordingSource"));
+    title.id = "voice-source-title";
+    const info = state.permissions.audioSources;
+    const current = currentAudioSourceMode(state.settings, state.permissions);
+    const legacy = isLegacyCompatibilityMode(state.permissions);
+    const close = () => {
+      sourceDialogOpen = false;
+      render();
+    };
+    const list = el("div", "voice-dialog-list");
+    list.setAttribute("role", "radiogroup");
+    for (const mode of AUDIO_SOURCE_MODES) {
+      const selected = !legacy && mode === current;
+      const disabled = audioSourceModeDisabledReason(mode, info);
+      const button = el("button", selected ? "voice-dialog-option voice-source-option selected" : "voice-dialog-option voice-source-option") as HTMLButtonElement;
+      button.type = "button";
+      button.setAttribute("role", "radio");
+      button.setAttribute("aria-checked", String(selected));
+      button.dataset.audioSourceMode = mode;
+      const copy = el("span", "voice-source-option-copy");
+      copy.append(
+        textEl("span", "voice-source-option-label", () => audioModeCopy[mode].label()),
+        textEl("span", "voice-source-option-desc", () => disabled ? audioDisabledCopy[disabled]() : audioModeCopy[mode].desc()),
+      );
+      button.append(copy);
+      if (selected) button.append(textEl("span", "voice-dialog-check", () => "✓"));
+      if (disabled) {
+        button.disabled = true;
+        button.setAttribute("aria-disabled", "true");
+        button.dataset.disabledReason = disabled;
+      }
+      button.addEventListener("click", () => {
+        if (button.disabled) return;
+        sourceDialogOpen = false;
+        if (!selected) {
+          fire(() => saveSettings(audioSourceModePatch(mode, hostSupportsFiveModes(state.permissions)), { audioSourceMode: mode }));
+        }
+        render();
+      });
+      list.append(button);
+    }
+    const cancel = textEl("button", "voice-dialog-button", () => t("common.cancel"));
+    cancel.type = "button";
+    cancel.addEventListener("click", close);
+    closeDialogOnEscape(layer, close);
+    dialog.append(
+      title,
+      textEl("div", "voice-dialog-sub", () => t("view.chooseRecordingSourceSub")),
+      list,
+      el("div", "voice-dialog-foot"),
+    );
+    dialog.lastElementChild?.append(cancel);
+    layer.append(dialog);
+    layer.addEventListener("click", (event) => {
+      if (event.target === layer) close();
+    });
+    return layer;
   };
 
   /** 选了电脑麦克风才出现（稿无；挑哪只麦克风是真实需要，设备移除时不静默改用默认）。 */
@@ -3673,9 +4000,23 @@ export function mountVoiceView(
     return card;
   };
 
-  /** 全天记录固定工作；设置里只让用户决定有效内容在本机保留多久。 */
+  /**
+   * 录音缓存块：全天存档开关 + 保留多久 + 占用 + 清空。
+   * 全天存档只决定要不要长期保存全天转写（Context 档 / 每日记录），常驻收音不受它控制；
+   * 按 2026-10-15 用户拍板，开关旁不放解释性说明，只有标签。
+   */
   const replayCacheSettings = (): HTMLElement => {
     const card = el("div", "settings-card");
+    // 开关读 Host 时间线真值；点下还没确认时按目标值显示（任何重渲染都不把它拨回去）；
+    // 读不到时间线（未加载 / 旧 Host）时禁用，不猜状态。
+    const archive = switchControl(
+      () => t("view.allDayArchive"),
+      state.continuousRecordingPending ?? state.timeline?.continuousRecordingEnabled === true,
+      (checked) => actions.onContinuousRecording(checked),
+    );
+    archive.dataset.continuousRecording = "";
+    archive.disabled = !state.timeline;
+    card.append(settingsRow(() => t("view.allDayArchive"), () => "", archive));
     const current = state.replayCache?.retention ?? "24h";
     const seg = el("div", "settings-seg");
     seg.setAttribute("role", "radiogroup");
@@ -3796,7 +4137,7 @@ export function mountVoiceView(
       : phase === "preparing" ? t("download.preparing")
       : phase === "cancelling" ? t("download.cancelling")
       : phase === "cancelled" ? t("download.cancelled")
-      : phase === "failed" ? local?.error ?? model.error ?? t("download.failed")
+      : phase === "failed" ? (state.developerMode ? local?.error ?? model.error : undefined) ?? t("download.failed")
       : model.state === "downloading" ? t("download.downloading")
       : model.resumeAvailable ? t("download.retained") : t("download.missing");
     line.append(textEl("span", "", message));
@@ -3851,7 +4192,7 @@ export function mountVoiceView(
       else if (!model.active) fire(() => saveSettings({ modelId: model.id }));
     });
     const trailing = ["ready", "active"].includes(model.state) ? action : el("span", "settings-row-value");
-    const row = settingsRow(() => model.name, () => modelDescription(model), trailing);
+    const row = settingsRow(() => model.name, () => modelDescription(model, state.developerMode), trailing);
     const status = localModelStatus(model);
     if (status) row.append(status);
     return row;
@@ -3878,8 +4219,8 @@ export function mountVoiceView(
     card.append(permissions);
     return card;
   };
-  const saveSettings = async (next: Partial<VoiceInputSettings>) => {
-    await actions.onSettingsChanged(next);
+  const saveSettings = async (next: Partial<VoiceInputSettings>, options?: VoiceSettingsChangeOptions) => {
+    await actions.onSettingsChanged(next, options);
   };
 
   const fire = (action: () => Promise<unknown>) => {
@@ -3892,6 +4233,10 @@ export function mountVoiceView(
   const stopLocale = onVoiceLocaleChange(() => { root.lang = voiceLocale(); reportNav(true); });
   render();
   return {
+    setConversationOpenPending(pending) {
+      conversationOpenPending = pending;
+      if (!pending) reportNoticeWhenVisible();
+    },
     openSettings(target) {
       openSettings(target);
     },
@@ -3912,8 +4257,31 @@ export function mountVoiceView(
       leaveListTransient();
       selectedId = item.id;
       page = commandDetailPage(item);
-      render();
+      openingConversation = true;
+      try { render(); } finally { openingConversation = false; }
       return true;
+    },
+    waitForConversationLanding(entityId, current) {
+      const item = state.commandHistory.find(entry => entry.id === entityId
+        || entry.runId === entityId || entry.agentSessionId === entityId);
+      const landed = () => !!item && current() && !disposed && frame.parentNode === root
+        && frame.isConnected && selectedId === item.id && page === commandDetailPage(item)
+        && !!shell.querySelector(".main-body");
+      if (!landed()) return Promise.resolve(false);
+      return new Promise(resolve => {
+        let finished = false;
+        const finish = (value: boolean) => {
+          if (finished) return;
+          finished = true;
+          window.clearTimeout(timer);
+          resolve(value);
+        };
+        const timer = window.setTimeout(() => finish(false), 1_500);
+        window.requestAnimationFrame(() => {
+          if (!landed()) { finish(false); return; }
+          window.requestAnimationFrame(() => finish(landed()));
+        });
+      });
     },
     navigateSettings() {
       releaseReplayAudio();
@@ -3926,16 +4294,21 @@ export function mountVoiceView(
       }
     },
     navigateRoot() {
+      pendingConversation = undefined;
+      conversationOpenPending = false;
+      actions.onConversationNavigation?.();
       // 与 openSettings 同一套「离开当前页」的收口：回听音频停掉、聊天输入的
       // 瞬态（草稿/录音态）复位，再把 page 归位重渲染。幂等：已在主列表时空跑。
       releaseReplayAudio();
       chatDetail.reset();
       leaveListTransient();
       dismissSettingsFocus();
-      if (page !== "history") {
-        page = "history";
-        render();
-      }
+      page = "history";
+      render();
+    },
+    toggleSettings() {
+      if (page === "settings" || page === "events" || page === "models") this.navigateRoot();
+      else this.openSettings();
     },
     update(next) {
       state = next;
@@ -3945,6 +4318,7 @@ export function mountVoiceView(
     },
     dispose() {
       if (disposed) return;
+      actions.onConversationNavigation?.();
       disposed = true;
       window.clearInterval(elapsedTicker);
       if (timelineStartingTimer !== undefined) clearTimeout(timelineStartingTimer);
@@ -3958,8 +4332,12 @@ export function mountVoiceView(
       if (mountedNotice) {
         document.removeEventListener("visibilitychange", onNoticeVisibilityChanged);
       }
-      releaseLocaleBindings(root);
-      root.replaceChildren();
+      // A retired async mount can finish cleanup after a newer mount reused root.
+      // Release only this view's bindings and leave the newer frame in place.
+      const ownsRoot = frame.parentNode === root;
+      releaseLocaleBindings(frame);
+      layout?.dispose();
+      if (ownsRoot) root.replaceChildren();
     },
   };
 }
@@ -4026,13 +4404,13 @@ function commandEventsHint(): HTMLElement {
  * SYSTEM_TASK_BUSY，上一个任务还在等「返回 / 关闭」会得到 SYSTEM_TASK_RETURN_PENDING
  * ——两种都不是「跳转失败」，是「现在跳不了」，原因要原样说给用户。
  */
-function jumpErrorText(scope: string, cause: unknown): string {
+function jumpErrorText(scope: string, cause: unknown, developerMode: boolean): string {
   // 与 keymapJumpErrorText 同一判据集合；scope 仅用于排查日志与未来差异化文案。
   void scope;
-  return keymapJumpErrorText(cause);
+  return keymapJumpErrorText(cause, developerMode);
 }
 
-function keymapJumpErrorText(cause: unknown): string {
+function keymapJumpErrorText(cause: unknown, developerMode: boolean): string {
   const code =
     cause && typeof cause === "object" && typeof (cause as { code?: unknown }).code === "string"
       ? (cause as { code: string }).code
@@ -4041,6 +4419,8 @@ function keymapJumpErrorText(cause: unknown): string {
   if (code === "SYSTEM_TASK_RETURN_PENDING") {
     return t("view.cannotNavigateNowThePreviousSystemTask");
   }
+  // 上游原文只在开发者模式拼进主句；普通模式给固定人话。
+  if (!developerMode) return t("view.cannotNavigateNowTryAgainLater");
   const message =
     cause && typeof cause === "object"
       ? (cause as { userMessage?: unknown; message?: unknown })
@@ -4242,7 +4622,10 @@ function hintDetails(content: TextSource | HTMLElement, label: TextSource = () =
       close();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      // 输入法组字中的 Esc 原样放行。
+      if (event.key !== "Escape" || event.isComposing) return;
+      // 声明本层已消费这次 Esc（surface.escape@1）：Host 不再把它当成返回上一页。
+      event.preventDefault();
       close();
       button.focus();
     };
@@ -4309,10 +4692,11 @@ function modelActionLabel(model: VoiceModelInfo): string {
   return t("view.download");
 }
 
-function modelDescription(model: VoiceModelInfo): string {
+function modelDescription(model: VoiceModelInfo, developerMode: boolean): string {
   const total = formatBytes(model.sizeBytes);
   if (model.state === "failed") {
-    return t("view.downloadFailedValue", { value0: model.error ?? t("view.fallback4") });
+    // Host 给的下载失败原文只在开发者模式出现。
+    return t("view.downloadFailedValue", { value0: (developerMode ? model.error : undefined) ?? t("view.fallback4") });
   }
   if (model.state === "downloading") {
     const downloaded = Math.min(model.downloadedBytes ?? 0, model.sizeBytes);
@@ -4765,4 +5149,31 @@ function iconEl<K extends keyof HTMLElementTagNameMap>(
   element.innerHTML = svg;
   element.setAttribute("aria-hidden", "true");
   return element;
+}
+
+/**
+ * 模态弹层的 Esc：只关本层并声明已消费（`preventDefault()`，配合 surface.escape@1），
+ * 不让 Host 把这次 Esc 当成返回上一页；叠层时只关最上面一层。焦点不在弹层内（例如还停在
+ * 打开它的设置行）也生效。整个文档只挂一个监听，弹层按 WeakMap 登记，重渲染替换或卸载后
+ * 随节点回收，不积累监听。输入法组字中的 Esc 原样放行。
+ */
+const dialogEscapeClosers = new WeakMap<Element, () => void>();
+const dialogEscapeDocuments = new WeakSet<Document>();
+function closeDialogOnEscape(layer: HTMLElement, close: () => void): void {
+  dialogEscapeClosers.set(layer, close);
+  const doc = layer.ownerDocument;
+  if (dialogEscapeDocuments.has(doc)) return;
+  dialogEscapeDocuments.add(doc);
+  doc.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (event.key !== "Escape" || event.defaultPrevented || event.isComposing) return;
+    // 说明浮层（问号提示）开着时它在最上面：这次 Esc 归它自己的处理关掉，弹层留到下一次。
+    if (doc.querySelector(".settings-hint-panel")) return;
+    // 同级弹层按 DOM 顺序叠放，后面的在上：只交给最上面那一层。
+    const layers = doc.querySelectorAll(".voice-dialog-layer");
+    const top = layers[layers.length - 1];
+    const closeTop = top ? dialogEscapeClosers.get(top) : undefined;
+    if (!closeTop) return;
+    event.preventDefault();
+    closeTop();
+  });
 }

@@ -51,7 +51,7 @@ export function deliverReasonLabel(reason: string | undefined): string {
 }
 
 /** 认得出的失败类别 → 固定短句；认不出返回 undefined（调用方决定兜底）。 */
-function knownFailureLabel(cause: unknown): string | undefined {
+export function knownFailureLabel(cause: unknown): string | undefined {
   // Host 给的具体 Agent 失败码（预算、运行组件…）优先：它比按类别推断的短句更准；其次是阶段前缀方括号里的 Agent 码。
   const agent = agentCodeLabel(hostAgentCodeOf(cause) ?? agentFailureStageOf(cause)?.upstreamCode);
   if (agent) return agent;

@@ -1,6 +1,6 @@
 {
   "name": "@reai/app-sdk",
-  "version": "1.24.0",
+  "version": "1.26.0-v105.1",
   "private": true,
   "type": "module",
   "description": "ReAI App 平台 SDK —— 插件用它声明生命周期、Surface、Command 与私有存储",
@@ -16,7 +16,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@reai/app-contract": "1.24.0",
     "typescript": "~5.6.0"
+  },
+  "dependencies": {
+    "@reai/app-contract": "1.25.3-v105.1"
   }
 }

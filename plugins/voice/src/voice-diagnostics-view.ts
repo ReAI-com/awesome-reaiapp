@@ -83,10 +83,13 @@ export function voiceDiagnosticsBlock(options: VoiceDiagnosticsBlockOptions): HT
   const { key, entry, store } = options;
   if (options.developerMode !== true) {
     const progress = node("div", "voice-progress");
-    // 普通模式保留真实等待步骤与用时；失败主句和恢复动作由业务区提供。
+    // 普通模式只给中性的等待步骤；只有真实起点（如录音时长）才显示「已用 N 秒」，
+    // 「已等待至少 N 秒（自打开页面起）」这类观测下限只在开发者模式出现。失败主句和恢复动作由业务区提供。
     if (entry.state === "waiting") {
-      progress.append(node("span", "voice-progress-step", entry.step));
-      if (entry.sinceMs !== undefined) progress.append(elapsedNode(entry));
+      const spinner = node("span", "voice-progress-spinner");
+      spinner.setAttribute("aria-hidden", "true");
+      progress.append(spinner, node("span", "voice-progress-step", entry.step));
+      if (entry.sinceMs !== undefined && entry.sinceObserved !== true) progress.append(elapsedNode(entry));
     }
     return progress;
   }

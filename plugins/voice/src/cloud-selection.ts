@@ -34,12 +34,26 @@ export function trustedFreeDefault(model: CloudModelOption): boolean {
     && !currentAccountPricing(model);
 }
 
-/** Preserve a valid choice; current-account defaults may have any effective price.
- * An existing explicit free-only intent cannot be moved to another model automatically. */
+/** An enabled option Host currently prices as free: its default first, then Host order.
+ * Only explicit `billingPolicy` counts; never infer free from a label or position. */
+export function freeCloudOption(models: readonly CloudModelOption[]): CloudModelOption | undefined {
+  const accountPriced = models.some(currentAccountPricing);
+  const free = models.filter(model => (!accountPriced || currentAccountPricing(model))
+    && model.kind === "transcribe" && validCloudOptionId(model.id)
+    && (model as CloudModelOption & { enabled?: boolean }).enabled !== false && model.billingPolicy === "free");
+  return free.find(model => model.isDefault === true) ?? free[0];
+}
+
+/** Preserve a valid choice. Without one, prefer a free option (new users start free),
+ * then the current-account default, which may have any effective price.
+ * An existing explicit free-only intent cannot be moved to another model automatically:
+ * Host accepts free-only only for the account's free default, which plugins cannot see. */
 export function preferredCloudOption(models: readonly CloudModelOption[], id: string, policy?: "free-only") {
   const selected = selectedCloudOption(models, id);
   if (selected) return selected;
   if (id && policy === "free-only") return undefined;
+  const free = freeCloudOption(models);
+  if (free) return free;
   if (models.some(currentAccountPricing)) return models.find(trustedAccountDefault);
   return models.find(trustedFreeDefault);
 }

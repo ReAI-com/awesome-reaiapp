@@ -55,6 +55,8 @@ describe("Host 的每个 Agent 失败码都已登记并有一句人话", () => {
       ["AGENT_INPUT_TOO_LARGE", "这次的内容超出了 Agent 能处理的大小，请缩短后再试。", "内容超出大小上限"],
       ["AGENT_RESULT_INVALID", "Agent 收到或返回的数据无效，请重新发送。", "数据无效"],
       ["AGENT_SESSION_CLOSED", "这段 Agent 对话已失效或被中断，请重新发送。", "对话已失效"],
+      ["AGENT_WORKER_OWNER_STALE", "这次任务的归属已变化，请重新发送。", "任务归属已变化"],
+      ["AGENT_WORKER_UNAVAILABLE", "任务执行入口暂不可用，请稍后重试。", "任务暂不可执行"],
       ["AGENT_RUNTIME_FAILED", "Agent 运行组件不可用，请在 Driver「已安装」中检查运行组件后重试。", "运行组件不可用"],
       ["AGENT_PREFERENCE_INVALID", "Agent 设置无效、不受支持或刚刚变化，请检查 Agent 设置后重试。", "Agent 设置无效"],
       ["AGENT_TOOL_NOT_GRANTED", "Agent 调用工具失败，请重新发送；反复出现时请检查扩展权限。", "工具调用失败"],
@@ -64,6 +66,21 @@ describe("Host 的每个 Agent 失败码都已登记并有一句人话", () => {
       ["AGENT_STORAGE_FULL", "Agent 没能保存会话数据，请检查磁盘空间后重试。", "保存失败"],
     ];
     for (const [code, reason, label] of cases) {
+      expect(agentCodeReason(code)).toBe(reason);
+      expect(taskFailureLabel({ code })).toBe(label);
+      expect(constantReasonForCode(code)).toBe(label);
+    }
+  });
+
+  test("Worker 两个码保留真实语义，英文原因与短句精确匹配", () => {
+    setVoiceLocale("en");
+    const cases = [
+      ["AGENT_WORKER_OWNER_STALE", "The owner of this task has changed. Send it again.", "Task owner changed"],
+      ["AGENT_WORKER_UNAVAILABLE", "Task execution is temporarily unavailable. Try again a little later.", "Task execution unavailable"],
+    ];
+    for (const [code, reason, label] of cases) {
+      expect(agentTurnFailureCode({ kind: "engine", code })).toBe(code);
+      expect(collectErrorFields({ code, message: "SYNTHETIC_PRIVATE_PAYLOAD" }).code).toBe(code);
       expect(agentCodeReason(code)).toBe(reason);
       expect(taskFailureLabel({ code })).toBe(label);
       expect(constantReasonForCode(code)).toBe(label);

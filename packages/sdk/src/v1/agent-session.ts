@@ -1,4 +1,5 @@
 import type { AgentConfig, AgentServiceClient } from "./agent-service";
+import type { AuthorizedResource } from "./platform-contracts";
 /** Harness 无关的 Agent Session 合同（`agent.session@1`）。 */
 
 export type AgentBackend = "auto" | "pi" | "dsh" | "codex";
@@ -27,11 +28,18 @@ export interface AgentSkillDocument {
  *   `AGENT_WORKSPACE_NOT_AUTHORIZED`。挂接后 Host 在本地建 git worktree
  *   镜像：agent 的文件改动先落镜像（改动前自动 commit，可回溯回滚），
  *   写回用户目录时做冲突检测。旧 mounted 会话不会自动转成 direct。
+ * - `resource`（v1.0.5）：本插件经 `resources.files@1` 授权的目录根
+ *   （`resourceFiles.pickRoot()` / `listRoots()` 返回的 `root.resource`）。
+ *   引用不自带权限：创建时 Host 以当前插件身份复核一次，之后 Pi / DSH / Codex
+ *   的同名文件工具（read/write/edit/list/glob/grep）全部经资源 provider 分派、
+ *   每次重新准入（撤回授权即失效）。不提供 `run` / `command`。
+ *   需要插件同时获批 `resources.files@1` 并得到用户同意；云项目根暂不可用。
  */
 export type AgentWorkspace =
   | { kind: "app-private" }
   | { kind: "direct"; path: string }
-  | { kind: "mounted"; path: string };
+  | { kind: "mounted"; path: string }
+  | { kind: "resource"; root: AuthorizedResource };
 
 /**
  * 三档写权限（M3；封闭词表，不发明新词）。拨杆绑定是键盘自己的行为，
@@ -189,6 +197,11 @@ export interface AgentSendResult {
   } | null;
 }
 
+/** Host-issued opaque correlation. It contains no account, owner or visibility claim. */
+export interface AgentConversationOpenReceipt {
+  readonly openToken: string;
+}
+
 export interface AgentSessionClient extends AgentServiceClient {
   backends(options?: { schemaVersion: 2 }): Promise<{ backends: AgentBackendStatus[]; defaultBackend?: AgentBackend | null; defaultBackendError?: string | null; defaultBackendSource?: "global" | "plugin" | "corrupt" }>;
   createSession(spec: AgentSessionSpec | AgentConfig): Promise<{
@@ -230,7 +243,10 @@ export interface AgentSessionClient extends AgentServiceClient {
    * 会话被用户打开时上报——「已看过」的唯一判据，让任务胶囊/Tab 层/通知
    * 账本一起落旗。插件的会话界面进入前台时调用一次。
    */
-  reportConversationOpened(options: { sessionId: string }): Promise<void>;
+  prepareConversationOpen(options: { sessionId: string }): Promise<AgentConversationOpenReceipt>;
+  /** Commit after the actual selected conversation has landed. Omission remains legacy-only. */
+  reportConversationOpened(options: { sessionId: string; receipt?: AgentConversationOpenReceipt }): Promise<void>;
+  cancelConversationOpen(options: { sessionId: string; receipt: AgentConversationOpenReceipt }): Promise<void>;
   /** 用户从聊天卡明确要求安装某个 Host 工具依赖；完成后原调用方可重试。 */
   requireToolDependency(options: { tool: "web_search" | "web_fetch"; schemaVersion?: 2 }): Promise<void>;
 }

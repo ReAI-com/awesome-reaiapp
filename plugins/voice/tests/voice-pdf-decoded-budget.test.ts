@@ -8,9 +8,12 @@ import { patchPdfjsDecodedBudget, PDFJS_BUDGET_TEST_EXPORTS } from "../scripts/p
 const fixtures = join(import.meta.dir, "fixtures/pdf-decoded-budget");
 async function extractPath(path: string, extraEnv: Record<string, string> = {}) {
   const child = Bun.spawn([process.execPath, join(import.meta.dir, "pdf-decoded-budget-child.ts"), path], { env: { ...process.env, ...extraEnv }, stdout: "pipe", stderr: "pipe" });
-  const timer = setTimeout(() => child.kill(), 25000);
+  let watchdogFired = false;
+  const timer = setTimeout(() => { watchdogFired = true; child.kill(); }, 25000);
   const [exit, stdout, stderr] = await Promise.all([child.exited, new Response(child.stdout).text(), new Response(child.stderr).text()]);
   clearTimeout(timer);
+  // 看门狗只兜底，不放宽：触发时直接说明是子进程超时，不只报退出码 143。
+  if (watchdogFired) throw new Error(`PDF 解析子进程超过 25 秒，被测试看门狗终止（exit ${exit}）`);
   if (process.env.PDF_BUDGET_EVIDENCE_DIR) {
     const directory = process.env.PDF_BUDGET_EVIDENCE_DIR; mkdirSync(directory, { recursive: true });
     const hash = createHash("sha256").update(readFileSync(path)).digest("hex");
@@ -22,7 +25,7 @@ async function extractPath(path: string, extraEnv: Record<string, string> = {}) 
   expect(result.attempts).toEqual([]);
   expect(result.nativeCalls).toBe(0);
   expect(result.inputSha256).toBe(createHash("sha256").update(readFileSync(path)).digest("hex"));
-  return result;
+  return { ...result, stderr };
 }
 const extract = (name: string, env?: Record<string, string>) => extractPath(join(fixtures, name), env);
 async function synthetic(options: Parameters<typeof pdfBudgetFixture>[0]) {
@@ -63,6 +66,12 @@ test("a silent handshake shares the wrapper's existing whole-document 20 second 
   expect(result.code).toBe("VOICE_ATTACHMENT_DOCUMENT_TIMEOUT"); expect(result.wrapperTerminations).toBeGreaterThan(0);
   expect(result.elapsedMs).toBeGreaterThanOrEqual(19500); expect(result.elapsedMs).toBeLessThan(24000);
 }, 30000);
+test("the whole-document timeout terminates a Worker stuck in synchronous parsing", async () => {
+  // 测试 Worker 在 GetDocRequest 里同步死循环：主线程 20 秒整份时限照样能 terminate 它。
+  const result = await extract("ordinary.pdf", { PDF_WRAPPER: "yes", PDF_BUSY_PORT: "yes" });
+  expect(result.code).toBe("VOICE_ATTACHMENT_DOCUMENT_TIMEOUT"); expect(result.wrapperTerminations).toBeGreaterThan(0);
+  expect(result.elapsedMs).toBeGreaterThanOrEqual(19500); expect(result.elapsedMs).toBeLessThan(24000);
+}, 30000);
 for (const filter of ["FlateDecode", "LZWDecode", "RunLengthDecode", "ASCII85Decode", "ASCIIHexDecode"]) test(`${filter} preserves supported brief text`, async () => {
   const result = await synthetic({ filter }); expect(result.code).toBeNull(); expect(result.content).toContain("SYNTHETIC_BRIEF_MARKER");
 }, 30000);
@@ -79,7 +88,17 @@ test("individually smaller streams cannot evade the document and sequence copy b
   expect((await synthetic({ multi: true, padding: 5 * 1024 * 1024 })).code).toBe("VOICE_ATTACHMENT_DOCUMENT_LIMIT");
 }, 30000);
 test("font ToUnicode decoding cannot recover an over-budget stream as partial success", async () => {
-  expect((await synthetic({ toUnicodePadding: 18 * 1024 * 1024 })).code).toBe("VOICE_ATTACHMENT_DOCUMENT_LIMIT");
+  const result = await synthetic({ toUnicodePadding: 18 * 1024 * 1024 });
+  expect(result.code).toBe("VOICE_ATTACHMENT_DOCUMENT_LIMIT");
+  // #1312：超预算必须立即失败——不能在接近上限时逐块重新分配拷贝十几秒，也不能被 CMap 解析当成坏数据吞掉后继续读流。
+  expect(result.elapsedMs).toBeLessThan(5000);
+  expect(result.stderr).not.toContain("Invalid cMap data: Error: VOICE_PDF_DECODE_BUDGET_EXCEEDED");
+}, 30000);
+test("an in-budget ToUnicode stream after other decoded streams stays fast", async () => {
+  // 大流排在字形流、内容流之后，加倍放不进剩余预算；预算内也不能退化成逐块拷贝。
+  const result = await synthetic({ toUnicodePadding: 14 * 1024 * 1024 });
+  expect(result.code).toBeNull(); expect(result.content).toContain("SYNTHETIC_BRIEF_MARKER");
+  expect(result.elapsedMs).toBeLessThan(5000);
 }, 30000);
 test("compressed object and xref streams retain their document budget", async () => {
   const result = await synthetic({ objectStream: true }); expect(result.code).toBeNull(); expect(result.content).toContain("SYNTHETIC_BRIEF_MARKER");

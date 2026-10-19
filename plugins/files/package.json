@@ -1,0 +1,35 @@
+{
+  "name": "reai-files-candidate",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "reaiApp": { "entry": "src/app.ts" },
+  "scripts": {
+    "test": "bun test tests",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "validate": "reai-app-i18n validate .",
+    "build": "reai-app-i18n build .",
+    "test:contract": "reai-app contract-test . --host-api 1.25",
+    "pack": "reai-app-i18n pack . --out files-1.2.0.reaiapp",
+    "preview": "bun scripts/preview.ts"
+  },
+  "dependencies": { "@noble/hashes": "1.8.0" },
+  "devDependencies": {
+    "@reai/app-cli": "file:../../packages/cli",
+    "@reai/app-i18n-cli": "file:../../packages/i18n-cli",
+    "@reai/app-contract": "file:../../packages/contract",
+    "@reai/app-sdk": "file:../../packages/sdk",
+    "@reai/app-test": "file:../../packages/test-kit",
+    "@happy-dom/global-registrator": "20.12.0",
+    "@types/bun": "1.4.0",
+    "typescript": "5.6.3"
+  },
+  "overrides": {
+    "@reai/app-cli": "file:../../packages/cli",
+    "@reai/app-i18n-cli": "file:../../packages/i18n-cli",
+    "@reai/app-contract": "file:../../packages/contract",
+    "@reai/app-sdk": "file:../../packages/sdk",
+    "@reai/app-test": "file:../../packages/test-kit"
+  }
+}

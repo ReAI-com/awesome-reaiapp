@@ -102,6 +102,16 @@ export interface SurfaceHandle<TIntent = unknown> {
    */
   reportNav?(nav: { key: string; label: string } | null): void;
 
+  /** Optional on Hosts that provide a live presentation binding. */
+  readonly navigation?: import("./navigation").SurfaceNavigation | undefined;
+
+  /**
+   * Host 为本次挂载提供新的呈现绑定时调用；已有绑定在订阅时同步回放。
+   * 这不证明物理可见，也不授予权限。旧运行时可能没有此方法，须探测后调用。
+   * 返回幂等退订函数；卸载或运行时销毁后不再通知。
+   */
+  onPresentationChange?(handler: () => void): () => void;
+
   /** 订阅后续意图。返回退订函数。 */
   onIntent(handler: (intent: TIntent) => void): () => void;
 }
@@ -158,6 +168,19 @@ export interface AppContext {
 
   /** 官方 Voice Input 插件的原生音频/STT/文字注入窄口。Host 仍会逐次校验 grant。 */
   readonly voiceInput: VoiceInputClient;
+  /** Shared Host source; current Host descriptor, platform approval and consent are required. */
+  readonly audioCapture: import("./platform-contracts").AudioCaptureClient;
+  /** Bounded owned clips; every call checks the current Host descriptor and authority. */
+  readonly audioClips: import("./platform-contracts").AudioClipsClient;
+  /**
+   * `resources.files@1`: user-selected local folders and user-confirmed cloud Projects.
+   * Every call checks the current Host descriptor, platform approval and user consent.
+   */
+  readonly resourceFiles: import("./platform-contracts").ResourceFilesClient &
+    import("./platform-contracts").ResourceRootsClient &
+    import("./platform-contracts").ResourceCloudRootsClient;
+  /** Neutral task/result presentation; current Host authority, approval and consent are required. */
+  readonly tasks: import("./platform-contracts").TaskPresentationClient;
   /** 持久录音列表/删除/一次性播放授权；不暴露 Host 私有路径。 */
   readonly voiceRecordings: VoiceRecordingsClient;
   /** 润色上下文采集（`voice.context@1`）：有界焦点文字 / 窗口截图 + 应用粗分类 + 只读权限状态。 */
@@ -229,7 +252,7 @@ export interface AppContext {
   readonly notifications: {
     /** 需在 Manifest 声明 `os.notification.post@1` 并由用户明确允许。 */
     post(options: NotificationPostOptions): Promise<NotificationPostResult>;
-  };
+  } & import("./platform-contracts").NotificationsV1Client;
 
   /** 受 Host grant 保护的纯文本剪贴板写入口。 */
   readonly clipboard: {

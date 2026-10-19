@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Frozen declaration-only schema; NOT accepted by app-manifest-1.1 until Host/CLI integration. resource-local",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "provider",
+    "workspaceId",
+    "relativePath"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "provider": {
+      "const": "local"
+    },
+    "workspaceId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[\\x21-\\x7E]+$"
+    },
+    "relativePath": {
+      "type": "string",
+      "maxLength": 4096
+    }
+  }
+}

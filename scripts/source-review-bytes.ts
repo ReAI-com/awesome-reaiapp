@@ -21,7 +21,7 @@ export async function runReviewBytes(argv: string[]) {
   const flags = new Map<string, string>();
   for (let i = 1; i < argv.length; i += 2) {
     const flag = argv[i], value = argv[i + 1];
-    if (!flag || !["--inputs", "--out", "--expected-bun", "--compression"].includes(flag) || !value || value.startsWith("--") || flags.has(flag)) throw new Error("Invalid or duplicate review calculation argument");
+    if (!flag || !["--inputs", "--out", "--expected-bun", "--compression", "--toolchain-receipt"].includes(flag) || !value || value.startsWith("--") || flags.has(flag)) throw new Error("Invalid or duplicate review calculation argument");
     flags.set(flag, value);
   }
   const inputFile = flags.get("--inputs"), output = flags.get("--out"), expectedBun = flags.get("--expected-bun");
@@ -35,7 +35,8 @@ export async function runReviewBytes(argv: string[]) {
   if (existsSync(directory)) throw new Error("Review output directory already exists");
   if (lstatSync(resolve(inputFile)).isSymbolicLink()) throw new Error("Symlink input pin is not allowed");
   const pin = JSON.parse(readFileSync(inputFile, "utf8")) as ReviewInputPin;
-  const { archive, calculation } = await calculateReviewBytes(root, pin, expectedBun, { compression });
+  const toolchainReceipt = flags.get("--toolchain-receipt");
+  const { archive, calculation } = await calculateReviewBytes(root, pin, expectedBun, { compression, ...(toolchainReceipt ? { toolchainReceipt } : {}) });
   mkdirSync(directory, { mode: 0o700 });
   try {
     writeFileSync(join(directory, "candidate.review-bytes"), archive, { flag: "wx" });

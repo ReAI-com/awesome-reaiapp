@@ -58,6 +58,11 @@ export type HostMessage =
       root: unknown;
       initialIntent?: unknown;
     }
+  | { type: "surface.presentation"; runtimeSessionId: string; surfaceMountId: string; presentationToken: string }
+  /** `surface.escape@1`: frozen SurfaceEscapeRequest DTO; answered by the Host-injected runtime. */
+  | { type: "surface.escape.request"; requestId: string; runtimeSessionId: string; surfaceMountId: string; presentationToken: string; deadlineUnixMs: number }
+  /** Host-internal: a Host overlay sits above this approved Surface (Esc goes to it first). */
+  | { type: "surface.escape.hostLayer"; runtimeSessionId: string; surfaceMountId: string; presentationToken: string; open: boolean; layer: number }
   | { type: "surface.unmount"; surfaceMountId: string }
   | { type: "surface.intent"; surfaceMountId: string; intent: unknown }
   | {
@@ -123,6 +128,43 @@ export const RequestMethod = {
   StorageDelete: "storage.delete",
   StorageKeys: "storage.keys",
   SurfaceOpen: "surface.open",
+  SurfaceNavigationRegister: "surface.navigation.register",
+  SurfaceNavigationClear: "surface.navigation.clear",
+  SurfaceEscapeRespond: "surface.escape.respond",
+  AudioConsumersAcquire: "audio.consumers.acquire",
+  AudioConsumersRelease: "audio.consumers.release",
+  AudioConsumersStatus: "audio.consumers.status",
+  AudioRangesStart: "audio.ranges.start",
+  AudioRangesFinish: "audio.ranges.finish",
+  AudioRangesCancel: "audio.ranges.cancel",
+  AudioClipsRead: "audio.clips.read",
+  AudioClipsRelease: "audio.clips.release",
+  AudioClipsTranscribe: "audio.clips.transcribe",
+  AudioClipsTranscriptionStatus: "audio.clips.transcriptionStatus",
+  ResourcesRootsList: "resources.roots.list",
+  ResourcesRootsPick: "resources.roots.pick",
+  ResourcesRootsAttach: "resources.roots.attach",
+  ResourcesRootsRevoke: "resources.roots.revoke",
+  ResourcesList: "resources.list",
+  ResourcesStat: "resources.stat",
+  ResourcesRead: "resources.read",
+  ResourcesWriteStart: "resources.write.start",
+  ResourcesWriteChunk: "resources.write.chunk",
+  ResourcesWriteCommit: "resources.write.commit",
+  ResourcesCancel: "resources.cancel",
+  ResourcesMkdir: "resources.mkdir",
+  ResourcesRename: "resources.rename",
+  ResourcesMove: "resources.move",
+  ResourcesDelete: "resources.delete",
+  ResourcesCreateFile: "resources.createFile",
+  TasksPresent: "tasks.present",
+  TasksProgress: "tasks.progress",
+  TasksFinish: "tasks.finish",
+  TasksDismiss: "tasks.dismiss",
+  TasksConversationOpened: "tasks.conversationOpened",
+  ResultsPresent: "results.present",
+  ResultsContinue: "results.continue",
+  ResultsDismiss: "results.dismiss",
   AppsOpen: "apps.open",
   /** 按调用方 Manifest 声明的依赖查目标 App「装没装、启没启」（A3-24 门控数据源）。 */
   AppsStatus: "apps.status",
@@ -143,6 +185,10 @@ export const RequestMethod = {
   EvidenceFetch: "evidence.fetch",
   AccountStatus: "account.status",
   NotificationsPost: "notifications.post",
+  /** `notifications.publish@1`：按声明场景发布纯文本通知，并读写本插件自己的通知历史。 */
+  NotificationsPublish: "notifications.publish",
+  NotificationsHistoryList: "notifications.history.list",
+  NotificationsHistoryMarkRead: "notifications.history.markRead",
   /** 永久写入系统剪贴板（`surface.clipboard@1`）；不触发粘贴或焦点切换。 */
   ClipboardWriteText: "clipboard.writeText",
   HttpFetch: "http.fetch",
@@ -328,6 +374,41 @@ export const RequestMethod = {
 } as const;
 
 export type RequestMethod = (typeof RequestMethod)[keyof typeof RequestMethod];
+
+/** Frozen clip routes. Registration alone does not make the Host available. */
+const audioClipsMethods = [
+  RequestMethod.AudioRangesStart, RequestMethod.AudioRangesFinish, RequestMethod.AudioRangesCancel,
+  RequestMethod.AudioClipsRead, RequestMethod.AudioClipsRelease, RequestMethod.AudioClipsTranscribe,
+  RequestMethod.AudioClipsTranscriptionStatus,
+] as const;
+export type AudioClipsRequestMethod = (typeof audioClipsMethods)[number];
+export function audioClipsRequestMethod(method: string): method is AudioClipsRequestMethod {
+  return (audioClipsMethods as readonly string[]).includes(method);
+}
+
+/** `resources.files@1` routes. Registration alone does not make the Host available. */
+const resourceFilesMethods = [
+  RequestMethod.ResourcesRootsList, RequestMethod.ResourcesRootsPick, RequestMethod.ResourcesRootsAttach, RequestMethod.ResourcesRootsRevoke,
+  RequestMethod.ResourcesList, RequestMethod.ResourcesStat, RequestMethod.ResourcesRead,
+  RequestMethod.ResourcesWriteStart, RequestMethod.ResourcesWriteChunk, RequestMethod.ResourcesWriteCommit,
+  RequestMethod.ResourcesCancel, RequestMethod.ResourcesMkdir, RequestMethod.ResourcesRename,
+  RequestMethod.ResourcesMove, RequestMethod.ResourcesDelete, RequestMethod.ResourcesCreateFile,
+] as const;
+export type ResourceFilesRequestMethod = (typeof resourceFilesMethods)[number];
+export function resourceFilesRequestMethod(method: string): method is ResourceFilesRequestMethod {
+  return (resourceFilesMethods as readonly string[]).includes(method);
+}
+
+/** Exact neutral task/result routes; does not include legacy Voice or Agent methods. */
+const taskMethods = [
+  RequestMethod.TasksPresent, RequestMethod.TasksProgress, RequestMethod.TasksFinish,
+  RequestMethod.TasksDismiss, RequestMethod.TasksConversationOpened,
+  RequestMethod.ResultsPresent, RequestMethod.ResultsContinue, RequestMethod.ResultsDismiss,
+] as const;
+export type TaskRequestMethod = (typeof taskMethods)[number];
+export function taskRequestMethod(method: string): method is TaskRequestMethod {
+  return (taskMethods as readonly string[]).includes(method);
+}
 
 /** App → Host 的通知方法名。单向，不等回应。 */
 export const NotifyMethod = {

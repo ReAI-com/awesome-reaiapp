@@ -132,7 +132,9 @@ export function validateManifest(
   const out: Finding[] = [];
 
   // 第一层：结构。schema 不过就没必要往下查语义了——后面每条规则都假定字段存在且类型正确。
-  for (const violation of validateAgainstSchema(manifest, loadSchema())) {
+  const schema = loadSchema();
+  for (const violation of validateAgainstSchema(manifest, schema)) {
+    if (notificationLengthFalsePositive(violation, manifest, schema)) continue;
     out.push({
       code: "MANIFEST_SCHEMA_INVALID",
       pointer: violation.pointer,
@@ -159,6 +161,7 @@ export function validateManifest(
   checkDualLayerCapabilities(manifest, out);
   checkRuntime(manifest, matrix, out);
   checkContributes(manifest, matrix, out);
+  checkNotificationScenes(manifest, matrix, out);
   checkEventSubscriptions(manifest, matrix, out);
   checkAcceptsActionContext(manifest, matrix, out);
   checkAgentFeatures(manifest, matrix, out);
@@ -183,7 +186,7 @@ function checkSkinPackage(m: Json, out: Finding[]): void {
   const network = obj(m["network"]);
   const data = obj(m["data"]);
   const contributes = obj(m["contributes"]);
-  const contributesNonEmpty = Object.values(contributes).some((value) =>
+  const contributesNonEmpty = contributes["notificationScenes"] !== undefined || Object.values(contributes).some((value) =>
     Array.isArray(value) ? value.length > 0 : value !== undefined && value !== null,
   );
   const invalid: Array<[boolean, string]> = [
@@ -505,6 +508,11 @@ const DUAL_LAYER_CAPABILITIES = [
   "local.terminal.exec@1",
   "agent.dsh-observe@1",
   "terminal.session@1",
+  // v1.0.5 开放的 grantGated 平台服务：平台批准与同名用户同意必须成对声明。
+  "audio.capture@1",
+  "tasks.present@1",
+  "notifications.publish@1",
+  "resources.files@1",
 ] as const;
 
 function checkDualLayerCapabilities(m: Json, out: Finding[]): void {
@@ -835,6 +843,61 @@ function checkEntryPath(entry: string, pointer: string, out: Finding[]): void {
       pointer,
       detail: `${JSON.stringify(entry)} ${why}`,
     });
+  }
+}
+
+// The frozen notification text limits count Unicode codepoints like the Rust Host.
+// The unchanged general schema interpreter counts UTF-16. Remove only a proven
+// false length finding for these exact three fields; all other findings survive.
+function notificationLengthFalsePositive(
+  violation: { pointer: string; message: string }, manifest: unknown, schema: unknown,
+): boolean {
+  const match = /^contributes\.notificationScenes\[(0|[1-9]\d*)\]\.(label|description|trigger)$/.exec(violation.pointer);
+  if (!match || !isObject(manifest)) return false;
+  const value = obj(arr(obj(manifest["contributes"])["notificationScenes"])[Number(match[1])])[match[2]!];
+  if (typeof value !== "string") return false;
+  const contributesSchema = obj(obj(obj(schema)["properties"])["contributes"]);
+  const scenesSchema = obj(obj(contributesSchema["properties"])["notificationScenes"]);
+  const fieldSchema = obj(obj(obj(scenesSchema["items"])["properties"])[match[2]!]);
+  if (fieldSchema["type"] !== "string") return false;
+  const length = Array.from(value).length;
+  const min = fieldSchema["minLength"], max = fieldSchema["maxLength"];
+  return (typeof min === "number" && violation.message === `长度至少 ${min}` && length >= min)
+    || (typeof max === "number" && violation.message === `长度最多 ${max}` && length <= max);
+}
+
+function checkNotificationScenes(m: Json, matrix: SupportMatrix, out: Finding[]): void {
+  const contributes = obj(m["contributes"]);
+  if (contributes["notificationScenes"] === undefined) return;
+  const support = matrix.contributes.notificationScenes;
+  if (!support?.supported) {
+    out.push({ code: "HOST_CAPABILITY_NOT_AVAILABLE", pointer: "contributes.notificationScenes", detail: "当前 Host 不支持通知场景声明" });
+    return;
+  }
+  const floor = hostApiRangeFloor(str(obj(m["hostApi"])["range"]));
+  if (floor === null || compareVersions(floor, support.minHostApi) < 0) {
+    out.push({ code: "HOST_API_INCOMPATIBLE", pointer: "hostApi.range", detail: `声明 notificationScenes（包括空列表）要求 Host API ${support.minHostApi} 以上` });
+  }
+  const keys = new Set<string>();
+  for (const [i, raw] of arr(contributes["notificationScenes"]).entries()) {
+    const scene = obj(raw), key = str(scene["key"]);
+    const textInvalid = ["label", "description", "trigger"].some(field => {
+      const text = str(scene[field]);
+      // Scalar values only. A valid surrogate pair is one Array.from element;
+      // an unpaired surrogate remains in D800-DFFF and serde_json rejects it.
+      return text.trim().length === 0 || Array.from(text).some(char => {
+        const point = char.codePointAt(0)!;
+        return point <= 0x1f || (point >= 0x7f && point <= 0x9f)
+          || point === 0x61c || (point >= 0x200b && point <= 0x200f)
+          || (point >= 0x202a && point <= 0x202e) || (point >= 0x2060 && point <= 0x2069)
+          || point === 0xfeff || (point >= 0xd800 && point <= 0xdfff);
+      });
+    });
+    if (key === "legacy.post" || keys.has(key) || textInvalid
+      || (scene["defaultLevel"] === "system" && scene["maxLevel"] === "in_app")) {
+      out.push({ code: "MANIFEST_SCHEMA_INVALID", pointer: `contributes.notificationScenes[${i}]`, detail: "通知场景必须唯一、纯文本且默认深度不得超过最大深度" });
+    }
+    keys.add(key);
   }
 }
 

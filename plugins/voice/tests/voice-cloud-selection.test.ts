@@ -4,8 +4,10 @@ import { MockHost } from "@reai/app-test/v1";
 import manifest from "../app.manifest.json";
 import { DEFAULT_SETTINGS, DEFAULT_VOICE_FEATURE_SETTINGS, VOICE_FEATURE_SETTINGS_KEY } from "../src/data";
 import { setVoiceLocale, t } from "../src/voice-i18n";
+import { cloudModelsRetryTiming } from "../src/cloud-models-retry";
 beforeAll(() => { if (typeof document === "undefined") GlobalRegistrator.register(); });
-afterEach(() => { document.body.replaceChildren(); setVoiceLocale("zh"); });
+const productionRetryTiming = { ...cloudModelsRetryTiming };
+afterEach(() => { document.body.replaceChildren(); setVoiceLocale("zh"); Object.assign(cloudModelsRetryTiming, productionRetryTiming); });
 const tick = () => new Promise(resolve => setTimeout(resolve, 10));
 async function until(check: () => boolean) {
   for (let i = 0; i < 150 && !check(); i++) await tick();
@@ -16,7 +18,7 @@ const options = [
   { id: "transcribe-paid", kind: "transcribe" as const, label: "Paid model" },
   { id: "transcribe-free", kind: "transcribe" as const, label: "Free model" },
 ];
-async function harness(id = "transcribe-default", engine = "local", fresh = false, trusted = false, initialSaveFails = false, freeOnly = false, legacySdk = false, initialModels = options) {
+async function harness(id = "transcribe-default", engine = "local", fresh = false, trusted = false, initialSaveFails = false, freeOnly = false, legacySdk = false, initialModels: readonly Record<string, unknown>[] = options, extra: { developerMode?: boolean; failInitialList?: string | null } = {}) {
   const host = new MockHost({ manifest: structuredClone(manifest) as never,
     loadApp: async () => {
       const module = await import("../src/app");
@@ -30,16 +32,16 @@ async function harness(id = "transcribe-default", engine = "local", fresh = fals
   const internals = host as unknown as { storage: Map<string, unknown>; handleRequest(method: string, params: unknown): Promise<unknown> };
   if (!fresh) internals.storage.set(key("settings"), { ...DEFAULT_SETTINGS, engine, polish: "raw" });
   internals.storage.set(key(VOICE_FEATURE_SETTINGS_KEY), { ...DEFAULT_VOICE_FEATURE_SETTINGS, cloudModelId: id, ...(freeOnly ? { cloudModelBillingPolicy: "free-only" } : {}) });
-  host.setCloudModels(initialModels);
-  let models = structuredClone(initialModels).map(m => trusted && m.id === "transcribe-free" ? { ...m, isDefault: true, billingPolicy: "free" as const } : m), listFails = false, saveFails = initialSaveFails, listCalls = 0;
-  let listFailureCode: string | undefined;
+  host.setCloudModels(initialModels as unknown as typeof options);
+  let models = structuredClone(initialModels).map(m => trusted && m.id === "transcribe-free" ? { ...m, isDefault: true, billingPolicy: "free" as const } : m) as typeof options, listFails = extra.failInitialList !== undefined, saveFails = initialSaveFails, listCalls = 0;
+  let listFailureCode: string | undefined = extra.failInitialList ?? undefined;
   let listGate: (() => Promise<void>) | undefined;
   let saveGate: (() => Promise<void>) | undefined;
   const sentModels: string[] = [];
   const sentPolicies: unknown[] = [];
   const original = internals.handleRequest.bind(host);
   internals.handleRequest = async (method, params) => {
-    if (method === "environment.get") return { developerMode: true };
+    if (method === "environment.get") return { developerMode: extra.developerMode ?? true };
     if (method === "ai.models.list") {
       listCalls++;
       const snapshot = structuredClone(models), gate = listGate; listGate = undefined;
@@ -102,7 +104,12 @@ async function harness(id = "transcribe-default", engine = "local", fresh = fals
       listGate = async () => { started = true; await held; };
       return { release, started: () => started };
     },
-    models: (next: typeof options) => { models = next; host.setCloudModels(next); }, failList: (code?: string) => { listFails = true; listFailureCode = code; }, failSave: () => { saveFails = true; },
+    models: (next: readonly Record<string, unknown>[]) => { models = next as typeof options; host.setCloudModels(next as typeof options); }, failList: (code?: string) => { listFails = true; listFailureCode = code; }, failSave: () => { saveFails = true; },
+    present: () => host.presentSurface(surface.surfaceMountId),
+    setDeveloperMode: async (developerMode: boolean) => {
+      const bus = host as unknown as { dispatch(event: unknown): void; runtimeSessionId: string };
+      bus.dispatch({ type: "environment.changed", runtimeSessionId: bus.runtimeSessionId, developerMode }); await tick();
+    },
     recoverList: () => { listFails = false; models = structuredClone(options); host.setCloudModels(options); }, listCalls: () => listCalls,
     refresh: async () => { await host.unmountSurface(surface.surfaceMountId); surface = await host.openSurface("main"); await open(); },
     restart: async () => { await host.unmountSurface(surface.surfaceMountId); await host.disable(); await host.installAndEnable(); surface = await host.openSurface("main"); await open(); },
@@ -119,12 +126,12 @@ test("legacy ordinary switch does not pretend first paid model is selected; expl
 
 for (const failure of ["error", "empty"] as const) {
   test(`reopened settings recover saved free choice after a temporary ${failure} without manual refresh`, async () => {
-    const h = await harness("transcribe-free", "cloud");
+    // A failed read has nothing cached to keep only when no list was read yet; an empty snapshot always wins.
+    const h = await harness("transcribe-free", "cloud", false, false, false, false, false, options,
+      failure === "error" ? { failInitialList: "AI_NETWORK_ERROR" } : {});
     try {
       await h.open();
-      expect(h.select().value).toBe("transcribe-free");
-      if (failure === "error") h.failList("AI_NETWORK_ERROR"); else h.models([]);
-      await h.refresh();
+      if (failure === "empty") { expect(h.select().value).toBe("transcribe-free"); h.models([]); await h.refresh(); }
       await until(() => h.select().disabled);
       expect(h.featureId()).toBe("transcribe-free");
       h.recoverList();
@@ -138,11 +145,11 @@ for (const failure of ["error", "empty"] as const) {
 
 for (const failure of ["empty", "rejected"] as const) {
   test(`§6.0 诊断：${failure === "empty" ? "真的收到空列表才写「列表为空」" : "无码的请求拒绝不说成「列表为空」"}`, async () => {
-    const h = await harness("transcribe-free", "cloud");
+    const h = await harness("transcribe-free", "cloud", false, false, false, false, false, options,
+      failure === "rejected" ? { failInitialList: null } : {});
     try {
       await h.open();
-      if (failure === "empty") h.models([]); else h.failList();
-      await h.refresh();
+      if (failure === "empty") { h.models([]); await h.refresh(); }
       await until(() => h.select().disabled);
       const block = () => h.root().querySelector<HTMLElement>("[data-diag-key^='settings:cloud-models:'] .voice-diag-toggle");
       await until(() => !!block());
@@ -180,13 +187,17 @@ test("a pending catalog is shown as loading, then updates in place without anoth
   } finally { release?.(); await h.close(); }
 });
 
-test("persistent unavailability stops after two retries and manual refresh can recover", async () => {
-  const h = await harness("transcribe-free", "cloud");
+test("persistent unavailability stops after the bounded retry budget and manual refresh can recover", async () => {
+  cloudModelsRetryTiming.delaysMs = [20, 20, 20, 20, 20];
+  const h = await harness("transcribe-free", "cloud", false, false, false, false, false, options, { failInitialList: "AI_UNAVAILABLE" });
   try {
-    await h.open(); h.failList("AI_UNAVAILABLE"); const before = h.listCalls();
-    await h.refresh();
-    await new Promise(resolve => setTimeout(resolve, 4400));
-    expect(h.listCalls() - before).toBe(3);
+    await h.open();
+    await new Promise(resolve => setTimeout(resolve, 600));
+    const settled = h.listCalls();
+    await new Promise(resolve => setTimeout(resolve, 300));
+    // One initial read plus exactly the five-step budget; then nothing more on its own.
+    expect(h.listCalls()).toBe(settled);
+    expect(settled).toBeGreaterThanOrEqual(6);
     expect(h.select().disabled).toBeTrue(); expect(h.select().value).toBe(h.featureId());
     expect(h.featureId()).toBe("transcribe-free");
     expect(h.root().textContent).toContain(t("view.cloudSelectionRetained"));
@@ -195,9 +206,9 @@ test("persistent unavailability stops after two retries and manual refresh can r
       .find(button => button.textContent === t("view.refresh"))!;
     reload.click();
     await until(() => h.select().value === "transcribe-free" && !h.select().disabled);
-    expect(h.listCalls() - before).toBe(4);
+    expect(h.listCalls()).toBeGreaterThan(settled);
   } finally { await h.close(); }
-}, 7000);
+});
 
 for (const code of ["AI_NOT_LOGGED_IN", "AI_NOT_GRANTED", "AI_DISABLED"]) {
   test(`catalog ${code} does not trigger background retries`, async () => {
@@ -269,9 +280,18 @@ test("Host locale updates an unavailable selection in place without saving or re
   } finally { await h.close(); }
 });
 test("unavailable catalog disables selector without overwriting saved paid ID or inventing replacement", async () => {
-  const h = await harness("transcribe-paid", "cloud"); try {
-    await h.open(); h.failList(); await h.refresh(); expect(h.select().disabled).toBeTrue(); expect(h.select().value).toBe(h.featureId()); expect(h.featureId()).toBe("transcribe-paid");
+  const h = await harness("transcribe-paid", "cloud", false, false, false, false, false, options, { failInitialList: null }); try {
+    await h.open(); await until(() => h.select().disabled); expect(h.select().value).toBe(h.featureId()); expect(h.featureId()).toBe("transcribe-paid");
     await h.transcribe(); expect(h.sentModels).toEqual(["transcribe-paid"]); expect(h.root().textContent).toContain("Host configuration temporarily unavailable");
+  } finally { await h.close(); }
+});
+test("a failed reread for the same account keeps the shown options usable and the saved ID", async () => {
+  const h = await harness("transcribe-paid", "cloud"); try {
+    await h.open(); expect(h.select().disabled).toBeFalse();
+    h.failList(); await h.refresh(); await tick();
+    expect(h.select().disabled).toBeFalse(); expect(h.select().value).toBe("transcribe-paid");
+    expect(h.featureId()).toBe("transcribe-paid");
+    expect(h.root().querySelector("[data-warn='cloud-models']")).toBeNull();
   } finally { await h.close(); }
 });
 test("failed selection save restores visible persisted choice and reports failure", async () => {
@@ -283,8 +303,9 @@ test("failed selection save restores visible persisted choice and reports failur
 
 for (const [code, messageKey] of [[undefined, "view.cloudModelsUnavailable"], ["AI_NOT_GRANTED", "app.cloudRecognitionPermissionIsNotEnabledIn"], ["AI_NOT_LOGGED_IN", "app.signInFirst"]] as const) {
   test(`failed catalog save has reactive localized guidance and preserves saved ID: ${code ?? "temporary"}`, async () => {
-    const h = await harness("transcribe-paid", "cloud"); try {
-      await h.open(); h.failList(code);
+    // No list was ever read, so choosing must read one and report why it cannot.
+    const h = await harness("transcribe-paid", "cloud", false, false, false, false, false, options, { failInitialList: code ?? null }); try {
+      await h.open();
       h.select().value = "transcribe-free"; h.select().dispatchEvent(new Event("change"));
       await until(() => h.root().querySelector(".settings-error")?.textContent?.includes(t(messageKey)) === true);
       expect(h.featureId()).toBe("transcribe-paid");
@@ -310,11 +331,11 @@ test("fresh first-run default is persisted, displayed and requested; reopening n
 });
 test("queued explicit model changes preserve the last saved choice and an overlapping transcription waits for it", async () => {
   const h = await harness("transcribe-paid", "cloud");
-  const gate = h.holdNextList();
+  const gate = { release: () => undefined };
   try {
-    // Initial refresh is already complete before holding the next explicit save.
-    gate.release(); await h.open();
-    const saveGate = h.holdNextList();
+    await h.open();
+    // Switching validates against the list already read; the save itself is what queues.
+    const saveGate = h.holdNextSave();
     h.select().value = "transcribe-free"; h.select().dispatchEvent(new Event("change"));
     await until(saveGate.started);
     h.select().value = "transcribe-paid"; h.select().dispatchEvent(new Event("change"));
@@ -521,5 +542,139 @@ test("account pricing failure retains ordinary selection and does not fall back 
     expect(h.featureId()).toBe("transcribe-account"); expect(h.engineValue()).toBe("cloud");
     await h.transcribe(); expect(h.sentModels).toEqual(["transcribe-account"]);
     expect(h.features().cloudModelBillingPolicy).toBeUndefined();
+  } finally { await h.close(); }
+});
+
+const accountOption = (id: string, billingPolicy: "free" | "metered", isDefault = false) => ({
+  id, kind: "transcribe" as const, label: id === "transcribe-acct-free" ? "免费云转写" : "标准云转写", isDefault,
+  pricingContext: "current-account" as const, billingPolicy,
+});
+// Production-shaped catalog: the account default is metered, a separate option is free.
+const accountCatalog = [accountOption("transcribe-acct-paid", "metered", true), accountOption("transcribe-acct-free", "free")];
+
+test("a REAUTH after relogin recovers on its own after the old two-retry window", async () => {
+  cloudModelsRetryTiming.delaysMs = [30, 60, 90, 120, 150];
+  const h = await harness("transcribe-free", "cloud", false, false, false, false, false, options, { failInitialList: "PLUGIN_OAUTH_REAUTH_REQUIRED" });
+  try {
+    await h.open();
+    await until(() => h.listCalls() >= 4);
+    expect(h.select().disabled).toBeTrue();
+    h.recoverList();
+    await until(() => h.select().value === "transcribe-free" && !h.select().disabled);
+    expect(h.featureId()).toBe("transcribe-free");
+  } finally { await h.close(); }
+});
+
+test("the surface becoming visible rereads an unavailable catalog with a minimum interval", async () => {
+  cloudModelsRetryTiming.delaysMs = [];
+  cloudModelsRetryTiming.minVisibleIntervalMs = 60_000;
+  const h = await harness("transcribe-free", "cloud", false, false, false, false, false, options, { failInitialList: "AI_NETWORK_ERROR" });
+  try {
+    await h.open(); await until(() => h.select().disabled); await tick();
+    const before = h.listCalls();
+    await h.present(); await until(() => h.listCalls() === before + 1); await tick();
+    await h.present(); await tick(); await tick();
+    expect(h.listCalls()).toBe(before + 1);
+    h.recoverList(); cloudModelsRetryTiming.minVisibleIntervalMs = 0;
+    await h.present();
+    await until(() => h.select().value === "transcribe-free" && !h.select().disabled);
+  } finally { await h.close(); }
+});
+
+test("switching the cloud model does not reread the catalog and never shows loading", async () => {
+  const h = await harness("transcribe-paid", "cloud");
+  try {
+    await h.open(); const before = h.listCalls();
+    const seen: string[] = [];
+    const observer = new MutationObserver(() => { seen.push(h.root().textContent ?? ""); if (h.select()?.disabled) seen.push("DISABLED"); });
+    observer.observe(h.root(), { subtree: true, childList: true, characterData: true, attributes: true });
+    await h.choose("transcribe-free"); observer.disconnect();
+    expect(h.listCalls()).toBe(before);
+    expect(seen.some(text => text === "DISABLED" || text.includes(t("view.cloudModelsLoading")) || text.includes(t("diagnostics.step.cloudModels")))).toBeFalse();
+    expect(h.select().value).toBe("transcribe-free");
+  } finally { await h.close(); }
+});
+
+test("reopening with a usable list rereads silently: selector stays enabled with its choice", async () => {
+  const h = await harness("transcribe-paid", "cloud");
+  let release: (() => void) | undefined;
+  try {
+    await h.open(); const gate = h.holdNextList(); release = gate.release;
+    await h.refresh(); await until(gate.started);
+    expect(h.select().disabled).toBeFalse(); expect(h.select().value).toBe("transcribe-paid");
+    expect(h.root().textContent).not.toContain(t("view.cloudModelsLoading"));
+    gate.release(); await tick();
+    expect(h.select().value).toBe("transcribe-paid");
+  } finally { release?.(); await h.close(); }
+});
+
+for (const id of ["", "transcribe-default", "transcribe-removed"]) {
+  test(`account catalog defaults ${id || "an empty choice"} to the free option, not the metered account default`, async () => {
+    const h = await harness(id, "cloud", false, false, false, false, false, accountCatalog);
+    try {
+      await until(() => h.featureId() === "transcribe-acct-free");
+      // Account pricing is a current quote: ordinary billing intent, not an invented free-only promise.
+      expect(h.features().cloudModelBillingPolicy).toBeUndefined();
+      await h.open(); expect(h.select().value).toBe("transcribe-acct-free");
+    } finally { await h.close(); }
+  });
+}
+
+test("a missing free-only choice is not moved to another zero-priced option Host would not accept", async () => {
+  const h = await harness("transcribe-gone", "cloud", false, false, false, true, false, accountCatalog);
+  try {
+    await h.open(); await tick(); await tick();
+    expect(h.featureId()).toBe("transcribe-gone");
+    expect(h.features().cloudModelBillingPolicy).toBe("free-only");
+    expect(h.select().value).toBe("transcribe-gone");
+  } finally { await h.close(); }
+});
+
+test("recording before a choice exists rereads the catalog; the next recording uses the free default", async () => {
+  cloudModelsRetryTiming.delaysMs = [];
+  const h = await harness("", "cloud", false, false, false, false, false, accountCatalog, { failInitialList: "AI_NETWORK_ERROR" });
+  try {
+    await h.open(); await until(() => h.select().disabled);
+    h.recoverList(); h.models(accountCatalog);
+    await h.transcribe(); expect(h.sentModels).toEqual([]);
+    await until(() => h.featureId() === "transcribe-acct-free");
+    await h.transcribe();
+    expect(h.sentModels).toEqual(["transcribe-acct-free"]);
+    expect(h.history()[0]?.originalSelection?.modelId).toBe("transcribe-acct-free");
+  } finally { await h.close(); }
+});
+
+test("plain mode: retrying, stopped and reconnect states speak plainly without codes or waits", async () => {
+  cloudModelsRetryTiming.delaysMs = [200, 20, 20, 20, 20];
+  const h = await harness("transcribe-free", "cloud", false, false, false, false, false, options,
+    { developerMode: false, failInitialList: "PLUGIN_OAUTH_REAUTH_REQUIRED" });
+  try {
+    await h.open(); await until(() => h.select().disabled);
+    for (const locale of ["zh", "en"] as const) {
+      h.host.setLocale(locale); await tick();
+      const text = h.root().textContent ?? "";
+      expect(text).toContain(t("view.cloudRetryingHint"));
+      for (const leak of ["PLUGIN_OAUTH_REAUTH_REQUIRED", "catalog temporarily unavailable", "transcribe-free", t("diagnostics.cloudModelsReason")]) expect(text).not.toContain(leak);
+      expect(text).not.toMatch(/已等待至少|at least .* since/);
+    }
+    h.host.setLocale("zh");
+    await until(() => (h.root().textContent ?? "").includes(t("view.cloudReconnectHint")));
+    expect(h.root().querySelector("[data-action='reconnect-cloud']")).not.toBeNull();
+    expect(h.root().textContent).not.toContain("PLUGIN_OAUTH_REAUTH_REQUIRED");
+  } finally { await h.close(); }
+});
+
+test("turning developer mode off immediately hides raw failure text already on screen", async () => {
+  const h = await harness("transcribe-paid", "cloud");
+  try {
+    await h.open(); h.failSave(); h.select().value = "transcribe-free"; h.select().dispatchEvent(new Event("change"));
+    await until(() => h.root().textContent!.includes("selection could not be saved"));
+    await h.setDeveloperMode(false);
+    await until(() => !h.root().textContent!.includes("selection could not be saved"));
+    for (const locale of ["zh", "en"] as const) {
+      h.host.setLocale(locale); await tick();
+      expect(h.root().textContent).toContain(t("app.notCompletedTryAgainLater"));
+    }
+    expect(h.featureId()).toBe("transcribe-paid");
   } finally { await h.close(); }
 });

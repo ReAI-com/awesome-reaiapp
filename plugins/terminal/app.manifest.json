@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.reai.terminal",
-  "version": "1.0.4-k03.1",
+  "version": "1.0.5-dev.2",
   "publisherId": "reai",
   "oauthAppId": "TPbwDuJFlSIPdMlA2xiB4wRMHaMk3262",
   "name": "终端",
@@ -43,7 +43,7 @@
     }
   ],
   "hostApi": {
-    "range": ">=1.16.0 <2.0.0"
+    "range": ">=1.25.0 <2.0.0"
   },
   "requires": {
     "hostCapabilities": [
@@ -52,7 +52,9 @@
       "storage.kv@1",
       "titlebar.action@1",
       "terminal.session@1",
-      "metadata.i18n@1"
+      "metadata.i18n@1",
+      "surface.navigation@1",
+      "surface.escape@1"
     ],
     "hardwareServices": [],
     "appIntents": []
@@ -177,6 +179,27 @@
         "callers": [
           "host"
         ]
+      },
+      {
+        "id": "com.reai.terminal.open-settings",
+        "componentId": "ui",
+        "title": "打开设置",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "timeoutMs": 3000,
+        "supportsCancellation": false,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host"
+        ],
+        "bindingPickerVisible": false
       }
     ],
     "intents": []
@@ -238,6 +261,11 @@
         "target": "command.title",
         "key": "metadataBack",
         "id": "com.reai.terminal.back-to-root"
+      },
+      {
+        "target": "command.title",
+        "key": "navigation.settingsCommand",
+        "id": "com.reai.terminal.open-settings"
       }
     ]
   }

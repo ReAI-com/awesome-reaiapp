@@ -2,8 +2,7 @@
  * 浏览器主页视图：快捷方式 + 当前标签一览 + 打开抽屉。
  *
  * 纯 DOM（与 todo-view 同款形态）；样式在 browser.css，用宿主注入的主题 token。
- * `browser.state` 只在挂载与手动刷新时拉取——标签变化的高频同步是 Host 抽屉
- * 的事，插件主页不做实时镜像。
+ * 状态只来自 Host；挂载、操作结束与 Host 状态通知后刷新。
  *
  * 语言切换走 `applyBrowserHomeLocale`：只更新现有节点的文字与属性，不重建
  * DOM，焦点/滚动原样保留；真实网页标题、URL 与品牌名始终原样显示。
@@ -41,6 +40,9 @@ const QUICK_LINKS: Array<{ label: string; url: string }> = [
   { label: "MDN", url: "https://developer.mozilla.org" },
 ];
 
+export type BrowserPhase = "open" | "new" | "refresh" | "select" | "close";
+export interface BrowserActivity { phase: BrowserPhase; stage?: BrowserPhase; tabId?: number; url?: string }
+
 export interface BrowserHome {
   root: HTMLElement;
   listEl: HTMLElement;
@@ -54,7 +56,19 @@ export interface BrowserHome {
   refreshBtn: HTMLButtonElement;
   /** 最近一次引擎事实；语言切换时据此原位重画文字，不重新请求。 */
   state: BrowserStateSummary | null;
-  errorDetail: string | undefined;
+  errorDetail: unknown;
+  failedPhase: BrowserPhase;
+  activity?: BrowserActivity;
+  elapsedMs: number;
+  developerMode: boolean;
+  diagnosticEl: HTMLElement;
+  progressEl: HTMLElement;
+  feedbackEl: HTMLElement;
+  actionsEl: HTMLElement;
+  diagnosticGeneratedAt?: string;
+  pluginVersion?: string;
+  hostVersion?: string;
+  hostVersionError?: unknown;
 }
 
 /** 标签行标题：真实标题/URL 优先，两者皆空才用带 tabId 的占位译文。 */
@@ -86,19 +100,88 @@ function applyRowTexts(row: HTMLElement): void {
   }
 }
 
+function errorReason(error: unknown): string {
+  const e = error as { code?: unknown; userMessage?: unknown; message?: unknown } | null;
+  const text = [e?.code, e?.userMessage, e?.message, typeof error === "string" ? error : ""].filter(value => typeof value === "string").join(" ");
+  if (/TIMEOUT|timed out/i.test(text)) return "timeout";
+  if (/PLUGIN_(?:APP_)?DISABLED/.test(text)) return "disabled";
+  if (/NOT_GRANTED|PERMISSION_(?:REQUIRED|DENIED)|CAPABILITY_NOT/.test(text)) return "permission";
+  if (/BRIDGE_UNAVAILABLE|ENGINE_(?:UNAVAILABLE|EXITED)|ENGINE[-_]OFFLINE/i.test(text)) return "unavailable";
+  return "failed";
+}
+
+function diagnosticText(error: unknown): string {
+  const e = error as { code?: unknown; message?: unknown } | null;
+  const code = typeof e?.code === "string" ? e.code : t("status.noCode");
+  const reason = typeof e?.message === "string" ? e.message : String(error);
+  return `${code}: ${reason}`
+    .replace(/https?:\/\/[^\s"'<>]+/gi, url => { try { const u = new URL(url); return u.origin + u.pathname; } catch { return "[URL]"; } })
+    .replace(/(?:Bearer\s+)[^\s,;]+/gi, "[redacted]")
+    .replace(/(?:token|cookie|secret|password|authorization|credential|api[_-]?key)\s*[:=]\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, "[redacted]")
+    .slice(0, 1000);
+}
+
 function applyStatusText(home: BrowserHome): void {
-  let value: string;
-  if (home.errorDetail !== undefined) {
-    value = t("status.loadFailed", { detail: home.errorDetail });
-    home.statusEl.classList.add("error");
-  } else if (!home.state || home.state.tabs.length === 0) {
-    value = t("tabs.empty");
-    home.statusEl.classList.remove("error");
-  } else {
-    value = "";
-    home.statusEl.classList.remove("error");
-  }
+  const failed = home.errorDetail !== undefined;
+  let value = "";
+  if (home.activity) {
+    value = t(`activity.${home.activity.stage ?? home.activity.phase}`);
+    if (home.elapsedMs >= 1000) value = t("status.waiting", { activity: value, seconds: Math.floor(home.elapsedMs / 1000) });
+  } else if (failed) {
+    value = t(`status.${errorReason(home.errorDetail)}`, { action: t(`action.${home.failedPhase}`) });
+  } else if (!home.state || home.state.tabs.length === 0) value = t("tabs.empty");
+  home.statusEl.classList.toggle("error", failed && !home.activity);
   if (home.statusEl.textContent !== value) home.statusEl.textContent = value;
+  home.progressEl.hidden = !home.activity || home.elapsedMs < 400;
+  home.progressEl.setAttribute("aria-label", value);
+  home.diagnosticEl.hidden = !home.developerMode || (!failed && !home.activity);
+  home.diagnosticEl.textContent = home.diagnosticEl.hidden ? "" : t("status.diagnostic", {
+    pluginVersion: home.pluginVersion ?? t("status.versionUnavailable"),
+    hostVersion: home.hostVersion ?? (home.hostVersionError === undefined ? t("status.versionUnavailable") : `${t("status.versionUnavailable")} (${diagnosticText(home.hostVersionError)})`),
+    detail: failed ? diagnosticText(home.errorDetail) : t(`activity.${home.activity!.stage ?? home.activity!.phase}`),
+    state: t(failed ? "status.objectFailed" : "status.objectWaiting"),
+    generatedAt: home.diagnosticGeneratedAt ?? new Date().toISOString(),
+    logs: t("status.logsUnavailable"),
+  });
+}
+
+function applyActivity(home: BrowserHome): void {
+  const activity = home.activity;
+  home.root.setAttribute("aria-busy", String(!!activity));
+  for (const button of Array.from(home.root.querySelectorAll<HTMLButtonElement>("button"))) button.disabled = !!activity;
+  home.openBtn.textContent = t(activity?.phase === "open" ? "activity.open" : "home.openBrowser");
+  home.newTabBtn.textContent = t(activity?.phase === "new" && !activity.url ? "activity.new" : "home.newTab");
+  home.refreshBtn.textContent = t(activity?.phase === "refresh" ? "activity.refresh" : "home.refresh");
+  for (const chip of Array.from(home.root.querySelectorAll<HTMLButtonElement>(".rb-link"))) {
+    chip.textContent = activity?.phase === "new" && activity.url === chip.dataset.rbUrl ? t("activity.new") : chip.dataset.rbLabel ?? "";
+  }
+  for (const row of Array.from(home.listEl.querySelectorAll<HTMLElement>(".rb-tab"))) {
+    applyRowTexts(row);
+    const close = row.querySelector<HTMLElement>(".rb-tab-close");
+    const closing = activity?.phase === "close" && activity.tabId === Number(row.dataset.rbTabId);
+    close?.classList.toggle("busy", closing);
+    close?.querySelector("path")?.setAttribute("d", closing ? "M21 12a9 9 0 1 1-9-9" : "M6 6l12 12M18 6L6 18");
+    if (closing) close?.setAttribute("aria-label", t("activity.close"));
+    if (activity?.tabId === Number(row.dataset.rbTabId)) {
+      if (activity.phase === "select") row.querySelector<HTMLElement>(".rb-tab-title")!.textContent = t("activity.select");
+    }
+  }
+  if (activity?.phase === "open" || activity?.phase === "new") home.actionsEl.after(home.feedbackEl);
+  else if (activity?.phase === "refresh") home.tabsTitleEl.after(home.feedbackEl);
+  else home.listEl.after(home.feedbackEl);
+  applyStatusText(home);
+}
+
+export function setBrowserHomeActivity(home: BrowserHome, activity: BrowserActivity | undefined, elapsedMs: number): void {
+  if (activity && !home.activity) home.diagnosticGeneratedAt = new Date().toISOString();
+  home.activity = activity;
+  home.elapsedMs = elapsedMs;
+  applyActivity(home);
+}
+
+export function setBrowserHomeDeveloperMode(home: BrowserHome, enabled: boolean): void {
+  home.developerMode = enabled;
+  applyStatusText(home);
 }
 
 export function mountBrowserHome(
@@ -109,6 +192,9 @@ export function mountBrowserHome(
   frame.className = "plugin-main-frame";
   const root = document.createElement("div");
   root.className = "main-body rb-home";
+  const content = document.createElement("div");
+  content.className = "rb-content";
+  root.append(content);
   frame.appendChild(root);
 
   const sub = document.createElement("div");
@@ -139,6 +225,8 @@ export function mountBrowserHome(
     chip.type = "button";
     chip.className = "rb-link";
     chip.textContent = link.label;
+    chip.dataset.rbLabel = link.label;
+    chip.dataset.rbUrl = link.url;
     chip.addEventListener("click", () => handlers.onNewTab(link.url));
     links.append(chip);
   }
@@ -150,6 +238,17 @@ export function mountBrowserHome(
   listEl.className = "rb-tabs";
   const statusEl = document.createElement("div");
   statusEl.className = "rb-status";
+  statusEl.setAttribute("role", "status");
+  statusEl.setAttribute("aria-live", "polite");
+  const progressEl = document.createElement("div");
+  progressEl.className = "rb-progress";
+  progressEl.hidden = true;
+  progressEl.setAttribute("role", "progressbar");
+  const feedbackEl = document.createElement("div");
+  feedbackEl.className = "rb-feedback";
+  const diagnosticEl = document.createElement("pre");
+  diagnosticEl.className = "rb-diagnostic";
+  diagnosticEl.hidden = true;
 
   const refresh = document.createElement("button");
   refresh.type = "button";
@@ -158,7 +257,8 @@ export function mountBrowserHome(
   refresh.addEventListener("click", handlers.onRefresh);
   tabsTitle.append(refresh);
 
-  root.append(sub, actions, linksTitle, links, tabsTitle, listEl, statusEl);
+  feedbackEl.append(statusEl, progressEl, diagnosticEl);
+  content.append(sub, actions, linksTitle, links, tabsTitle, listEl, feedbackEl);
   parent.append(frame);
   return {
     root,
@@ -173,6 +273,13 @@ export function mountBrowserHome(
     refreshBtn: refresh,
     state: null,
     errorDetail: undefined,
+    failedPhase: "refresh",
+    elapsedMs: 0,
+    developerMode: false,
+    diagnosticEl,
+    progressEl,
+    feedbackEl,
+    actionsEl: actions,
   };
 }
 
@@ -197,7 +304,7 @@ export function applyBrowserHomeLocale(home: BrowserHome): void {
   if (home.refreshBtn.textContent !== refresh) {
     home.refreshBtn.textContent = refresh;
   }
-  applyStatusText(home);
+  applyActivity(home);
   for (const row of Array.from(home.listEl.children)) {
     if (row instanceof HTMLElement) applyRowTexts(row);
   }
@@ -206,18 +313,24 @@ export function applyBrowserHomeLocale(home: BrowserHome): void {
 export function refreshBrowserHome(
   home: BrowserHome,
   state: BrowserStateSummary | null,
-  errorDetail?: string,
+  errorDetail?: unknown,
+  failedPhase: BrowserPhase = "refresh",
 ): void {
   home.state = state;
   home.errorDetail = errorDetail;
+  home.failedPhase = failedPhase;
+  if (errorDetail !== undefined) home.diagnosticGeneratedAt = new Date().toISOString();
   home.listEl.replaceChildren();
   applyStatusText(home);
-  if (errorDetail !== undefined || !state || state.tabs.length === 0) return;
+  if (!state || state.tabs.length === 0) return;
   for (const tab of state.tabs) {
-    const row = document.createElement("button");
-    row.type = "button";
+    const row = document.createElement("div");
+    row.dataset.rbTabId = String(tab.tabId);
     row.className = "rb-tab" + (tab.tabId === state.activeTabId ? " active" : "");
-    row.addEventListener("click", () => home.handlers.onSelectTab(tab.tabId));
+    const select = document.createElement("button");
+    select.type = "button";
+    select.className = "rb-tab-select";
+    select.addEventListener("click", () => home.handlers.onSelectTab(tab.tabId));
     const label = document.createElement("span");
     label.className = "rb-tab-title";
     // 语言切换要能原位重算占位标题，原始 title/url/tabId 记在节点上。
@@ -225,29 +338,43 @@ export function refreshBrowserHome(
     label.dataset.rbUrl = tab.url;
     label.dataset.rbTabId = String(tab.tabId);
     label.textContent = tab.title || tab.url || t("tabs.titleFallback", { tabId: tab.tabId });
-    row.append(label);
+    select.append(label);
     if (tab.openedByAgent) {
       const badge = document.createElement("span");
       badge.className = "rb-tab-badge";
       badge.textContent = "Agent";
-      row.append(badge);
+      select.append(badge);
     }
     if (tab.tabId === state.agentTabId) {
       const badge = document.createElement("span");
       badge.className = "rb-tab-badge work";
       badge.textContent = t("tabs.workBadge");
-      row.append(badge);
+      select.append(badge);
     }
-    const close = document.createElement("span");
+    const close = document.createElement("button");
+    close.type = "button";
     close.className = "rb-tab-close";
     close.setAttribute("title", t("tabs.close"));
     close.setAttribute("aria-label", t("tabs.close"));
-    close.textContent = "✕";
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("width", "16");
+    icon.setAttribute("height", "16");
+    icon.setAttribute("fill", "none");
+    icon.setAttribute("stroke", "currentColor");
+    icon.setAttribute("stroke-width", "2");
+    icon.setAttribute("stroke-linecap", "round");
+    icon.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M6 6l12 12M18 6L6 18");
+    icon.append(path);
+    close.append(icon);
     close.addEventListener("click", (event) => {
       event.stopPropagation();
       home.handlers.onCloseTab(tab.tabId);
     });
-    row.append(close);
+    row.append(select, close);
     home.listEl.append(row);
   }
+  applyActivity(home);
 }

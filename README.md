@@ -4,7 +4,7 @@ ReAI 官方插件、开发文档、共享工具和示例的统一仓库。插件
 
 脱敏文档已先发布，15 个插件和 4 个示例随后完成测试、编译与重复打包。完整版本和包摘要见 [本地打包验收](docs/source-delivery-2026-10-03.md)。源码公开和本地出包不表示平台已审核、签名或上架。
 
-本次共享工具与 Voice `2.14.5-dev.3` 源码候选同步及验证见 [2026-10-06 源码交付](docs/source-delivery-2026-10-06.md)。候选未送审或上架，网站版本单独核验。
+最近一次插件与共享工具同步及验证见 [2026-10-19 源码同步](docs/source-delivery-2026-10-19.md)。源码候选未因同步而送审或上架，网站版本单独核验。
 
 - 开放平台：[open.reai.com](https://open.reai.com/)
 - 中文文档：[开发规范](https://open.reai.com/docs/)
@@ -23,7 +23,7 @@ website/       VitePress 文档站
 open-website/  中英文开放平台介绍站点
 ```
 
-共 15 个官方插件：`agents-im`、`agents-tasks`、`browser`、`code-worker`、`codex-app`、`codex-link`、`computer`、`device-doctor`、`dsh-agent`、`pi-agent`、`podcast`、`terminal`、`text-editor`、`voice`、`wishing-wall`。
+共 16 个官方插件：`agents-im`、`agents-tasks`、`browser`、`code-worker`、`codex-app`、`codex-link`、`computer`、`device-doctor`、`dsh-agent`、`files`、`pi-agent`、`podcast`、`terminal`、`text-editor`、`voice`、`wishing-wall`。
 
 每个插件使用稳定的 `appId`，独立维护 `app.manifest.json`、依赖锁、测试和版本记录。共享依赖变更后检查所有受影响插件。
 

@@ -33,6 +33,7 @@ async function setup(loseAcks = 0, replayEvents = events) {
   const created: unknown[] = [], cancelled: unknown[] = [], legacyCalls: unknown[] = [], submissions: unknown[] = [];
   const dismissed: unknown[] = [];
   const host = new MockHost({
+    ownedConversationOpen: { accountGeneration: "t09-synthetic", packageDigest: "a".repeat(64), admitted: true, decision: "granted", userCeiling: "in_app", sessionIds: ["agent2-voice-integration"] },
     manifest: structuredClone(manifest) as never,
     loadApp: async () => {
       const { default: app } = await import("../src/app?agent-v2=" + crypto.randomUUID());
@@ -111,6 +112,7 @@ test("batched Host tool events display their real elapsed time, not replay deliv
     const { root } = await f.host.openSurface("main");
     root!.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
     root!.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+    await waitForConversationFixture(root!);
     expect(root!.querySelector(".chat-status-call-duration")?.textContent).toBe("290.5s");
     expect(f.submissions).toHaveLength(1);
   } finally { await f.host.disable(); }
@@ -146,6 +148,7 @@ for (const withEvents of [false, true]) {
       const { root } = await f.host.openSurface("main");
       root!.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
       root!.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+    await waitForConversationFixture(root!);
       expect(Array.from(root!.querySelectorAll(".chat-status-call-duration"), el => el.textContent)).toEqual(["290.5s", "2.6s"]);
       expect(f.submissions).toHaveLength(1);
       expect(f.cancelled).toHaveLength(0);
@@ -318,6 +321,7 @@ test("a reopened running turn can still be explicitly stopped using the original
     const root = surface.root!;
     root.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
     root.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+    await waitForConversationFixture(root);
     await until(() => !!root.querySelector(".chat-cancel"));
     root.querySelector<HTMLButtonElement>(".chat-cancel")!.click();
     await until(() => f.cancelled.length === 1);
@@ -411,6 +415,7 @@ test("activation reconciles v1 and v2 ownership together without deleting either
   const lists: unknown[] = [], deletes: unknown[] = [];
   const saved = ["legacy-session", "agent2-existing"].map((sessionId, index) => ({ id: `history-${index}`, transcript: `question-${index}`, reply: `answer-${index}`, status: "completed", commandId: "voice.command.agent", agentSessionId: sessionId, createdAt: new Date().toISOString() }));
   const host = new MockHost({
+    ownedConversationOpen: { accountGeneration: "t09-synthetic", packageDigest: "a".repeat(64), admitted: true, decision: "granted", userCeiling: "in_app", sessionIds: ["agent2-voice-integration"] },
     manifest: structuredClone(manifest) as never,
     loadApp: async () => {
       const { default: app } = await import("../src/app?v2-history=" + crypto.randomUUID());
@@ -456,6 +461,7 @@ test("the existing failed record retries a lost admission with its original key 
     const { root } = await f.host.openSurface("main");
     root!.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
     root!.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+    await waitForConversationFixture(root!);
     const retry = root!.querySelector<HTMLButtonElement>(".chat-retry-request");
     expect(retry?.textContent).toBe("重试这次请求");
     retry!.click();
@@ -469,3 +475,9 @@ test("the existing failed record retries a lost admission with its original key 
       .toMatchObject({ agentSessionId: ref.sessionId, runId: ref.turnId, reply: "Weather answer" });
   } finally { await f.host.disable(); }
 });
+
+/** Synthetic fixture waits for the actual asynchronous history/paint boundary. */
+async function waitForConversationFixture(root: Element) {
+ const end=Date.now()+2500; while(!root.querySelector(".main-body.chat-view,.main-body.translation-detail")&&Date.now()<end)await new Promise(r=>setTimeout(r,5));
+ expect(!!root.querySelector(".main-body.chat-view,.main-body.translation-detail")).toBeTrue();
+}

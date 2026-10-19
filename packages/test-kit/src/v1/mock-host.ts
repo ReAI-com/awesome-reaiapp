@@ -15,6 +15,13 @@ import workflowSchema from "@reai/app-sdk/developer-workflow-schema";
 import {
   NotifyMethod,
   RequestMethod,
+  audioClipsRequestMethod,
+  PLATFORM_CONTRACT_LIMITS,
+  type AudioClipsRequestMethod,
+  type AudioClipRef,
+  type AudioRangeReceipt,
+  type AudioTranscriptionReceipt,
+  type PlatformContractErrorCode,
   type CommandSettlement,
   type CloudDeliveryResult,
   type HostBridge,
@@ -25,6 +32,7 @@ import {
   type WireError,
 } from "@reai/app-sdk/v1";
 import { MockNetworkUploads } from "./network-upload";
+import { MockPlatformServices, type MockPlatformServicesFixture } from "./mock-platform-services";
 
 export interface MockNetworkResponse {
   status: number;
@@ -44,6 +52,21 @@ export type DeveloperPlatformMockHandler = (
 ) => unknown | Promise<unknown>;
 
 export interface MockHostOptions {
+  /** Explicit synthetic source/admission fixture. Never grants product capability or native proof. */
+  ownedConversationOpen?: {
+    accountGeneration: string; packageDigest: string; admitted: boolean;
+    decision: "granted" | "pending" | "denied";
+    userCeiling?: "off" | "in_app" | "system";
+    sessionIds?: string[]; now?: () => number;
+  };
+  /**
+   * v1.0.5 grant-gated 平台服务（audio.capture@1 / tasks.present@1 / notifications.publish@1）的
+   * 显式夹具。`approvals` 模拟平台审核批准，缺省（不传本项或空数组）一律拒绝。
+   */
+  platformServices?: MockPlatformServicesFixture;
+  /** Explicit virtual PCM/STT fixture only; absent means unavailable. Never a native proof. */
+  audioClips?: MockAudioClipsFixture;
+  audioClipsAccountGeneration?: string;
   /** Deterministic UI locale; independent of the machine running the tests. */
   locale?: import("@reai/app-sdk/v1").UiLocale;
   /** App 的 Manifest（已解析）。 */
@@ -82,6 +105,7 @@ export interface MockHostOptions {
 export interface AppManifestLike {
   appId: string;
   contributes?: {
+    notificationScenes?: { key: string; maxLevel: "off" | "in_app" | "system" }[];
     surfaces?: { id: string }[];
     commands?: { id: string; timeoutMs?: number }[];
     intents?: { id: string }[];
@@ -141,6 +165,250 @@ export class MockHostError extends Error {
 
 let sequence = 0;
 const nextId = (prefix: string) => `${prefix}-${++sequence}`;
+
+export interface MockAudioClipSource {
+  epoch: string;
+  gap: boolean;
+  approvedStartMs: number;
+  approvedEndMs: number;
+}
+export interface MockAudioClipsFixture {
+  /** Already-admitted synthetic consumers, not an implicit capture acquire. */
+  consumers: readonly (Omit<MockAudioClipSource, "gap"> & { consumerId: string; gap?: boolean })[];
+  now?: () => number;
+  slice?: (input: { range: AudioRangeReceipt; endMs: number }, signal: AbortSignal) => void | Promise<void>;
+  transcribe?: (clip: AudioClipRef, signal: AbortSignal) => string | Promise<string>;
+}
+type MockAudioOwner = { key: string; appId: string; generation: string; live: () => boolean };
+type MockConsumer = { owner: MockAudioOwner; source: MockAudioClipSource };
+type MockRange = {
+  owner: MockAudioOwner; consumer: MockConsumer; receipt: AudioRangeReceipt;
+  state: "active" | "pending" | "finished" | "cancelled" | "failed";
+  expires: number; reserved: number; running: boolean;
+  finish?: { requestId: string; endMs: number; promise: Promise<AudioClipRef> };
+  clipId?: string; error?: string; cancel?: () => void;
+};
+type MockClip = { owner: MockAudioOwner; consumer: MockConsumer; ref: AudioClipRef; borrowers: number; dead?: string; retainedUntil: number };
+type MockStt = { owner: MockAudioOwner; clip: MockClip; key: string; receipt: AudioTranscriptionReceipt; running: boolean; expires: number; cancel?: () => void };
+const mockAudioLimits = PLATFORM_CONTRACT_LIMITS.audio;
+function mockAudioFail(code: string): never { throw new MockHostError(code, code); }
+const mockAudioId = (v: unknown): v is string => typeof v === "string" && /^[A-Za-z0-9_.:-]{1,128}$/.test(v);
+const mockAudioInt = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+type MockAudioWork = { owner: string; deadline: number; running: boolean; stopped: boolean; controller: AbortController; run: (signal: AbortSignal) => Promise<void>; fail: (code: string) => void; release: () => void };
+/** Slots follow actual hook completion, even when cancellation settles the caller first. */
+class MockAudioQueue {
+  private readonly waiting: MockAudioWork[] = [];
+  private readonly work = new Set<MockAudioWork>();
+  private running = 0;
+  assertCapacity(): void {
+    if (this.running >= 2 && this.waiting.length >= 16) mockAudioFail("AUDIO_QUEUE_FULL");
+  }
+  enqueue(owner: string, deadline: number, run: MockAudioWork["run"], fail: MockAudioWork["fail"], release: () => void): () => void {
+    this.assertCapacity();
+    const item: MockAudioWork = { owner, deadline, run, fail, release, running: false, stopped: false, controller: new AbortController() };
+    this.work.add(item); this.waiting.push(item); this.pump();
+    return () => this.stop(item);
+  }
+  private stop(item: MockAudioWork): void {
+    if (!this.work.has(item) || item.stopped) return;
+    item.stopped = true; item.controller.abort(); item.fail("AUDIO_CANCELLED");
+    if (!item.running) {
+      const index = this.waiting.indexOf(item); if (index >= 0) this.waiting.splice(index, 1);
+      this.work.delete(item); item.release(); this.pump();
+    }
+  }
+  expire(now: number): void { for (const item of this.work) if (now >= item.deadline) this.stop(item); }
+  private pump(): void {
+    while (this.running < 2 && this.waiting.length) {
+      const item = this.waiting.shift()!; item.running = true; this.running++;
+      void Promise.resolve().then(() => item.run(item.controller.signal)).catch(error => {
+        const code = error instanceof MockHostError && error.code?.startsWith("AUDIO_") ? error.code : "AUDIO_RANGE_UNAVAILABLE";
+        item.fail(code);
+      }).finally(() => { this.work.delete(item); this.running--; item.release(); this.pump(); });
+    }
+  }
+}
+/** One explicitly shared fixture can model one multi-app synthetic Host. */
+class MockAudioClips {
+  private readonly consumers = new Map<string, MockConsumer>();
+  private readonly ranges = new Map<string, MockRange>();
+  private readonly clips = new Map<string, MockClip>();
+  private readonly jobs = new Map<string, MockStt>();
+  private readonly operations = new Map<string, { owner: MockAudioOwner; fingerprint: string; expires: number }>();
+  private readonly seeds: MockAudioClipsFixture["consumers"];
+  private readonly slices = new MockAudioQueue();
+  private readonly stt = new MockAudioQueue();
+  private lastNow = 0;
+  constructor(private readonly fixture: MockAudioClipsFixture) {
+    if (fixture.consumers.length > mockAudioLimits.maxConsumersPerApp || new Set(fixture.consumers.map(c => c.consumerId)).size !== fixture.consumers.length) mockAudioFail("AUDIO_BUDGET_EXCEEDED");
+    for (const consumer of fixture.consumers) {
+      if (!mockAudioId(consumer.consumerId) || !mockAudioId(consumer.epoch) || !mockAudioInt(consumer.approvedStartMs) || !mockAudioInt(consumer.approvedEndMs) || consumer.approvedEndMs < consumer.approvedStartMs) mockAudioFail("AUDIO_RANGE_INVALID");
+    }
+    this.seeds = structuredClone(fixture.consumers);
+  }
+  private now(): number {
+    const now = this.fixture.now?.() ?? Date.now();
+    if (!mockAudioInt(now) || now < this.lastNow || now > Number.MAX_SAFE_INTEGER - 600000) mockAudioFail("AUDIO_RANGE_UNAVAILABLE");
+    this.lastNow = now; return now;
+  }
+  private metadata(owner: MockAudioOwner): void {
+    const all = [...this.consumers.values(), ...this.ranges.values(), ...this.clips.values(), ...this.jobs.values(), ...this.operations.values()];
+    if (all.length >= 4096 || all.filter(x => x.owner.appId === owner.appId).length >= 256) mockAudioFail("AUDIO_BUDGET_EXCEEDED");
+  }
+  private consumer(owner: MockAudioOwner, id: string): MockConsumer {
+    const key = JSON.stringify([owner.appId, id]); let consumer = this.consumers.get(key);
+    if (!consumer) {
+      const seed = this.seeds.find(c => c.consumerId === id); if (!seed) mockAudioFail("AUDIO_CONSUMER_STALE");
+      this.metadata(owner);
+      consumer = { owner, source: { epoch: seed.epoch, gap: seed.gap ?? false, approvedStartMs: seed.approvedStartMs, approvedEndMs: seed.approvedEndMs } };
+      this.consumers.set(key, consumer);
+    }
+    if (consumer.owner.key !== owner.key || !consumer.owner.live()) mockAudioFail("AUDIO_CONSUMER_STALE");
+    return consumer;
+  }
+  private window(consumer: MockConsumer, epoch: string, start: number, end: number): void {
+    if (!consumer.owner.live()) mockAudioFail("AUDIO_CONSUMER_STALE");
+    const now = this.now(); const source = consumer.source;
+    if (source.gap || source.epoch !== epoch || start < source.approvedStartMs || end > Math.min(now, source.approvedEndMs)) mockAudioFail("AUDIO_RANGE_UNAVAILABLE");
+  }
+  setSource(owner: MockAudioOwner, consumerId: string, source: MockAudioClipSource): void {
+    if (!mockAudioId(source.epoch) || typeof source.gap !== "boolean" || !mockAudioInt(source.approvedStartMs) || !mockAudioInt(source.approvedEndMs) || source.approvedEndMs < source.approvedStartMs) mockAudioFail("AUDIO_RANGE_INVALID");
+    const now = this.now(); const consumer = this.consumer(owner, consumerId); const previous = consumer.source;
+    consumer.source = { ...source, approvedStartMs: Math.max(source.approvedStartMs, previous.approvedStartMs, source.epoch === previous.epoch ? 0 : now), gap: source.epoch === previous.epoch ? previous.gap || source.gap : source.gap };
+  }
+  private own<T extends { owner: MockAudioOwner }>(item: T | undefined, owner: MockAudioOwner, absent: string): T {
+    if (!item) mockAudioFail(absent);
+    if (item.owner.key !== owner.key) mockAudioFail("AUDIO_CLIP_FORBIDDEN");
+    return item;
+  }
+  private cancelJobs(clip: MockClip): void { for (const job of this.jobs.values()) if (job.clip === clip) job.cancel?.(); }
+  private prune(now: number): void {
+    this.slices.expire(now); this.stt.expire(now);
+    for (const [id, clip] of this.clips) {
+      if (!clip.dead && now >= clip.ref.expiresAtMs) { clip.dead = "AUDIO_CLIP_EXPIRED"; this.cancelJobs(clip); }
+      if (clip.dead && clip.borrowers === 0 && now >= clip.retainedUntil) this.clips.delete(id);
+    }
+    for (const [id, range] of this.ranges) if (!range.running && range.expires <= now) this.ranges.delete(id);
+    for (const [id, job] of this.jobs) if (!job.running && job.expires <= now) this.jobs.delete(id);
+    for (const [id, op] of this.operations) if (op.expires <= now) this.operations.delete(id);
+  }
+  private borrow(owner: MockAudioOwner, id: string): MockClip {
+    const clip = this.own(this.clips.get(id), owner, "AUDIO_CLIP_NOT_FOUND");
+    if (clip.dead) mockAudioFail(clip.dead);
+    if (this.now() >= clip.ref.expiresAtMs) mockAudioFail("AUDIO_CLIP_EXPIRED");
+    this.window(clip.consumer, clip.ref.epoch, clip.ref.effectiveStartMs, clip.ref.effectiveEndMs); return clip;
+  }
+  private reserve(owner: MockAudioOwner, bytes: number): void {
+    const held = [...this.clips.values()].filter(c => !c.dead || c.borrowers > 0);
+    const reserved = [...this.ranges.values()].filter(r => r.reserved > 0);
+    const appBytes = held.filter(c => c.owner.appId === owner.appId).reduce((sum, c) => sum + c.ref.sizeBytes, 0) + reserved.filter(r => r.owner.appId === owner.appId).reduce((sum, r) => sum + r.reserved, 0);
+    const total = held.reduce((sum, c) => sum + c.ref.sizeBytes, 0) + reserved.reduce((sum, r) => sum + r.reserved, 0);
+    if (appBytes + bytes > mockAudioLimits.maxBytesPerApp || total + bytes > mockAudioLimits.maxBytesGlobal || held.filter(c => c.owner.appId === owner.appId).length + reserved.filter(r => r.owner.appId === owner.appId).length >= mockAudioLimits.maxClipsPerApp) mockAudioFail("AUDIO_BUDGET_EXCEEDED");
+  }
+  request(owner: MockAudioOwner, method: AudioClipsRequestMethod, input: unknown): unknown {
+    const now = this.now(); this.prune(now);
+    const fields: Record<AudioClipsRequestMethod, readonly string[]> = {
+      "audio.ranges.start": ["requestId", "consumerId", "startMs"], "audio.ranges.finish": ["requestId", "rangeId", "endMs"], "audio.ranges.cancel": ["requestId", "rangeId"],
+      "audio.clips.read": ["requestId", "clipId", "offset", "maxBytes"], "audio.clips.release": ["requestId", "clipId"], "audio.clips.transcribe": ["requestId", "clipId", "idempotencyKey"], "audio.clips.transcriptionStatus": ["requestId", "jobId"],
+    };
+    const keys = fields[method];
+    if (!input || typeof input !== "object" || Array.isArray(input)) mockAudioFail("AUDIO_RANGE_INVALID");
+    const p = input as Record<string, unknown>;
+    if (Object.keys(p).some(k => !keys.includes(k)) || keys.some(k => !(k in p))) mockAudioFail("AUDIO_RANGE_INVALID");
+    for (const k of keys) if (k.endsWith("Ms") || k === "offset" || k === "maxBytes" ? !mockAudioInt(p[k]) : !mockAudioId(p[k])) mockAudioFail("AUDIO_RANGE_INVALID");
+    if (method === RequestMethod.AudioClipsRead && ((p.maxBytes as number) < 1 || (p.maxBytes as number) > mockAudioLimits.maxReadBytes)) mockAudioFail("AUDIO_RANGE_INVALID");
+    // Active range identities outlive the bounded request cache; preserve payload equality.
+    if (method === RequestMethod.AudioRangesStart) {
+      const saved = [...this.ranges.values()].find(r => r.owner.key === owner.key && r.receipt.requestId === p.requestId);
+      if (saved && (saved.receipt.consumerId !== p.consumerId || saved.receipt.requestedStartMs !== p.startMs)) mockAudioFail("AUDIO_RANGE_INVALID");
+    }
+    if (method === RequestMethod.AudioRangesFinish) {
+      const saved = this.ranges.get(p.rangeId as string);
+      if (saved?.owner.key === owner.key && saved.finish && (saved.finish.requestId !== p.requestId || saved.finish.endMs !== p.endMs)) mockAudioFail("AUDIO_RANGE_INVALID");
+    }
+    const operation = JSON.stringify([owner.key, p.requestId]); const fingerprint = JSON.stringify([method, ...keys.slice().sort().map(k => [k, p[k]])]);
+    const prior = this.operations.get(operation);
+    if (prior && prior.fingerprint !== fingerprint) mockAudioFail("AUDIO_RANGE_INVALID");
+    if (!prior) { this.metadata(owner); this.operations.set(operation, { owner, fingerprint, expires: now + 300000 }); }
+    if (method === RequestMethod.AudioRangesStart) {
+      const consumer = this.consumer(owner, p.consumerId as string); this.window(consumer, consumer.source.epoch, p.startMs as number, p.startMs as number);
+      const priorRange = [...this.ranges.values()].find(r => r.owner.key === owner.key && r.receipt.requestId === p.requestId);
+      if (priorRange) return structuredClone(priorRange.receipt);
+      const active = [...this.ranges.values()].filter(r => r.state === "active" || r.state === "pending" || r.running);
+      if (active.length >= mockAudioLimits.maxRangesGlobal || active.filter(r => r.owner.appId === owner.appId).length >= mockAudioLimits.maxRangesPerApp) mockAudioFail("AUDIO_BUDGET_EXCEEDED");
+      this.metadata(owner);
+      const receipt: AudioRangeReceipt = { rangeId: nextId("range"), requestId: p.requestId as string, consumerId: p.consumerId as string, requestedStartMs: p.startMs as number, epoch: consumer.source.epoch };
+      this.ranges.set(receipt.rangeId, { owner, consumer, receipt, state: "active", expires: Infinity, reserved: 0, running: false }); return structuredClone(receipt);
+    }
+    if (method === RequestMethod.AudioRangesCancel || method === RequestMethod.AudioRangesFinish) {
+      const range = this.own(this.ranges.get(p.rangeId as string), owner, "AUDIO_RANGE_INVALID");
+      if (method === RequestMethod.AudioRangesCancel) {
+        if (range.state === "finished" || range.state === "failed") mockAudioFail("AUDIO_RANGE_INVALID");
+        range.state = "cancelled"; range.expires = now + 300000; range.cancel?.(); return undefined;
+      }
+      if (range.state === "cancelled") mockAudioFail("AUDIO_CANCELLED");
+      if (range.state === "failed") mockAudioFail(range.error ?? "AUDIO_RANGE_UNAVAILABLE");
+      const end = p.endMs as number; const start = range.receipt.requestedStartMs;
+      if (end <= start || end - start > mockAudioLimits.maxRangeMs) mockAudioFail("AUDIO_RANGE_INVALID");
+      this.window(range.consumer, range.receipt.epoch, start, end);
+      if (range.finish) {
+        if (range.finish.requestId !== p.requestId || range.finish.endMs !== end) mockAudioFail("AUDIO_RANGE_INVALID");
+        if (range.clipId) this.borrow(owner, range.clipId);
+        return range.finish.promise;
+      }
+      const bytes = (end - start) * 64; this.reserve(owner, bytes); this.slices.assertCapacity();
+      let resolve!: (value: AudioClipRef) => void; let reject!: (error: unknown) => void;
+      const promise = new Promise<AudioClipRef>((yes, no) => { resolve = yes; reject = no; });
+      range.finish = { requestId: p.requestId as string, endMs: end, promise }; range.reserved = bytes; range.running = true; range.state = "pending";
+      range.cancel = this.slices.enqueue(owner.key, now + 30000, async signal => {
+        if (signal.aborted || this.now() >= now + 30000) mockAudioFail("AUDIO_CANCELLED");
+        this.window(range.consumer, range.receipt.epoch, start, end);
+        await this.fixture.slice?.({ range: structuredClone(range.receipt), endMs: end }, signal);
+        if (signal.aborted || this.now() >= now + 30000 || range.state !== "pending") mockAudioFail("AUDIO_CANCELLED");
+        this.window(range.consumer, range.receipt.epoch, start, end); this.metadata(owner);
+        const issued = this.now(); const ref: AudioClipRef = { version: 1, clipId: nextId("clip"), requestId: p.requestId as string, owner: { appId: owner.appId, accountGeneration: owner.generation }, epoch: range.receipt.epoch, requestedStartMs: start, requestedEndMs: end, effectiveStartMs: start, effectiveEndMs: end, expiresAtMs: issued + mockAudioLimits.clipTtlMs, sizeBytes: bytes, sampleRate: 16000, channels: 1, format: "f32le" };
+        this.clips.set(ref.clipId, { owner, consumer: range.consumer, ref, borrowers: 0, retainedUntil: ref.expiresAtMs + 300000 });
+        range.state = "finished"; range.clipId = ref.clipId; range.reserved = 0; range.expires = ref.expiresAtMs + 300000; resolve(structuredClone(ref));
+      }, code => {
+        if (range.state !== "finished" && range.state !== "failed") { range.state = code === "AUDIO_CANCELLED" ? "cancelled" : "failed"; range.error = code; range.expires = this.lastNow + 300000; reject(new MockHostError(code, code)); }
+      }, () => { range.running = false; range.reserved = 0; delete range.cancel; });
+      return promise;
+    }
+    if (method === RequestMethod.AudioClipsRelease) {
+      const clip = this.own(this.clips.get(p.clipId as string), owner, "AUDIO_CLIP_NOT_FOUND");
+      if (!clip.dead) { clip.dead = "AUDIO_CLIP_NOT_FOUND"; clip.retainedUntil = now + 300000; this.cancelJobs(clip); } return undefined;
+    }
+    if (method === RequestMethod.AudioClipsTranscriptionStatus) {
+      const job = this.own(this.jobs.get(p.jobId as string), owner, "AUDIO_CLIP_NOT_FOUND"); this.borrow(owner, job.clip.ref.clipId); return structuredClone(job.receipt);
+    }
+    const clip = this.borrow(owner, p.clipId as string);
+    if (method === RequestMethod.AudioClipsRead) {
+      const offset = p.offset as number; if (offset > clip.ref.sizeBytes) mockAudioFail("AUDIO_RANGE_INVALID");
+      const bytes = Math.min(p.maxBytes as number, clip.ref.sizeBytes - offset);
+      // Virtual zero PCM: only this bounded block is materialized, never a ten-minute buffer.
+      return { offset, bytes, bodyBase64: Buffer.alloc(bytes).toString("base64"), eof: offset + bytes === clip.ref.sizeBytes };
+    }
+    const key = JSON.stringify([owner.key, clip.ref.clipId, p.idempotencyKey]); const previous = [...this.jobs.values()].find(j => j.key === key);
+    if (previous) return structuredClone(previous.receipt);
+    this.metadata(owner); this.stt.assertCapacity();
+    const receipt: AudioTranscriptionReceipt = { jobId: nextId("stt"), clipId: clip.ref.clipId, state: "queued" };
+    const job: MockStt = { owner, clip, key, receipt, running: true, expires: Infinity }; this.jobs.set(receipt.jobId, job); clip.borrowers++;
+    job.cancel = this.stt.enqueue(owner.key, now + 120000, async signal => {
+      if (signal.aborted || this.now() >= now + 120000) mockAudioFail("AUDIO_CANCELLED"); this.borrow(owner, clip.ref.clipId); receipt.state = "running";
+      const transcript = await (this.fixture.transcribe?.(structuredClone(clip.ref), signal) ?? "Synthetic transcription");
+      if (signal.aborted || this.now() >= now + 120000) mockAudioFail("AUDIO_CANCELLED"); this.borrow(owner, clip.ref.clipId);
+      if (typeof transcript !== "string") mockAudioFail("AUDIO_RANGE_INVALID");
+      receipt.state = "complete"; receipt.transcript = transcript;
+    }, code => { receipt.state = code === "AUDIO_CANCELLED" ? "cancelled" : "failed"; receipt.errorCode = code as PlatformContractErrorCode; delete receipt.transcript; }, () => { job.running = false; job.expires = this.lastNow + 300000; clip.borrowers--; delete job.cancel; });
+    return structuredClone(receipt);
+  }
+  retire(owner: MockAudioOwner): void {
+    const now = this.now();
+    for (const range of this.ranges.values()) if (range.owner.key === owner.key && (range.state === "active" || range.state === "pending")) { range.state = "cancelled"; range.expires = now + 300000; range.cancel?.(); }
+    for (const clip of this.clips.values()) if (clip.owner.key === owner.key && !clip.dead) { clip.dead = "AUDIO_CLIP_NOT_FOUND"; clip.retainedUntil = now + 300000; this.cancelJobs(clip); }
+  }
+}
+const mockAudioHosts = new WeakMap<MockAudioClipsFixture, MockAudioClips>();
 
 const MAX_NOTIFICATION_TITLE_CHARS = 80;
 const MAX_NOTIFICATION_BODY_CHARS = 500;
@@ -378,11 +646,79 @@ function matchesNetworkEndpoint(
 }
 
 export class MockHost {
+  readonly ownedConversationCommits: { sessionId: string; openToken: string; revision: number }[] = [];
+  private readonly ownedOpenOperations = new Map<string, {
+    session: string; owner: string; revision: number; expires: number; committed: boolean; hostDelivered: boolean;
+  }>();
+  private readonly ownedNoticeRevisions = new Map<string, number>();
+  private failOwnedOpenCommit = false;
+  failNextConversationOpenCommit(): void { this.failOwnedOpenCommit = true; }
+  advanceOwnedConversationNotice(sessionId: string): void {
+    this.ownedNoticeRevisions.set(sessionId, (this.ownedNoticeRevisions.get(sessionId) ?? 0) + 1);
+  }
+  private isOwnedConversationSession(session: string): boolean {
+    return !!this.options.ownedConversationOpen && (this.options.ownedConversationOpen.sessionIds?.includes(session)
+      || this.agentV2Sessions.has(session)
+      || (session === "mock-agent-session-1" && this.agentRequests.some(r => r.method === RequestMethod.AgentSessionCreate)));
+  }
+  private ownedOpenSource(session: string) {
+    const fixture = this.options.ownedConversationOpen;
+    const fail = (code: string): never => { throw new MockHostError(code, code); };
+    if (!fixture) return fail("HOST_CAPABILITY_NOT_AVAILABLE");
+    if (!fixture.admitted) return fail("TASK_NOT_GRANTED");
+    if (fixture.decision !== "granted") return fail(fixture.decision === "denied" ? "TASK_PERMISSION_DENIED" : "TASK_PERMISSION_REQUIRED");
+    const scene = this.options.manifest.contributes?.notificationScenes?.find(s => s.key === "task.lifecycle");
+    if (!scene || !["off", "in_app", "system"].includes(scene.maxLevel)
+      || !fixture.userCeiling || !["off", "in_app", "system"].includes(fixture.userCeiling)) return fail("TASK_PERMISSION_REQUIRED");
+    const mounts = [...this.mounts.values()].filter(m => !m.unmounted);
+    if (mounts.length !== 1 || !this.runtimeSessionId || !fixture.accountGeneration
+      || !/^[a-fA-F0-9]{64}$/.test(fixture.packageDigest)
+      || !this.isOwnedConversationSession(session)) return fail("TASK_SOURCE_STALE");
+    const mount = mounts[0]!;
+    return { mount, owner: JSON.stringify([fixture.accountGeneration, this.options.manifest.appId,
+      fixture.packageDigest, this.runtimeSessionId, mount.surfaceMountId, scene.maxLevel, fixture.userCeiling]),
+      revision: this.ownedNoticeRevisions.get(session) ?? 0, now: fixture.now?.() ?? Date.now() };
+  }
+  private ownedOpenRequest(p: Record<string, unknown>): unknown {
+    if (Object.keys(p).some(k => !["sessionId", "phase", "openToken"].includes(k))
+      || typeof p.sessionId !== "string" || !/^[\x21-\x7e]{1,128}$/.test(p.sessionId)) throw new MockHostError("TASK_INVALID_REQUEST", "TASK_INVALID_REQUEST");
+    const source = this.ownedOpenSource(p.sessionId);
+    if (p.phase === "prepare") {
+      if (p.openToken !== undefined) throw new MockHostError("TASK_INVALID_REQUEST", "TASK_INVALID_REQUEST");
+      for (const [token, op] of this.ownedOpenOperations) if (op.expires <= source.now || op.owner !== source.owner) this.ownedOpenOperations.delete(token);
+      if (this.ownedOpenOperations.size >= 16) throw new MockHostError("TASK_LIMIT_EXCEEDED", "TASK_LIMIT_EXCEEDED");
+      const openToken = nextId("mock-open");
+      this.ownedOpenOperations.set(openToken, { session: p.sessionId, owner: source.owner,
+        revision: source.revision, expires: source.now + 15_000, committed: false, hostDelivered: false });
+      return { openToken };
+    }
+    if (!["commit", "cancel"].includes(String(p.phase)) || typeof p.openToken !== "string") throw new MockHostError("TASK_INVALID_REQUEST", "TASK_INVALID_REQUEST");
+    const op = this.ownedOpenOperations.get(p.openToken);
+    if (!op || op.session !== p.sessionId || op.owner !== source.owner || op.revision !== source.revision
+      || op.expires <= source.now) throw new MockHostError("TASK_SOURCE_STALE", "TASK_SOURCE_STALE");
+    if (p.phase === "cancel") { this.ownedOpenOperations.delete(p.openToken); return { acknowledged: false }; }
+    if (source.mount.readyCount !== 1 || source.mount.failCount) throw new MockHostError("TASK_NAVIGATION_FAILED", "TASK_NAVIGATION_FAILED");
+    if (this.failOwnedOpenCommit) { this.failOwnedOpenCommit = false; throw new MockHostError("TASK_NAVIGATION_FAILED", "TASK_NAVIGATION_FAILED"); }
+    if (!op.committed) {
+      op.committed = true;
+      this.ownedConversationCommits.push({ sessionId: p.sessionId, openToken: p.openToken, revision: source.revision });
+    }
+    return { opened: true, acknowledged: true };
+  }
+  async deliverOwnedConversationOpen(sessionId: string): Promise<{ openToken: string }> {
+    const receipt = this.ownedOpenRequest({ sessionId, phase: "prepare" }) as { openToken: string };
+    const { mount } = this.ownedOpenSource(sessionId);
+    this.ownedOpenOperations.get(receipt.openToken)!.hostDelivered = true;
+    await this.sendIntent(mount.surfaceMountId, { source: "host.taskConversation", actionId: "open-conversation",
+      deliveryId: receipt.openToken, payload: { entityId: sessionId, openToken: receipt.openToken } });
+    return receipt;
+  }
   private readonly options: MockHostOptions;
   private readonly networkUploads: MockNetworkUploads;
   private readonly handlers = new Set<(message: HostMessage) => void>();
   private readonly storage = new Map<string, unknown>();
   private readonly mounts = new Map<string, SurfaceObservation>();
+  private readonly presentationTokens = new Map<string, string>();
   private readonly settlements = new Map<string, CommandSettlement>();
 
   /** App 实际注册了什么（`app.registered` 上报）。 */
@@ -486,6 +822,14 @@ export class MockHost {
   private readonly revokedVoiceDeliveryTargets = new Set<string>();
   /** 下一段本地识别被 Tab 层搜索消费（Host API 1.22 `consumedBy`）。 */
   private nextVoiceResultConsumedByTabLayer = false;
+  /** 下一段录音被 Host 判定为没有内容（#1291 `noSpeechReason`）。 */
+  private nextVoiceNoSpeechReason: "too_short" | "silence" | "suppressed" | undefined;
+  /** 下一次 `ai.audio.transcribe` 的文本被 Host 置空（#1291 `suppressedReason`）。 */
+  private nextAiAudioTranscribeSuppressedReason:
+    | "punctuation_only"
+    | "hallucination_phrase"
+    | "silence"
+    | undefined;
   private voiceMode: "input" | "command" = "input";
   private voiceInsertText = true;
   private nextVoiceCommandTranscriptValue = "测试语音命令";
@@ -655,6 +999,25 @@ export class MockHost {
     this.nextVoiceResultConsumedByTabLayer = true;
   }
 
+  /**
+   * 下一段录音被 Host 判定为没有内容（整段静音 / 太短 / 文本被抑制，#1291）：结果
+   * `transcript: ""`、不带 `audio`（即便 `retainAudio`）、带 `noSpeechReason` 与
+   * `warningCode: "no_speech"`，不插入、不留待确认记录（提示由 Host 自行计时）。用完即复位。
+   */
+  setNextVoiceNoSpeech(reason: "too_short" | "silence" | "suppressed" = "silence"): void {
+    this.nextVoiceNoSpeechReason = reason;
+  }
+
+  /**
+   * 下一次 `ai.audio.transcribe` 的文本被 Host 置空（#1291）：返回 `text: ""` 与
+   * `suppressedReason`。用完即复位。
+   */
+  suppressNextAiAudioTranscribe(
+    reason: "punctuation_only" | "hallucination_phrase" | "silence" = "hallucination_phrase",
+  ): void {
+    this.nextAiAudioTranscribeSuppressedReason = reason;
+  }
+
   /** 之后的流式生成只发增量、按住终局，好让「跑到一半」这个状态可观察。 */
   holdStream(): void {
     this.holdStreamTerminal = true;
@@ -672,9 +1035,21 @@ export class MockHost {
   private localeRevision = 0;
   private runtimeSessionId = "";
   private running?: { dispose(): Promise<void> };
+  private readonly audioClipsMock?: MockAudioClips;
+  /** grant-gated 平台服务模拟；`continued` 记录结果「继续」实际回到的来源会话。 */
+  readonly platformServices?: MockPlatformServices;
 
   constructor(options: MockHostOptions) {
     this.options = options;
+    if (options.platformServices) {
+      this.platformServices = new MockPlatformServices(options.platformServices, () => this.options.manifest,
+        (code) => { throw new MockHostError(code, code); });
+    }
+    if (options.audioClips) {
+      let mock = mockAudioHosts.get(options.audioClips);
+      if (!mock) { mock = new MockAudioClips(options.audioClips); mockAudioHosts.set(options.audioClips, mock); }
+      this.audioClipsMock = mock;
+    }
     this.networkUploads = new MockNetworkUploads((code, message) => new MockHostError(message, code), options.networkUploadNow);
     this.uiLocale = options.locale ?? "zh";
     this.voiceInputStatus = options.voiceInputStatus ?? {
@@ -896,6 +1271,8 @@ export class MockHost {
     };
     this.mounts.set(surfaceMountId, observation);
 
+    if (this.options.ownedConversationOpen) this.dispatchPresentation(surfaceMountId);
+
     this.dispatch({
       type: "surface.mount",
       surfaceMountId,
@@ -916,6 +1293,21 @@ export class MockHost {
     return latest;
   }
 
+  /** 为存活挂载派发新的 Host 呈现绑定，不模拟物理屏幕可见性或授权。 */
+  async presentSurface(surfaceMountId: string): Promise<void> {
+    const observation = this.mounts.get(surfaceMountId);
+    if (!observation || observation.unmounted) throw new MockHostError(`mount ${surfaceMountId} 不存活`);
+    this.dispatchPresentation(surfaceMountId);
+    await flush();
+  }
+
+  private dispatchPresentation(surfaceMountId: string): void {
+    const presentationToken = nextId("presentation");
+    this.presentationTokens.set(surfaceMountId, presentationToken);
+    this.dispatch({ type: "surface.presentation", runtimeSessionId: this.runtimeSessionId,
+      surfaceMountId, presentationToken });
+  }
+
   /** 向已挂载的 Surface 投递后续意图。 */
   async sendIntent(surfaceMountId: string, intent: unknown): Promise<void> {
     const observation = this.mounts.get(surfaceMountId);
@@ -928,7 +1320,9 @@ export class MockHost {
   async unmountSurface(surfaceMountId: string): Promise<void> {
     const observation = this.mounts.get(surfaceMountId);
     if (!observation) return;
+    if (this.audioClipsMock && !observation.unmounted) this.audioClipsMock.retire(this.audioOwner(surfaceMountId));
     observation.unmounted = true;
+    this.presentationTokens.delete(surfaceMountId);
     this.dispatch({ type: "surface.unmount", surfaceMountId });
     await flush();
   }
@@ -972,6 +1366,11 @@ export class MockHost {
 
   /** 停用：触发 deactivate 并跑完清理。 */
   async disable(): Promise<void> {
+    for (const mount of this.mounts.values()) {
+      if (this.audioClipsMock && !mount.unmounted) this.audioClipsMock.retire(this.audioOwner(mount.surfaceMountId));
+      mount.unmounted = true;
+    }
+    this.presentationTokens.clear();
     this.networkUploads.dispose();
     this.dispatch({ type: "deactivate" });
     await flush();
@@ -1009,15 +1408,68 @@ export class MockHost {
     };
   }
 
+  private audioOwner(mountId?: string): MockAudioOwner {
+    const mounts = [...this.mounts.values()].filter(m => !m.unmounted);
+    const mount = mountId ? mounts.find(m => m.surfaceMountId === mountId) : mounts.length === 1 ? mounts[0] : undefined;
+    if (!this.runtimeSessionId || !mount) mockAudioFail("AUDIO_CONSUMER_STALE");
+    const runtime = this.runtimeSessionId;
+    const generation = this.options.audioClipsAccountGeneration ?? "mock-account";
+    const appId = this.options.manifest.appId;
+    return { appId, generation, key: JSON.stringify([appId, generation, runtime, mount.surfaceMountId]),
+      live: () => this.runtimeSessionId === runtime && this.mounts.get(mount.surfaceMountId) === mount && !mount.unmounted
+        && this.options.manifest.appId === appId && (this.options.audioClipsAccountGeneration ?? "mock-account") === generation
+        && ["audio.capture@1", "audio.clips@1"].every(capability => this.options.manifest.requires?.hostCapabilities?.includes(capability)
+          && this.options.manifest.permissions?.some(p => p.id === capability)) };
+  }
+  /** Synthetic source fault injection, not a Bridge operation or a grant. */
+  setAudioClipSource(consumerId: string, source: MockAudioClipSource): void {
+    if (!this.audioClipsMock) mockAudioFail("HOST_CAPABILITY_NOT_AVAILABLE");
+    this.audioClipsMock.setSource(this.audioOwner(), consumerId, source);
+  }
   private async handleRequest(method: string, params: unknown): Promise<unknown> {
+    if (audioClipsRequestMethod(method)) {
+      if (!this.audioClipsMock) mockAudioFail("HOST_CAPABILITY_NOT_AVAILABLE");
+      const owner = this.audioOwner();
+      for (const capability of ["audio.capture@1", "audio.clips@1"]) {
+        if (!this.options.manifest.requires?.hostCapabilities?.includes(capability)) mockAudioFail("AUDIO_NOT_GRANTED");
+        if (!this.options.manifest.permissions?.some(p => p.id === capability)) mockAudioFail("AUDIO_PERMISSION_REQUIRED");
+      }
+      return this.audioClipsMock.request(owner, method, params);
+    }
+    if (MockPlatformServices.handles(method) && method !== RequestMethod.TasksConversationOpened) {
+      if (!this.platformServices) throw new MockHostError("HOST_CAPABILITY_NOT_AVAILABLE", "HOST_CAPABILITY_NOT_AVAILABLE");
+      return this.platformServices.request(method, params);
+    }
     const p = (params ?? {}) as Record<string, unknown>;
     switch (method) {
       case RequestMethod.LocaleGet:
         return { runtimeSessionId: this.runtimeSessionId, locale: this.uiLocale, revision: this.localeRevision };
       case RequestMethod.EnvironmentGet:
-        return { developerMode: false };
+        return { developerMode: false, ...(this.options.ownedConversationOpen ? { ownedConversationOpen: {
+          version: 1, available: true, runtimeSessionId: this.runtimeSessionId,
+          surfaceMountId: [...this.mounts.values()].filter(m => !m.unmounted).length === 1 ? [...this.mounts.values()].find(m => !m.unmounted)?.surfaceMountId : undefined,
+          presentationToken: this.presentationTokens.get([...this.mounts.values()].find(m => !m.unmounted)?.surfaceMountId ?? ""),
+        }, ...(this.options.manifest.requires?.hostCapabilities?.includes("tasks.present@1") ? { taskPresentation: {
+          runtimeSessionId: this.runtimeSessionId,
+          surfaceMountId: [...this.mounts.values()].find(m => !m.unmounted)?.surfaceMountId,
+          platformCapabilities: { version: 1, capabilities: { "tasks.present@1": {
+            version: 1, available: true, methods: [RequestMethod.TasksConversationOpened],
+          } } },
+        } } : {}) } : {}), ...(this.audioClipsMock ? { audioClips: {
+          runtimeSessionId: this.runtimeSessionId, surfaceMountId: [...this.mounts.values()].find(m => !m.unmounted)?.surfaceMountId,
+          platformCapabilities: { version: 1, capabilities: { "audio.clips@1": { version: 1, available: true, methods: [RequestMethod.AudioRangesStart, RequestMethod.AudioRangesFinish, RequestMethod.AudioRangesCancel, RequestMethod.AudioClipsRead, RequestMethod.AudioClipsRelease, RequestMethod.AudioClipsTranscribe, RequestMethod.AudioClipsTranscriptionStatus] } } },
+        } } : {}), ...(this.platformServices?.descriptors({ runtimeSessionId: this.runtimeSessionId,
+          surfaceMountId: [...this.mounts.values()].find(m => !m.unmounted)?.surfaceMountId }) ?? {}) };
       case RequestMethod.ClipboardWriteText:
         return { written: true };
+      case RequestMethod.TasksConversationOpened:
+        if (!this.options.ownedConversationOpen) throw new MockHostError("HOST_CAPABILITY_NOT_AVAILABLE", "HOST_CAPABILITY_NOT_AVAILABLE");
+        if (!this.options.manifest.requires?.hostCapabilities?.includes("tasks.present@1")) throw new MockHostError("TASK_NOT_GRANTED", "TASK_NOT_GRANTED");
+        if (Object.keys(p).some(k => !["requestId", "entityId", "openToken"].includes(k))
+          || typeof p.requestId !== "string" || !/^[\x21-\x7e]{1,128}$/.test(p.requestId)
+          || typeof p.entityId !== "string") throw new MockHostError("TASK_INVALID_REQUEST", "TASK_INVALID_REQUEST");
+        if (typeof p.openToken !== "string" || !this.ownedOpenOperations.get(p.openToken)?.hostDelivered) throw new MockHostError("TASK_SOURCE_STALE", "TASK_SOURCE_STALE");
+        return this.ownedOpenRequest({ sessionId: p.entityId, phase: "commit", openToken: p.openToken });
       case RequestMethod.ServicesCall:
         if (!this.options.manifest.requires?.services?.some(s => s.id === p.serviceId) || !this.serviceHandler)
           throw new MockHostError("SERVICE_PROVIDER_UNAVAILABLE");
@@ -1250,20 +1702,25 @@ export class MockHost {
         }
         this.voiceListening = false;
         const completedMode = this.voiceMode;
-        const retained = this.voiceRetainAudio;
+        const noSpeechReason = this.nextVoiceNoSpeechReason;
+        this.nextVoiceNoSpeechReason = undefined;
+        // 与生产 Host 一致：判定没有内容时不入音频槽，云端路径也拿不到 audio。
+        const retained = this.voiceRetainAudio && noSpeechReason === undefined;
         // 与生产 Host 同口径：command 会话识别结束都留待确认记录，本地识别与云端识别
         // （retainAudio）一样，按原 sessionId 确认即收起中央胶囊。
         const consumedByTabLayer = !retained && completedMode === "input"
-          && this.nextVoiceResultConsumedByTabLayer;
+          && this.nextVoiceResultConsumedByTabLayer && noSpeechReason === undefined;
         this.nextVoiceResultConsumedByTabLayer = false;
         if (consumedByTabLayer) this.revokedVoiceDeliveryTargets.add(this.voiceDeliveryTargetId);
         const inserted = !retained && completedMode === "input" && this.voiceInsertText
-          && !consumedByTabLayer;
+          && !consumedByTabLayer && noSpeechReason === undefined;
         // Host API 1.22（2026-09-28 并入）：声明 holdOverlayUntilAck 的输入会话还要等调用方写回，同样留待确认
         // 记录；Tab 层已消费或 Host 已直写时没有写回可等，不留。
         const inputAwaitsWrite = completedMode === "input" && this.voiceHoldOverlayUntilAck
           && !consumedByTabLayer && !inserted;
-        this.voicePendingResultSessionId = completedMode === "command" || inputAwaitsWrite
+        // Host 判定没有内容：提示归 Host 计时，不留待确认记录。
+        this.voicePendingResultSessionId = noSpeechReason === undefined
+          && (completedMode === "command" || inputAwaitsWrite)
           ? this.voiceSessionId
           : undefined;
         this.voicePendingStageRank = 0;
@@ -1290,11 +1747,13 @@ export class MockHost {
         return {
           phase: "idle",
           sessionId: this.voiceSessionId,
-          transcript: retained
-            ? null
-            : completedMode === "command"
-              ? this.nextVoiceCommandTranscriptValue
-              : "测试语音输入",
+          transcript: noSpeechReason !== undefined
+            ? ""
+            : retained
+              ? null
+              : completedMode === "command"
+                ? this.nextVoiceCommandTranscriptValue
+                : "测试语音输入",
           ...(retained
             ? {
                 audio: {
@@ -1317,6 +1776,9 @@ export class MockHost {
           mode: completedMode,
           ...(!retained ? { outcome: "recognized" } : {}),
           ...(consumedByTabLayer ? { consumedBy: "tab_layer" } : {}),
+          ...(noSpeechReason !== undefined
+            ? { noSpeechReason, warningCode: "no_speech" }
+            : {}),
         };
       }
       case RequestMethod.VoiceReportStage: {
@@ -1906,6 +2368,8 @@ export class MockHost {
         this.requireAgentSessionCapability(method);
         this.agentRequests.push({ method, params });
         const sessionId = String(p["sessionId"] ?? "");
+        if (method === RequestMethod.AgentV2ConversationOpened && p.phase !== undefined) return this.ownedOpenRequest(p);
+        if (method === RequestMethod.AgentV2ConversationOpened && this.isOwnedConversationSession(sessionId)) throw new MockHostError("TASK_SOURCE_STALE", "TASK_SOURCE_STALE");
         if (!this.agentV2Sessions.has(sessionId)) throw new MockHostError("Agent session not found", "AGENT_SESSION_NOT_FOUND");
         if (method === RequestMethod.AgentV2Delete) return { deleted: this.agentV2Sessions.delete(sessionId) };
         return method === RequestMethod.AgentV2History ? { items: [] } : null;
@@ -1963,6 +2427,8 @@ export class MockHost {
       case RequestMethod.AgentSessionConversationOpened:
         this.requireAgentSessionCapability(method);
         this.agentRequests.push({ method, params });
+        if (p.phase !== undefined) return this.ownedOpenRequest(p);
+        if (this.isOwnedConversationSession(String(p.sessionId))) throw new MockHostError("TASK_SOURCE_STALE", "TASK_SOURCE_STALE");
         return null;
       case RequestMethod.PiManagementSnapshot:
         this.requirePiManagementCapability(method);
@@ -2116,10 +2582,15 @@ export class MockHost {
           this.rejections.push({ method, reason: `转写失败（测试注入）：${code}` });
           throw new MockHostError(`${code}: 转写失败（测试注入）`, code);
         }
-        return {
-          invocationId: String(p["invocationId"] ?? ""),
-          text: this.nextAiAudioTranscribeTextValue,
-        };
+        {
+          const suppressedReason = this.nextAiAudioTranscribeSuppressedReason;
+          this.nextAiAudioTranscribeSuppressedReason = undefined;
+          return {
+            invocationId: String(p["invocationId"] ?? ""),
+            text: suppressedReason === undefined ? this.nextAiAudioTranscribeTextValue : "",
+            ...(suppressedReason === undefined ? {} : { suppressedReason }),
+          };
+        }
       case RequestMethod.AiCancel:
         this.requireCloudCapability(method, "cloud.model.invoke@1");
         this.cloudRequests.push({ method, params });

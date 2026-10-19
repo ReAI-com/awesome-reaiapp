@@ -1,6 +1,6 @@
 {
   "name": "reai-pi-agent-manager",
-  "version": "1.0.4-dev.2",
+  "version": "1.0.5-dev.2",
   "private": true,
   "type": "module",
   "reaiApp": {
@@ -11,10 +11,10 @@
     "typecheck": "tsc --noEmit",
     "build": "reai-app-i18n build .",
     "validate": "reai-app-i18n validate .",
-    "test:contract": "reai-app contract-test . --host-api 1.18",
-    "pack": "reai-app-i18n pack . --out pi-agent-1.0.4-dev.2.reaiapp",
+    "test:contract": "reai-app contract-test . --host-api 1.25",
+    "pack": "reai-app-i18n pack . --out pi-agent-1.0.5-dev.2.reaiapp",
     "check:submission": "bun ../../scripts/plugin-submission.ts check .",
-    "pack:submission": "bun ../../scripts/plugin-submission.ts pack . --out pi-agent-1.0.4-dev.2-submission.reaiapp"
+    "pack:submission": "bun ../../scripts/plugin-submission.ts pack . --out pi-agent-1.0.5-dev.2-submission.reaiapp"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.0.0",
@@ -31,5 +31,8 @@
     "@reai/app-contract": "file:../../packages/contract",
     "@reai/app-sdk": "file:../../packages/sdk",
     "@reai/app-test": "file:../../packages/test-kit"
+  },
+  "dependencies": {
+    "markdown-it": "15.0.2"
   }
 }

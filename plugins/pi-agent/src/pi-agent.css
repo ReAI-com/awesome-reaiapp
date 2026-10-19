@@ -1049,3 +1049,17 @@ button:focus-visible,
     width: 100%;
   }
 }
+
+/* The SDK frame owns the single titlebar inset; standalone views keep their own inset. */
+.reai-surface-frame .plugin-main-frame,
+.reai-surface-frame .terminal-main-frame { padding-top: 0; }
+.navigation-content-back { flex: 0 0 auto; align-self: flex-start; margin: 12px 16px; padding: 6px 10px; border: 1px solid var(--divider); border-radius: 8px; background: var(--card-bg); color: var(--text-primary); cursor: pointer; }
+.navigation-content-back[hidden] { display: none; }
+.navigation-content-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 520px) {
+  .voice-settings-intro { flex-direction: column; align-items: stretch; }
+  .voice-settings-intro .vs-chip { align-self: flex-start; max-width: 100%; white-space: normal; }
+  .piagent-settings-frame .row { flex-direction: column; align-items: stretch; }
+  .piagent-settings-frame .pas-select { min-width: 0; width: 100%; }
+}

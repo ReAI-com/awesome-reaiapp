@@ -21,3 +21,6 @@ export type {
   ScenarioApi,
   SurfaceMatchers,
 } from "./contract";
+export { unavailablePlatformSnapshot, UnavailablePlatformContractHost } from "./platform-contracts";
+export { MockPlatformServices } from "./mock-platform-services";
+export type { MockPlatformServicesFixture, MockPermissionDecision, MockNotificationLevel } from "./mock-platform-services";

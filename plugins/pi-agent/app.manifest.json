@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.reai.pi-agent",
-  "version": "1.0.4-dev.2",
+  "version": "1.0.5-dev.2",
   "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
   "name": "Pi Agent",
   "description": "查看 Driver App 内 Pi Agent 的会话、能力与新会话模型设置",
@@ -9,7 +9,7 @@
   "storeListing": {
     "category": "Official",
     "tagline": "看清 App 内的 Pi 正在做什么",
-    "longDescription": "按调用插件查看 Driver App 内置 Pi Agent 的会话、工作目录、模型、系统提示词、Skills 与 Tools，并决定之后新会话使用的稳定模型档位。它不会读取电脑上独立安装的 Pi 或 DSH。",
+    "longDescription": "按调用插件查看 Driver App 内置 Pi Agent 的会话、工作目录、模型、系统提示词、Skills 与 Tools，并决定之后新会话使用的稳定模型档位。它不会读取电脑上独立安装的 Pi 或 DSH。还可以在你授权的文件夹里让 Pi 查看、搜索和修改文件（聊天只读 / 计划只改计划文件 / 放手可写，会使用你的账户模型额度）；Pi 拿不到真实路径，也不能运行终端命令。",
     "capabilities": [
       {
         "label": "侧栏会多一项",
@@ -22,6 +22,10 @@
       {
         "label": "可修改内容",
         "detail": "之后新会话的模型档位"
+      },
+      {
+        "label": "文件夹任务",
+        "detail": "在你授权的文件夹里读写文件，按需使用账户模型额度"
       }
     ],
     "screenshots": []
@@ -35,7 +39,7 @@
     }
   ],
   "hostApi": {
-    "range": ">=1.18.0 <2.0.0"
+    "range": ">=1.25.0 <2.0.0"
   },
   "requires": {
     "hostCapabilities": [
@@ -43,7 +47,14 @@
       "sidebar.item@1",
       "titlebar.action@1",
       "agent.pi-management@1",
-      "metadata.i18n@1"
+      "metadata.i18n@1",
+      "surface.navigation@1",
+      "surface.escape@1",
+      "agent.session@2",
+      "cloud.model.invoke@1",
+      "resources.files@1",
+      "storage.kv@1",
+      "system.tasks@1"
     ],
     "hardwareServices": [],
     "appIntents": []
@@ -66,7 +77,23 @@
       }
     ]
   },
-  "permissions": [],
+  "permissions": [
+    {
+      "id": "agent.session@2",
+      "purpose": "在你选择的文件夹里让 Pi 处理你的指令（使用你的账户额度调用模型）；不需要时可以不允许，不影响查看功能",
+      "required": false
+    },
+    {
+      "id": "cloud.model.invoke@1",
+      "purpose": "在文件夹任务里让 Pi 用你的账户额度调用模型（会产生用量）；不使用文件夹任务时不会调用",
+      "required": false
+    },
+    {
+      "id": "resources.files@1",
+      "purpose": "读写你亲手选择的文件夹，供 Pi 在里面查看、搜索和修改文件；插件与 Pi 都拿不到真实路径",
+      "required": false
+    }
+  ],
   "requirementsVersion": "1.2",
   "requirements": [
     {
@@ -76,7 +103,8 @@
       "componentId": "ui",
       "required": false,
       "requiredFor": [
-        "capability:agent.pi-management@1"
+        "capability:agent.pi-management@1",
+        "capability:agent.session@2"
       ],
       "platforms": [
         "macos"
@@ -89,7 +117,7 @@
       },
       "probe": {
         "type": "host_registered",
-        "id": "pi-agent-v1"
+        "id": "pi-agent-v2"
       },
       "provision": {
         "mode": "host_managed_resource",
@@ -117,7 +145,12 @@
     "mode": "none"
   },
   "data": {
-    "privateStores": [],
+    "privateStores": [
+      {
+        "id": "folder-task",
+        "schemaVersion": 1
+      }
+    ],
     "imports": [],
     "exports": []
   },
@@ -173,6 +206,48 @@
         "callers": [
           "host"
         ]
+      },
+      {
+        "id": "com.reai.pi-agent.open-settings",
+        "componentId": "ui",
+        "title": "打开设置",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "timeoutMs": 3000,
+        "supportsCancellation": false,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host"
+        ],
+        "bindingPickerVisible": false
+      },
+      {
+        "id": "com.reai.pi-agent.open-folder-task",
+        "componentId": "ui",
+        "title": "在文件夹中运行",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "timeoutMs": 3000,
+        "supportsCancellation": false,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host"
+        ],
+        "bindingPickerVisible": false
       }
     ],
     "scheduledTasks": []
@@ -215,6 +290,16 @@
         "target": "titlebarAction.text",
         "id": "settings",
         "key": "metadata.actionText.item0"
+      },
+      {
+        "target": "command.title",
+        "key": "navigation.settingsCommand",
+        "id": "com.reai.pi-agent.open-settings"
+      },
+      {
+        "target": "command.title",
+        "key": "navigation.folderCommand",
+        "id": "com.reai.pi-agent.open-folder-task"
       }
     ]
   },

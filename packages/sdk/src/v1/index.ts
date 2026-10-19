@@ -105,6 +105,8 @@ export type {
   VoiceModelInfo,
   VoiceModelState,
   VoicePermissionInfo,
+  VoiceAudioSourceMode,
+  VoiceAudioSourcesInfo,
   VoicePermissionKind,
   VoicePermissionState,
   VoicePolishContextSetting,
@@ -249,6 +251,7 @@ export type {
   AgentSendResult,
   AgentTokenUsage,
   AgentSessionClient,
+  AgentConversationOpenReceipt,
   AgentSessionSpec,
   AgentSessionSummary,
   AgentSkillDocument,
@@ -277,6 +280,10 @@ export {
   BRIDGE_GLOBAL_KEY,
   NotifyMethod,
   RequestMethod,
+  audioClipsRequestMethod,
+  type AudioClipsRequestMethod,
+  taskRequestMethod,
+  type TaskRequestMethod,
   type CommandSettlement,
   type HostBridge,
   type HostMessage,
@@ -290,3 +297,10 @@ export type { AgentAttachmentAdmission, AgentAttachmentSnapshot, AgentAttachment
 
 export type { AgentRunArguments, AgentRunOutput } from "./agent-run";
 export type { LocalReviewForm, LocalOperation, WorkflowProductRef, WorkflowClientRef, DeveloperWorkflowClient, DeveloperWorkflowRequest, DeveloperWorkflowRequests, DeveloperWorkflowResults, DeveloperWorkflowAction, DeveloperWorkflowContract } from "./developer-workflow";
+
+// Frozen additive contracts; Host runtime wiring and admission remain explicit.
+export * from "./platform-contracts";
+
+export type { SurfaceNavigation, SurfaceNavigationInput } from "./navigation";
+export { createSurfaceLayout } from "./surface-layout";
+export type { SurfaceLayout } from "./surface-layout";

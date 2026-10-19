@@ -37,11 +37,9 @@ class VoicePdfDecodedBudget {
     if (requested > available) this.fail();
     let capacity = 512;
     while (capacity < requested) capacity *= 2;
-    if (capacity > available) {
-      // Bound repeated copies without reserving all remaining document capacity.
-      const extra = Math.min(64 * 1024, Math.ceil((available - current) / 2));
-      capacity = Math.max(requested, current + extra);
-    }
+    // Near the budget, grow by at least 1/8 instead of to the exact request: exact
+    // growth reallocates and copies the whole buffer for every small decoded block.
+    if (capacity > available) capacity = Math.min(available, Math.max(requested, current + Math.ceil(current / 8)));
     this.reserve(key, "buffer", capacity);
     return capacity;
   }
@@ -133,6 +131,8 @@ export function patchPdfjsDecodedBudget(upstream: string, verifyHash = true): st
   filter = filter.replace("if (ex instanceof MissingDataException)", "if (ex instanceof MissingDataException || ex?.message === VOICE_PDF_DECODE_BUDGET_MARKER)");
   source = source.slice(0, start) + filter + source.slice(end);
   replace("    const stream = new Stream(args.source);\n    this.pdfDocument", "    this.voicePdfBudget = new VoicePdfDecodedBudget();\n    const stream = voiceBindPdfStream(new Stream(args.source), this.voicePdfBudget);\n    this.pdfDocument");
+  // Embedded CMap parsing treats every other error as invalid data and keeps lexing the stream.
+  replace("      if (ex instanceof MissingDataException) {\n        throw ex;\n      }\n      warn(\"Invalid cMap data: \" + ex);", "      if (ex instanceof MissingDataException || ex?.message === VOICE_PDF_DECODE_BUDGET_MARKER) {\n        throw ex;\n      }\n      warn(\"Invalid cMap data: \" + ex);");
   replace("class WorkerMessageHandler {", "class WorkerMessageHandler {\n  static { Object.defineProperty(this, \"voicePdfDecodedBudgetPolicy\", { value: VOICE_PDF_DECODE_BUDGET_POLICY }); }");
   replace("  static setup(handler, port) {\n    let testMessageProcessed", "  static setup(handler, port) {\n    handler.on(\"VoicePdfDecodedBudgetPolicy\", () => VOICE_PDF_DECODE_BUDGET_POLICY);\n    let testMessageProcessed");
   replace("    let handler = new MessageHandler(workerHandlerName, docId, port);", `    let handler = new MessageHandler(workerHandlerName, docId, port);
@@ -164,4 +164,4 @@ export function patchPdfjsDecodedBudget(upstream: string, verifyHash = true): st
 }
 
 /** Test-only exports. Never append these to the product worker. */
-export const PDFJS_BUDGET_TEST_EXPORTS = `\nexport { VoicePdfDecodedBudget, Stream, NullStream, DecodeStream, StreamsSequenceStream, Ascii85Stream, AsciiHexStream, FlateStream, LZWStream, RunLengthStream, PredictorStream, BrotliStream, JpegStream, Jbig2Stream, JpxStream, CCITTFaxStream, Parser, Lexer, Dict, voiceBindPdfStream, voiceRequirePdfBudget };\nexport const voiceBudgetUnboundCount = () => voicePdfUnboundAllocations;\n`;
+export const PDFJS_BUDGET_TEST_EXPORTS = `\nexport { VoicePdfDecodedBudget, Stream, NullStream, DecodeStream, StreamsSequenceStream, Ascii85Stream, AsciiHexStream, FlateStream, LZWStream, RunLengthStream, PredictorStream, BrotliStream, JpegStream, Jbig2Stream, JpxStream, CCITTFaxStream, Parser, Lexer, Dict, CMapFactory, voiceBindPdfStream, voiceRequirePdfBudget };\nexport const voiceBudgetUnboundCount = () => voicePdfUnboundAllocations;\n`;

@@ -116,5 +116,8 @@
     "settings": "设置"
   },
   "terminalInput": "终端输入",
-  "terminalOutputLimit": "输出过多，已暂停朗读。按任意键继续。"
+  "terminalOutputLimit": "输出过多，已暂停朗读。按任意键继续。",
+  "navigation": {
+    "settingsCommand": "打开设置"
+  }
 }

@@ -24,6 +24,7 @@ import type {
   AgentBackendStatus,
   AgentApprovalSummary,
 } from "@reai/app-sdk/v1";
+import { isAudioSourceMode } from "./voice-audio-source";
 import type { VoiceDayDigest } from "./voice-digest";
 import type { VoiceConversationOptions } from "./agent-conversation";
 
@@ -497,7 +498,13 @@ export interface VoiceViewState {
   featureSettings: VoiceFeatureSettings;
   cloudModels: CloudModelOption[];
   cloudModelsLoading?: boolean;
+  /** 已有列表时的后台重读：只在列表旁转圈，不禁用、不换占位。 */
+  cloudModelsRefreshing?: boolean;
   cloudModelsUnavailable?: boolean;
+  /** 本轮自动重试已用完（停止自动重读，等可见或手动重试）。 */
+  cloudModelsRetryExhausted?: boolean;
+  /** 最近一次读取失败的稳定码（只用于选人话文案与恢复动作，不上屏）。 */
+  cloudModelsFailureCode?: string;
   cloudModelsErrorDetail?: VoiceErrorDetail;
   agentExperiment: VoiceAgentExperimentSettings;
   /** F02/F04：按对话保存的 Agent / 工作目录选择（不改全局默认）。 */
@@ -534,6 +541,8 @@ export interface VoiceViewState {
   boardFirmwareVersion?: string | null;
   minimumBoardFirmwareVersion?: string;
   timeline?: AudioTimelineStatus;
+  /** 全天存档开关已点下、Host 还没确认的目标值；设置页按它显示开关，确认或失败后清掉。 */
+  continuousRecordingPending?: boolean;
   systemInputs: SystemInputEndpoint[];
   recordings: VoiceRecordingSegment[];
   recordingsTotal: number;
@@ -884,9 +893,11 @@ export class VoiceStateRepository {
     const boardSourceMigrationPending = settings !== undefined
       && sourceSelectionVersion !== SOURCE_SELECTION_VERSION
       && (sourceSelectionPending === 1 || sanitizedSettings.source === "system");
+    const legacySourceMigration = settings !== undefined && sourceMigrationVersion !== 1 && !boardSourceMigrationPending;
+    const { audioSourcePreference: _legacyPreference, ...legacySettings } = sanitizedSettings;
     const effectiveSettings = boardSourceMigrationPending
       ? boardSettingsWithoutSystemEndpoint(sanitizedSettings)
-      : sanitizedSettings;
+      : legacySourceMigration ? legacySettings : sanitizedSettings;
     return {
       recognitionEngineChoice: recognitionChoice === "local" || recognitionChoice === "cloud" ? recognitionChoice : undefined,
       recognitionSetupPending,
@@ -900,8 +911,7 @@ export class VoiceStateRepository {
       conversationOptions: sanitizeConversationOptions(await this.store.get(CONVERSATION_OPTIONS_KEY)),
       commandAgentSessionLedger,
       // v2 的产品裁定优先；同一轮绝不能再让 v1 legacy hint 保留旧 SystemDevice。
-      legacySourceMigration:
-        settings !== undefined && sourceMigrationVersion !== 1 && !boardSourceMigrationPending,
+      legacySourceMigration,
       boardSourceMigrationPending,
       ...(sourceMigrationNotice === SOURCE_MIGRATION_NOTICE
         ? { sourceMigrationNotice }
@@ -957,7 +967,11 @@ export class VoiceStateRepository {
     });
   }
 
-  async completeSourceMigration(): Promise<void> {
+  async completeSourceMigration(settings?: VoiceInputSettings): Promise<void> {
+    if (settings) {
+      const { audioSourcePreference: _legacyPreference, ...legacySettings } = settings;
+      await this.saveSettings(legacySettings);
+    }
     await this.store.set(SOURCE_MIGRATION_KEY, 1);
   }
 
@@ -980,6 +994,16 @@ export class VoiceStateRepository {
     await this.store.set(SOURCE_MIGRATION_NOTICE_KEY, SOURCE_MIGRATION_NOTICE);
     await this.store.set(SOURCE_SELECTION_KEY, SOURCE_SELECTION_VERSION);
     await this.store.delete(SOURCE_SELECTION_PENDING_KEY);
+  }
+
+  /**
+   * Host 已接受一次用户在五档里的显式选择：v1 / v2 两代旧来源迁移都不再适用，
+   * 以后激活不能再剥掉档位或重放旧迁移把它 pin 回别处。journal 先删，marker 后写。
+   */
+  async confirmAudioSourceMode(): Promise<void> {
+    await this.store.delete(SOURCE_SELECTION_PENDING_KEY);
+    await this.store.set(SOURCE_MIGRATION_KEY, 1);
+    await this.store.set(SOURCE_SELECTION_KEY, SOURCE_SELECTION_VERSION);
   }
 
   /** Host 已成功接受一次用户主动的 source 变化后，记录“以后尊重此选择”。 */
@@ -1681,6 +1705,11 @@ function sanitizeSettings(value: VoiceInputSettings | undefined): VoiceInputSett
   if (!value) return { ...DEFAULT_SETTINGS };
   return {
     source: value.source === "system" ? "system" : "board",
+    ...(value.audioSourcePreference && typeof value.audioSourcePreference === "object"
+      && !Array.isArray(value.audioSourcePreference) && Object.hasOwn(value.audioSourcePreference, "kind")
+      && Object.keys(value.audioSourcePreference).length === 1
+      && isAudioSourceMode(value.audioSourcePreference.kind)
+      ? { audioSourcePreference: { kind: value.audioSourcePreference.kind } } : {}),
     ...(typeof value.systemEndpointId === "string" && value.systemEndpointId.length > 0
       ? { systemEndpointId: value.systemEndpointId }
       : {}),
@@ -1712,7 +1741,7 @@ export function sanitizeVoiceFeatureSettings(value: unknown): VoiceFeatureSettin
 }
 
 function boardSettingsWithoutSystemEndpoint(settings: VoiceInputSettings): VoiceInputSettings {
-  const { systemEndpointId: _systemEndpointId, ...rest } = sanitizeSettings(settings);
+  const { systemEndpointId: _systemEndpointId, audioSourcePreference: _audioSourcePreference, ...rest } = sanitizeSettings(settings);
   return { ...rest, source: "board" };
 }
 

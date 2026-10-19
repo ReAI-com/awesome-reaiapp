@@ -19,30 +19,30 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
+import { assertPortableManifest, assertPackEntries, assertInstalledToolchain, notificationProviderCompatibility, toolchainPackages, type PackageManifest } from "../packages/cli/src/toolchain-verification";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const repositoryRoot = resolve(import.meta.dir, "..");
 const platformRoot = join(repositoryRoot, "packages");
-const temporaryRoot = mkdtempSync(join(tmpdir(), "reai-platform-pack-"));
+
+const packages = toolchainPackages;
+const versions = new Map<string, string>(packages.map(spec => [spec.packageName, JSON.parse(readFileSync(join(platformRoot, spec.directory, "package.json"), "utf8")).version as string]));
+const compatibility = versions.get("@reai/app-contract") === "1.25.1-notification-provider.1" ? notificationProviderCompatibility : undefined;
+const packedManifests: PackageManifest[] = [];
+const retainedIndex = process.argv.indexOf("--out");
+const retainedRoot = retainedIndex < 0 ? undefined : process.argv[retainedIndex + 1];
+if (retainedIndex >= 0 && (!retainedRoot || retainedRoot.startsWith("--"))) throw new Error("--out requires a new bundle directory");
+if (retainedRoot && existsSync(resolve(retainedRoot))) throw new Error("--out bundle directory already exists");
+// SOURCE evidence rejects symlink ancestors; macOS /var aliases /private/var.
+const temporaryRoot = realpathSync(mkdtempSync(join(tmpdir(), "reai-platform-pack-")));
 const packRoot = join(temporaryRoot, "packs");
 const consumerRoot = join(temporaryRoot, "external-consumer");
 const fixtureRoot = join(consumerRoot, "app");
 
-interface PackageSpec {
-  directory: string;
-  filename: string;
-  packageName: string;
-}
-
-const packages: PackageSpec[] = [
-  { directory: "contract", filename: "app-contract.tgz", packageName: "@reai/app-contract" },
-  { directory: "sdk", filename: "app-sdk.tgz", packageName: "@reai/app-sdk" },
-  { directory: "test-kit", filename: "app-test.tgz", packageName: "@reai/app-test" },
-  { directory: "cli", filename: "app-cli.tgz", packageName: "@reai/app-cli" },
-  { directory: "i18n-cli", filename: "app-i18n-cli.tgz", packageName: "@reai/app-i18n-cli" },
-];
+const sha256 = (bytes: Uint8Array | string): string => createHash("sha256").update(bytes).digest("hex");
 
 function run(command: string, args: string[], cwd: string): string {
   const result = spawnSync(command, args, {
@@ -63,33 +63,6 @@ function tarballManifest(tarball: string): Record<string, unknown> {
   return JSON.parse(raw) as Record<string, unknown>;
 }
 
-function assertPortableManifest(spec: PackageSpec, manifest: Record<string, unknown>): void {
-  if (manifest.name !== spec.packageName) {
-    throw new Error(`${spec.filename} package name mismatch: ${String(manifest.name)}`);
-  }
-  for (const field of ["dependencies", "devDependencies", "peerDependencies"]) {
-    const dependencies = (manifest[field] ?? {}) as Record<string, unknown>;
-    for (const [name, value] of Object.entries(dependencies)) {
-      if (typeof value === "string" && /^(?:workspace:|file:|link:)/.test(value)) {
-        throw new Error(`${spec.packageName} ${field}.${name} leaks ${value}`);
-      }
-    }
-  }
-}
-
-function assertPackContents(spec: PackageSpec, tarball: string): void {
-  const entries = run("tar", ["-tzf", tarball], temporaryRoot).split("\n");
-  const forbidden = entries.filter((entry) =>
-    /(?:^|\/)(?:tests?|node_modules|tsconfig\.json|bun\.lockb?)$/.test(entry),
-  );
-  if (forbidden.length > 0) {
-    throw new Error(`${spec.packageName} contains development-only files: ${forbidden.join(", ")}`);
-  }
-  if (!entries.includes("package/package.json")) {
-    throw new Error(`${spec.packageName} tarball has no package.json`);
-  }
-}
-
 try {
   mkdirSync(packRoot, { recursive: true });
   mkdirSync(consumerRoot, { recursive: true });
@@ -102,15 +75,17 @@ try {
     );
     const tarball = join(packRoot, spec.filename);
     if (!existsSync(tarball)) throw new Error(`missing packed artifact ${tarball}`);
-    assertPortableManifest(spec, tarballManifest(tarball));
+    const manifest = tarballManifest(tarball) as unknown as PackageManifest;
+    assertPortableManifest(spec.packageName, manifest, versions, compatibility);
+    packedManifests.push(manifest);
     if (spec.directory === "i18n-cli" && (tarballManifest(tarball).dependencies as Record<string, unknown>).fflate !== "0.8.3") {
       throw new Error("modern CLI tarball must pin fflate 0.8.3");
     }
-    assertPackContents(spec, tarball);
+    assertPackEntries(spec.packageName, run("tar", ["-tzf", tarball], temporaryRoot).split("\n"));
   }
 
   const dependencies = Object.fromEntries(
-    packages.map((spec) => [spec.packageName, `file:${join(packRoot, spec.filename)}`]),
+    packages.map((spec) => [spec.packageName, `file:../packs/${spec.filename}`]),
   );
   writeFileSync(
     join(consumerRoot, "package.json"),
@@ -119,6 +94,7 @@ try {
       private: true,
       type: "module",
       dependencies,
+      devDependencies: { typescript: "5.6.3", "@types/bun": "1.4.0" },
       // Until the packages are available from a registry, force every
       // transitive exact-semver edge to the same packed artifacts.
       overrides: dependencies,
@@ -127,11 +103,40 @@ try {
 
   cpSync(join(platformRoot, "fixtures", "apps", "minimal"), fixtureRoot, {
     recursive: true,
-    filter: (source) => basename(source) !== "node_modules" && basename(source) !== "dist",
+    filter: (source) => !["node_modules", "dist", "bun.lock", "build-manifest.json"].includes(basename(source)),
   });
+
+  // New app identity, with no inherited grant or source approval.
+  const appId = "com.synthetic.v105.toolchain";
+  for (const file of ["app.manifest.json", "src/app.ts", "tests/contract.suite.ts"]) {
+    const path = join(fixtureRoot, file);
+    writeFileSync(path, readFileSync(path, "utf8").replaceAll("com.example.minimal", appId));
+  }
+  writeFileSync(join(fixtureRoot, "tsconfig.json"), JSON.stringify({ compilerOptions: {
+    target: "ES2022", module: "ESNext", moduleResolution: "bundler", strict: true,
+    noEmit: true, skipLibCheck: true, resolveJsonModule: true, types: ["bun"],
+  }, include: ["src", "tests"] }));
+  writeFileSync(join(fixtureRoot, "tests/development.test.ts"), `
+import { expect, test } from "bun:test";
+import { MockHost, flush } from "@reai/app-test/v1";
+import app from "../src/app";
+import manifest from "../app.manifest.json";
+test("fresh app identity runs lifecycle, command, storage and surface contracts", async () => {
+  const host = new MockHost({ manifest, loadApp: async () => ({ default: app }) });
+  try {
+    await host.installAndEnable(); await flush();
+    const result = await host.invokeCommand(manifest.appId + ".ping");
+    expect(result.ok).toBe(true);
+    expect(host.storageKeys()).toContain(manifest.appId + "/notes/last-ping");
+    expect((await host.openSurface("main")).readyCount).toBe(1);
+  } finally { await host.disable(); }
+  expect(host.networkRequests).toEqual([]);
+});
+`);
 
   run("bun", ["install"], consumerRoot);
   run("bun", ["install", "--frozen-lockfile"], consumerRoot);
+  assertInstalledToolchain(consumerRoot, packedManifests);
 
   // Exercise SDK staging using only installed public tarballs. No network request is sent.
   const uploadFixture = join(consumerRoot, "http-upload.ts");
@@ -169,8 +174,10 @@ try {
     ["x", "--no-install", "-p", "@reai/app-cli", "reai-app", ...args],
     consumerRoot,
   );
-  runCli(["--version"]);
+  if (runCli(["--version"]) !== versions.get("@reai/app-cli")) throw new Error("installed legacy CLI reports the wrong version");
   runCli(["validate", fixtureRoot]);
+  run(join(consumerRoot, "node_modules/.bin/tsc"), ["--noEmit", "-p", fixtureRoot], consumerRoot);
+  console.log(run("bun", ["test", join(fixtureRoot, "tests/development.test.ts")], consumerRoot));
   runCli(["build", fixtureRoot]);
   runCli(["contract-test", fixtureRoot, "--host-api", "1.1"]);
 
@@ -179,6 +186,11 @@ try {
   if (!existsSync(appPackage) || readFileSync(appPackage).byteLength === 0) {
     throw new Error("external reai-app pack did not produce a non-empty archive");
   }
+
+  const repeatedAppPackage = join(consumerRoot, "minimal-repeat.reaiapp");
+  runCli(["pack", fixtureRoot, "--out", repeatedAppPackage]);
+  if (!readFileSync(appPackage).equals(readFileSync(repeatedAppPackage))) throw new Error("fresh app legacy CLI pack is not deterministic");
+  console.log(`✓ fresh ${appId}: validate/typecheck/test/build/contract/pack sha256=${sha256(readFileSync(appPackage))}`);
 
   const manifestPath = join(fixtureRoot, "app.manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
@@ -198,7 +210,7 @@ try {
   mkdirSync(join(fixtureRoot,"assets/locales"),{recursive:true});
   for (const locale of ["zh","en"]) writeFileSync(join(fixtureRoot,`assets/locales/${locale}.json`),JSON.stringify({metadata:Object.fromEntries(references.map((_,i)=>[`key${i}`,`Label ${i}`]))}));
   const runI18n = (args:string[]) => run("bun",["x","--no-install","-p","@reai/app-i18n-cli","reai-app-i18n",...args],consumerRoot);
-  runI18n(["--version"]);
+  if (runI18n(["--version"]) !== versions.get("@reai/app-i18n-cli")) throw new Error("installed i18n CLI reports the wrong version");
   runI18n(["validate",fixtureRoot]);
   runI18n(["build",fixtureRoot]);
   runI18n(["pack",fixtureRoot,"--out",join(consumerRoot,"localized.reaiapp")]);
@@ -214,6 +226,31 @@ verifyPackagedResources(deflate);
 if(store.size!==deflate.size || [...store].some(([path,bytes])=>!Buffer.from(bytes).equals(Buffer.from(deflate.get(path)??[])))) throw Error("installed resources differ");
 `);
   run("bun",["verify-compression.ts",join(consumerRoot,"localized.reaiapp"),deflatePackage],consumerRoot);
+
+  // Installing this toolchain cannot grant a fresh identity a privileged capability.
+  const reviewedManifestBytes = readFileSync(manifestPath);
+  const unapproved = structuredClone(manifest);
+  unapproved.requires.hostCapabilities.push("surface.clipboard@1");
+  writeFileSync(manifestPath, JSON.stringify(unapproved));
+  try {
+    for (const command of ["validate", "build", "pack"]) {
+      const args = ["x", "--no-install", "-p", "@reai/app-i18n-cli", "reai-app-i18n", command, fixtureRoot];
+      if (command === "pack") args.push("--out", join(consumerRoot, "unapproved.reaiapp"));
+      const result = spawnSync("bun", args, { cwd: consumerRoot, encoding: "utf8" });
+      if (result.status !== 1 || !result.stderr.includes("APP_CAPABILITY_NOT_GRANTED")) throw new Error(`packed ${command} bypassed SOURCE approval: ${result.stderr}`);
+    }
+    const missingEvidence = spawnSync("bun", ["x", "--no-install", "-p", "@reai/app-i18n-cli", "reai-app-i18n", "validate", fixtureRoot, "--source-review", join(consumerRoot, "missing-evidence.json")], { cwd: consumerRoot, encoding: "utf8" });
+    if (missingEvidence.status !== 1 || !missingEvidence.stderr.includes("ENOENT") || !missingEvidence.stderr.includes("missing-evidence.json")) throw new Error(`missing SOURCE evidence did not report its missing file (status ${missingEvidence.status}): ${missingEvidence.stderr}`);
+    const invalidEvidence = join(consumerRoot, "invalid-evidence.json");
+    writeFileSync(invalidEvidence, "{}");
+    for (const command of ["validate", "build", "pack"]) {
+      const output = join(consumerRoot, "invalid-source.reaiapp");
+      const args = ["x", "--no-install", "-p", "@reai/app-i18n-cli", "reai-app-i18n", command, fixtureRoot, "--source-review", invalidEvidence];
+      if (command === "pack") args.push("--out", output);
+      const result = spawnSync("bun", args, { cwd: consumerRoot, encoding: "utf8" });
+      if (result.status !== 1 || !result.stderr.includes("APP_CAPABILITY_NOT_GRANTED") || !result.stderr.includes("MANIFEST_REFERENCE_INVALID") || !result.stderr.includes("sourceReview") || existsSync(output)) throw new Error(`invalid SOURCE evidence bypassed ${command}: ${result.stderr}`);
+    }
+  } finally { writeFileSync(manifestPath, reviewedManifestBytes); }
 
   // A frozen file consumer may lack the new encoder. STORE and decoding must
   // remain usable; explicit Deflate must reject a missing or wrong codec.
@@ -339,6 +376,42 @@ if(store.size!==deflate.size || [...store].some(([path,bytes])=>!Buffer.from(byt
       }
     }
   }
+
+  const artifacts = packages.map(spec => {
+    const tarball = join(packRoot, spec.filename), bytes = readFileSync(tarball);
+    const sourceFiles = Object.fromEntries(run("tar", ["-tzf", tarball], temporaryRoot).split("\n")
+      .filter(entry => !entry.endsWith("/"))
+      .map(entry => ["packages/" + spec.directory + "/" + entry.slice("package/".length), sha256(readFileSync(join(platformRoot, spec.directory, entry.slice("package/".length))))]));
+    return { name: spec.packageName, version: versions.get(spec.packageName), file: `packs/${spec.filename}`, bytes: bytes.byteLength, sha256: sha256(bytes), sourceFiles };
+  });
+  const receipt = { schemaVersion: 1, state: "LOCAL_TOOLCHAIN_VERIFIED", sourceHead: run("git", ["rev-parse", "HEAD"], repositoryRoot),
+    sourceDirty: run("git", ["status", "--porcelain", "--", "packages", "scripts/verify-platform-packages.ts", "scripts/verify-official-plugins.ts", "scripts/verify-plugin-examples.ts", "scripts/source-review-bytes.ts"], repositoryRoot).length > 0,
+    bunVersion: run("bun", ["--version"], consumerRoot), artifacts,
+    compatibilityPolicy: compatibility ?? null,
+    frozenDeclaredEdges: compatibility ? packedManifests
+      .filter(manifest => manifest.name === "@reai/app-sdk" || manifest.name === "@reai/app-test")
+      .map(manifest => ({ package: manifest.name, packageVersion: manifest.version,
+        field: "dependencies", dependency: "@reai/app-contract", declaredPin: manifest.dependencies?.["@reai/app-contract"],
+        selectedVersion: versions.get("@reai/app-contract") })) : [],
+    installedResolution: "strict direct/transitive selected versions and one realpath-confined instance; explicit relative tarball overrides",
+    consumerLockSha256: sha256(readFileSync(join(consumerRoot, "bun.lock"))),
+    app: { appId, version: "1.0.0", sha256: sha256(readFileSync(appPackage)) },
+    runtimeGrant: false, platformApproval: false, published: false };
+  if (retainedRoot) {
+    const output = resolve(retainedRoot);
+    mkdirSync(output); // Exclusive creation; never overwrite another bundle.
+    try {
+      cpSync(packRoot, join(output, "packs"), { recursive: true });
+      mkdirSync(join(output, "consumer"));
+      for (const file of ["package.json", "bun.lock"]) cpSync(join(consumerRoot, file), join(output, "consumer", file));
+      run("bun", ["install", "--frozen-lockfile"], join(output, "consumer"));
+      assertInstalledToolchain(join(output, "consumer"), packedManifests);
+      rmSync(join(output, "consumer/node_modules"), { recursive: true, force: true });
+      writeFileSync(join(output, "toolchain.json"), JSON.stringify(receipt, null, 2) + "\n");
+      console.log(`✓ retained portable toolchain ${output}`);
+    } catch (error) { rmSync(output, { recursive: true, force: true }); throw error; }
+  }
+  console.log(JSON.stringify({ ...receipt, artifacts: artifacts.map(({ sourceFiles, ...artifact }) => artifact) }));
 
   console.log(`✓ platform tarballs installed and exercised outside the repository (${packages.length} packages)`);
 } finally {

@@ -1,13 +1,13 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.reai.browser",
-  "version": "1.0.4-dev.2",
+  "version": "1.0.5",
   "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
   "name": "浏览器",
   "description": "内置多标签浏览器：Agent 可以受控地打开网页、观察与点击，用户在半屏抽屉里全程可见",
   "icon": "assets/icon.png",
   "storeListing": {
-    "category": "Utilities",
+    "category": "Dev",
     "tagline": "让 Agent 的每一步网页操作都看得见。",
     "longDescription": "内置受管浏览器：多标签、地址栏导航、后退/前进/刷新，Agent 经浏览器引擎窄口打开网页、观察元素、点击与填写，全部操作以半屏抽屉呈现给用户。只放行 https（本机开发地址可用 http），新窗口与下载默认拒绝，网页数据与主应用隔离。",
     "capabilities": [
@@ -20,8 +20,8 @@
         "detail": "打开网页、观察元素、点击、填写、按键"
       },
       {
-        "label": "需要的权限",
-        "detail": "安装并启用后生效；无麦克风等系统权限"
+        "label": "隔离浏览",
+        "detail": "网页使用独立配置；默认拒绝新窗口与下载"
       }
     ],
     "screenshots": [
@@ -38,6 +38,12 @@
       "architectures": [
         "aarch64"
       ]
+    },
+    {
+      "platform": "windows",
+      "architectures": [
+        "x86_64"
+      ]
     }
   ],
   "hostApi": {
@@ -47,10 +53,10 @@
     "hostCapabilities": [
       "surface.main@1",
       "sidebar.item@1",
-      "storage.kv@1",
       "commands@1",
       "browser.engine@1",
-      "metadata.i18n@1"
+      "metadata.i18n@1",
+      "system.tasks@1"
     ],
     "hardwareServices": [],
     "appIntents": []
@@ -115,12 +121,7 @@
     "mode": "none"
   },
   "data": {
-    "privateStores": [
-      {
-        "id": "state",
-        "schemaVersion": 1
-      }
-    ],
+    "privateStores": [],
     "imports": [],
     "exports": []
   },
@@ -166,7 +167,7 @@
           "additionalProperties": false
         },
         "timeoutMs": 5000,
-        "supportsCancellation": false,
+        "supportsCancellation": true,
         "concurrency": "serial",
         "idempotency": "idempotent",
         "callers": [

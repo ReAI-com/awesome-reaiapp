@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Frozen declaration-only schema; NOT accepted by app-manifest-1.1 until Host/CLI integration. mutation-local",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "requestId",
+    "target",
+    "expectedRevision",
+    "idempotencyKey"
+  ],
+  "properties": {
+    "requestId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]*$"
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "resource",
+        "grantRef"
+      ],
+      "properties": {
+        "resource": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "version",
+            "provider",
+            "workspaceId",
+            "relativePath"
+          ],
+          "properties": {
+            "version": {
+              "const": 1
+            },
+            "provider": {
+              "const": "local"
+            },
+            "workspaceId": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[\\x21-\\x7E]+$"
+            },
+            "relativePath": {
+              "type": "string",
+              "maxLength": 4096
+            }
+          }
+        },
+        "grantRef": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[\\x21-\\x7E]+$"
+        }
+      }
+    },
+    "expectedRevision": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^(?!absent$)[A-Za-z0-9][A-Za-z0-9._:@-]*$"
+    },
+    "idempotencyKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:@-]*$"
+    }
+  }
+}

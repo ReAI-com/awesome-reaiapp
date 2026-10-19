@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.reai.dsh-agent",
-  "version": "1.2.8-dev.1",
+  "version": "1.2.8-dev.3",
   "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
   "name": "DSH",
   "description": "查看 Host 受管 DSH 基础服务的真实运行状态、会话、处理过程与脱敏工具记录",
@@ -9,7 +9,7 @@
   "storeListing": {
     "category": "Official",
     "tagline": "让底层 DSH 的工作过程保持透明",
-    "longDescription": "DSH 是 ReAI Board Host 管理的基础服务，缺失或损坏时由 App 生命周期修复中心下载、验签并自检，不依赖本插件。安装这个官方透明度界面后，你可以查看所有来源 App 的脱敏 DSH 会话、工作目录、处理时间线、工具调用和能力指纹，并设置之后新会话使用的默认模型档位；卸载只移除界面，不会改变或删除底层 DSH 数据。",
+    "longDescription": "DSH 是 ReAI Board Host 管理的基础服务，缺失或损坏时由 App 生命周期修复中心下载、验签并自检，不依赖本插件。安装这个官方透明度界面后，你可以查看所有来源 App 的脱敏 DSH 会话、工作目录、处理时间线、工具调用和能力指纹，并设置之后新会话使用的默认模型档位；卸载只移除界面，不会改变或删除底层 DSH 数据。还可以在你授权的文件夹里让 DSH 查看、搜索和修改文件（聊天只读 / 计划只改计划文件 / 放手可写，会使用你的账户模型额度）；DSH 拿不到真实路径，也不能运行终端命令。",
     "capabilities": [
       {
         "label": "用途",
@@ -26,6 +26,10 @@
       {
         "label": "不会改变",
         "detail": "已有会话、runtime 与来源 App 能力"
+      },
+      {
+        "label": "文件夹任务",
+        "detail": "在你授权的文件夹里读写文件，按需使用账户模型额度"
       }
     ],
     "screenshots": []
@@ -39,7 +43,7 @@
     }
   ],
   "hostApi": {
-    "range": ">=1.18.0 <2.0.0"
+    "range": ">=1.25.0 <2.0.0"
   },
   "requires": {
     "hostCapabilities": [
@@ -47,7 +51,14 @@
       "sidebar.item@1",
       "titlebar.action@1",
       "agent.dsh-observe@1",
-      "metadata.i18n@1"
+      "metadata.i18n@1",
+      "surface.navigation@1",
+      "surface.escape@1",
+      "agent.session@2",
+      "cloud.model.invoke@1",
+      "resources.files@1",
+      "storage.kv@1",
+      "system.tasks@1"
     ],
     "hardwareServices": [],
     "appIntents": []
@@ -75,6 +86,21 @@
       "id": "agent.dsh-observe@1",
       "purpose": "读取并展示所有来源 App 的脱敏 DSH 会话、工作目录、工具和诊断记录，并设置之后新会话使用的默认模型档位",
       "required": true
+    },
+    {
+      "id": "agent.session@2",
+      "purpose": "在你选择的文件夹里让 DSH 处理你的指令（使用你的账户额度调用模型）；不需要时可以不允许，不影响查看功能",
+      "required": false
+    },
+    {
+      "id": "cloud.model.invoke@1",
+      "purpose": "在文件夹任务里让 DSH 用你的账户额度调用模型（会产生用量）；不使用文件夹任务时不会调用",
+      "required": false
+    },
+    {
+      "id": "resources.files@1",
+      "purpose": "读写你亲手选择的文件夹，供 DSH 在里面查看、搜索和修改文件；插件与 DSH 都拿不到真实路径",
+      "required": false
     }
   ],
   "requirementsVersion": "1.2",
@@ -86,7 +112,8 @@
       "componentId": "ui",
       "required": false,
       "requiredFor": [
-        "capability:agent.dsh-observe@1"
+        "capability:agent.dsh-observe@1",
+        "capability:agent.session@2"
       ],
       "platforms": [
         "macos"
@@ -95,11 +122,11 @@
         "direct"
       ],
       "version": {
-        "constraint": ">=0.1.1-rc.2 <0.1.2"
+        "constraint": ">=0.1.5-rc.2 <0.1.6"
       },
       "probe": {
         "type": "host_registered",
-        "id": "dsh-runner-v1"
+        "id": "dsh-native-v2"
       },
       "provision": {
         "mode": "host_managed_resource",
@@ -127,7 +154,12 @@
     "mode": "none"
   },
   "data": {
-    "privateStores": [],
+    "privateStores": [
+      {
+        "id": "folder-task",
+        "schemaVersion": 1
+      }
+    ],
     "imports": [],
     "exports": []
   },
@@ -191,6 +223,48 @@
         "callers": [
           "host"
         ]
+      },
+      {
+        "id": "com.reai.dsh-agent.open-settings",
+        "componentId": "ui",
+        "title": "打开设置",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "timeoutMs": 3000,
+        "supportsCancellation": false,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host"
+        ],
+        "bindingPickerVisible": false
+      },
+      {
+        "id": "com.reai.dsh-agent.open-folder-task",
+        "componentId": "ui",
+        "title": "在文件夹中运行",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "timeoutMs": 3000,
+        "supportsCancellation": false,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host"
+        ],
+        "bindingPickerVisible": false
       }
     ],
     "scheduledTasks": []
@@ -233,6 +307,16 @@
         "target": "titlebarAction.label",
         "id": "refresh",
         "key": "metadata.actionLabels.item1"
+      },
+      {
+        "target": "command.title",
+        "key": "navigation.settingsCommand",
+        "id": "com.reai.dsh-agent.open-settings"
+      },
+      {
+        "target": "command.title",
+        "key": "navigation.folderCommand",
+        "id": "com.reai.dsh-agent.open-folder-task"
       }
     ]
   },

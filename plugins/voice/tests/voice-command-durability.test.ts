@@ -192,6 +192,7 @@ test("Surface unmount without deactivate leaves a recoverable running task", asy
   let request!: Parameters<AgentSessionClient["send"]>[0];
   let finish!: (result: AgentSendResult) => void;
   const host = new MockHost({
+    ownedConversationOpen: { accountGeneration: "t09-synthetic", packageDigest: "a".repeat(64), admitted: true, decision: "granted", userCeiling: "in_app", sessionIds: ["session-a", "new-owned-session"] },
     manifest: structuredClone(manifest) as never,
     loadApp: async () => {
       const { default: app } = await import("../src/app?command-durability=" + crypto.randomUUID());
@@ -222,6 +223,7 @@ test("Surface unmount without deactivate leaves a recoverable running task", asy
     const surface = await host.openSurface("main"), root = surface.root!;
     root.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
     root.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+    await waitForConversationFixture(root);
     const input = root.querySelector<HTMLInputElement>(".chat-input")!;
     input.value = "Will it rain?";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -252,6 +254,7 @@ test("journal write failure stops before Agent request and shows a retryable err
   document.body.replaceChildren();
   let sends = 0;
   const host = new MockHost({
+    ownedConversationOpen: { accountGeneration: "t09-synthetic", packageDigest: "a".repeat(64), admitted: true, decision: "granted", userCeiling: "in_app", sessionIds: ["session-a", "new-owned-session"] },
     manifest: structuredClone(manifest) as never,
     loadApp: async () => {
       const { default: app } = await import("../src/app?command-journal-failure=" + crypto.randomUUID());
@@ -301,6 +304,7 @@ test("journal write failure stops before Agent request and shows a retryable err
     const { root } = await host.openSurface("main");
     root!.querySelector<HTMLButtonElement>('[data-voice-tab="command"]')!.click();
     root!.querySelector<HTMLButtonElement>(".command-history-item")!.click();
+    await waitForConversationFixture(root!);
     const input = root!.querySelector<HTMLInputElement>(".chat-input")!;
     input.value = "question";
     input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -324,6 +328,7 @@ test("new Agent session is linked in the journal before send and retained by int
   let finish!: (result: AgentSendResult) => void;
   let deletes = 0;
   const host = new MockHost({
+    ownedConversationOpen: { accountGeneration: "t09-synthetic", packageDigest: "a".repeat(64), admitted: true, decision: "granted", userCeiling: "in_app", sessionIds: ["session-a", "new-owned-session"] },
     manifest: structuredClone(manifest) as never,
     loadApp: async () => {
       const { default: app } = await import("../src/app?command-session-journal=" + crypto.randomUUID());
@@ -370,3 +375,9 @@ test("new Agent session is linked in the journal before send and retained by int
     await host.disable();
   }
 });
+
+/** Synthetic fixture waits for the actual asynchronous history/paint boundary. */
+async function waitForConversationFixture(root: Element) {
+ const end=Date.now()+2500; while(!root.querySelector(".main-body.chat-view,.main-body.translation-detail")&&Date.now()<end)await new Promise(r=>setTimeout(r,5));
+ expect(!!root.querySelector(".main-body.chat-view,.main-body.translation-detail")).toBeTrue();
+}

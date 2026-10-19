@@ -1,8 +1,8 @@
 # DSH 面板
 
-ReAI 插件 `com.reai.dsh-agent`。当前源码版本为 `1.2.8-dev.1`。查看 Host 管理的 DSH 服务状态、会话和脱敏工具记录。数据通过 `dsh.observe.*` 接口读取。
+ReAI 插件 `com.reai.dsh-agent`。当前源码版本为 `1.2.8-dev.3`。查看 Host 管理的 DSH 服务状态、会话和脱敏工具记录。数据通过 `dsh.observe.*` 接口读取。
 
-Manifest 声明可选 `dsh-runner-v1` 运行组件。实际安装状态由 Host 判断。语言覆盖见 [I18N.md](I18N.md)。
+Manifest 声明可选 `runtime.dsh` 运行组件（Host 注册探针 `dsh-native-v2`）。实际安装状态由 Host 判断。语言覆盖见 [I18N.md](I18N.md)。
 
 ## 本地构建
 

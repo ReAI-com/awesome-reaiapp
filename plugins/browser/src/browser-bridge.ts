@@ -6,11 +6,11 @@
  * method 串按需 cast。Host 侧 `bridge.rs` 在分发前已校验 `browser.engine@1`
  * 的声明、安装、启用与授予。
  */
-import { BRIDGE_GLOBAL_KEY, type HostBridge, type RequestMethod } from "@reai/app-sdk/v1";
+import { AppError, BRIDGE_GLOBAL_KEY, type HostBridge, type RequestMethod } from "@reai/app-sdk/v1";
 import { t } from "./browser-i18n";
 
 type AnyBridge = {
-  request<T = unknown>(method: string, params: unknown): Promise<T>;
+  request<T = unknown>(method: string, params: unknown, options?: { signal?: AbortSignal }): Promise<T>;
 };
 
 export type BrowserMethod =
@@ -31,11 +31,13 @@ function bridge(): HostBridge | undefined {
 export async function browserCall<T = unknown>(
   method: BrowserMethod,
   params: unknown = {},
+  options?: { signal?: AbortSignal },
 ): Promise<T> {
+  options?.signal?.throwIfAborted();
   const b = bridge();
   if (!b) {
     // 受控错误：文案走语言包，随 Host 语言切换。
-    throw new Error(t("errors.bridgeMissing"));
+    throw new AppError({ code: "com.reai.browser/BRIDGE_UNAVAILABLE", userMessage: t("errors.bridgeMissing"), retryable: true });
   }
-  return (b as unknown as AnyBridge).request<T>(method as RequestMethod, params);
+  return (b as unknown as AnyBridge).request<T>(method as RequestMethod, params, options);
 }
