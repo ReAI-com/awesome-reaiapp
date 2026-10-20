@@ -31,6 +31,33 @@ describe("parseActionReply", () => {
     expect(parseActionReply('{"action":"click","x":"abc","y":10}')).toBeNull();
   });
 
+  test("click 坐标为 null / false / 空串拒绝，数字字符串转成数字", () => {
+    expect(parseActionReply('{"action":"click","x":null,"y":false}')).toBeNull();
+    expect(parseActionReply('{"action":"click","x":"","y":10}')).toBeNull();
+    const parsed = parseActionReply('{"action":"click","x":"120","y":30}');
+    expect(parsed?.action).toEqual({ action: "click", x: 120, y: 30 });
+  });
+
+  test("字段不合法的动作拒绝，未知字段丢弃", () => {
+    expect(parseActionReply('{"action":"type","text":123}')).toBeNull();
+    expect(parseActionReply('{"action":"type","text":""}')).toBeNull();
+    expect(parseActionReply('{"action":"press","key":"  "}')).toBeNull();
+    expect(parseActionReply('{"action":"scroll"}')).toBeNull();
+    expect(parseActionReply('{"action":"scroll","dy":"abc"}')).toBeNull();
+    expect(parseActionReply('{"action":"click","x":1,"y":2,"button":"middle"}')).toBeNull();
+    expect(parseActionReply('{"action":"click","x":1,"y":2,"double":"yes"}')).toBeNull();
+    expect(parseActionReply('{"action":"shell","cmd":"rm -rf /"}')).toBeNull();
+    expect(parseActionReply('{"action":"type","text":"hi","method":"computer.resume"}')?.action).toEqual({
+      action: "type",
+      text: "hi",
+    });
+    expect(parseActionReply('{"action":"scroll","dy":300}')?.action).toEqual({
+      action: "scroll",
+      dx: 0,
+      dy: 300,
+    });
+  });
+
   test("完全不是 JSON 返回 null", () => {
     expect(parseActionReply("我认为应该点击右上角")).toBeNull();
   });

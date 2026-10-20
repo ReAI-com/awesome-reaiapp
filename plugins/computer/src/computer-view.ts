@@ -18,6 +18,14 @@ export interface ComputerHomeHandlers {
   onRefreshTrace: () => void;
 }
 
+/** 设置区底部「版本 / 关于插件」所需的本机安装包信息（来自 app.manifest.json）。 */
+export interface ComputerHomeInfo {
+  appId: string;
+  name: string;
+  version: string;
+  changelogText: string;
+}
+
 export interface ComputerHome {
   root: HTMLElement;
   setPermissions(status: PermissionsStatus | null, error?: string): void;
@@ -37,6 +45,7 @@ interface TaskRunState {
 export function mountComputerHome(
   parent: HTMLElement,
   handlers: ComputerHomeHandlers,
+  info: ComputerHomeInfo,
 ): ComputerHome {
   const frame = document.createElement("div");
   frame.className = "plugin-main-frame";
@@ -123,7 +132,11 @@ export function mountComputerHome(
   abortBtn.textContent = "中止任务";
   abortBtn.disabled = true;
   runRow.append(startBtn, abortBtn);
-  consoleCard.append(taskInput, runRow);
+  const egressHint = document.createElement("p");
+  egressHint.className = "cu-sub cu-egress-hint";
+  egressHint.textContent =
+    "开始后，每一步的屏幕截图与任务描述会发送到云端视觉模型。运行期间请勿操作鼠标键盘，也不要让屏幕显示不希望外发的内容。";
+  consoleCard.append(taskInput, runRow, egressHint);
 
   const taskResult = document.createElement("div");
   taskResult.className = "cu-task-result";
@@ -196,6 +209,69 @@ export function mountComputerHome(
   notice.className = "cu-notice";
   notice.hidden = true;
   root.appendChild(notice);
+
+  // ── 版本 / 关于插件（规范 docs/plugin-settings-and-release-notes-v1.md §1）──
+  // SDK 当前没有打开外部链接的能力，先在插件内展示本机版本日志与应用详情地址。
+  const footer = document.createElement("footer");
+  footer.className = "cu-footer";
+  const versionBtn = document.createElement("button");
+  versionBtn.type = "button";
+  versionBtn.className = "cu-link-btn";
+  versionBtn.textContent = `版本 ${info.version}`;
+  versionBtn.setAttribute("aria-label", `查看版本 ${info.version} 的更新日志`);
+  const aboutBtn = document.createElement("button");
+  aboutBtn.type = "button";
+  aboutBtn.className = "cu-link-btn";
+  aboutBtn.textContent = "关于插件";
+  aboutBtn.setAttribute("aria-label", `关于 ${info.name}`);
+  footer.append(versionBtn, aboutBtn);
+  root.appendChild(footer);
+
+  const infoCard = document.createElement("section");
+  infoCard.className = "cu-card cu-info";
+  infoCard.hidden = true;
+  root.appendChild(infoCard);
+
+  function showInfo(kind: "changelog" | "about") {
+    const head = document.createElement("div");
+    head.className = "cu-trace-head";
+    const title = document.createElement("h2");
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "cu-link-btn";
+    close.textContent = "收起";
+    close.addEventListener("click", () => {
+      infoCard.hidden = true;
+      (kind === "changelog" ? versionBtn : aboutBtn).focus();
+    });
+    head.append(title, close);
+    const body = document.createElement(kind === "changelog" ? "pre" : "dl");
+    body.className = kind === "changelog" ? "cu-changelog" : "cu-about";
+    if (kind === "changelog") {
+      title.textContent = `版本 ${info.version} 更新日志`;
+      body.textContent = changelogSection(info.changelogText, info.version);
+    } else {
+      title.textContent = `关于 ${info.name}`;
+      const detailUrl = `https://open.reai.com/apps/${encodeURIComponent(info.appId)}`;
+      for (const [term, value] of [
+        ["插件", info.name],
+        ["版本", `${info.version} · 本地源码候选，尚未公开发布`],
+        ["应用标识", info.appId],
+        ["公开应用详情", detailUrl],
+      ]) {
+        const dt = document.createElement("dt");
+        dt.textContent = term;
+        const dd = document.createElement("dd");
+        dd.textContent = value;
+        body.append(dt, dd);
+      }
+    }
+    infoCard.replaceChildren(head, body);
+    infoCard.hidden = false;
+    infoCard.scrollIntoView?.({ block: "nearest" });
+  }
+  versionBtn.addEventListener("click", () => showInfo("changelog"));
+  aboutBtn.addEventListener("click", () => showInfo("about"));
 
   return {
     root,
@@ -318,19 +394,6 @@ function applyPermState(row: PermRow, granted: boolean | null) {
   }
 }
 
-function createField(label: string, placeholder: string) {
-  const row = document.createElement("label");
-  row.className = "cu-field";
-  const name = document.createElement("span");
-  name.textContent = label;
-  const input = document.createElement("input");
-  input.type = "text";
-  input.placeholder = placeholder;
-  input.spellcheck = false;
-  row.append(name, input);
-  return { row, input };
-}
-
 export function describeAction(action: {
   action: string;
   x?: number;
@@ -356,4 +419,24 @@ export function describeAction(action: {
     default:
       return action.action;
   }
+}
+
+/**
+ * 从完整日志里取出当前安装版本那一节；找不到时明确说明，不拿别的版本冒充。
+ */
+export function changelogSection(changelog: string, version: string): string {
+  const lines = changelog.split(/\r?\n/);
+  const start = lines.findIndex((line) => {
+    const match = /^##\s+(\S+)/.exec(line);
+    return match?.[1] === version;
+  });
+  if (start === -1) return `此版本（${version}）的更新日志尚未发布。`;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^##\s/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n").trim();
 }
