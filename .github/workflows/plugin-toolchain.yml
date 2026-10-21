@@ -64,7 +64,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        example: [todo-app, titlebar-actions-app, skins/codex, skins/claude]
+        example: [todo-app, titlebar-actions-app, capability-probe, skins/codex, skins/claude]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

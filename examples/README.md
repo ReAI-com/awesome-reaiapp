@@ -4,6 +4,7 @@
 
 - `todo-app/`：Surface、Command、Intent、存储与 Agent UI 样例。
 - `titlebar-actions-app/`：第三方标题栏动作最小样例。
+- `capability-probe/`：能力探针。列出插件平台全部能力，并用按钮逐项实测本机真实结果。
 - `skins/codex/`、`skins/claude/`：声明式 Skin v1 样例。
 
 每个样例都有自己的 `package.json`、`bun.lock` 和验证命令。先按共享包说明安装 `packages/` 依赖，再进入选定样例目录：
