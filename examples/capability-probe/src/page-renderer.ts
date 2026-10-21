@@ -2,12 +2,18 @@
  * PageSpec v0 渲染器：只用 DOM API 按 JSON 造界面，按钮动作只走白名单，由插件代码执行。
  */
 import { h } from "./dom";
+import { describeError } from "./errors";
 import type { Binding, PageAction, PageComponent, PageSpec } from "./page-spec";
 import type { KvPort } from "./port";
 import { OUTCOME_LABELS, type ProbeResult } from "./probes";
 
+/** 页面动作自己的、可以直接给用户看的失败原因。 */
+export class PageActionError extends Error {}
+
 export interface PageEnv {
   kv: KvPort;
+  /** Host 开发者模式：开着才显示错误码。 */
+  developerMode(): boolean;
   runProbe(probeId: string): Promise<ProbeResult>;
   lastResult(probeId: string): ProbeResult | undefined;
   notify(title: string, body: string): Promise<void>;
@@ -50,7 +56,7 @@ export function renderPage(container: HTMLElement, spec: PageSpec, env: PageEnv)
         if (action.fromField !== undefined) {
           // fromField 已按 id 规则校验过（小写字母、数字、短横线），可以直接拼进选择器。
           value = form?.querySelector<HTMLInputElement>(`input[name="${action.fromField}"]`)?.value.trim() ?? "";
-          if (!value) throw new Error("请先填写内容");
+          if (!value) throw new PageActionError("请先填写内容");
         }
         await env.kv.set(action.key, value);
         return "已保存";
@@ -70,13 +76,25 @@ export function renderPage(container: HTMLElement, spec: PageSpec, env: PageEnv)
 
   const actionControl = (button: HTMLButtonElement, status: HTMLElement, action: PageAction, label: string, form?: HTMLFormElement) => {
     let armed = false;
+    let armTimer: ReturnType<typeof setTimeout> | undefined;
+    let busy = false;
+    const disarm = () => {
+      armed = false;
+      if (armTimer !== undefined) clearTimeout(armTimer);
+      armTimer = undefined;
+      if (!disposed && !busy) button.textContent = label;
+    };
     const perform = async () => {
+      if (busy) return;
       if (action.type === "notify.post" && !armed) {
+        // 发通知要再点一次确认；5 秒内没确认就恢复原样。
         armed = true;
         button.textContent = "再点一次确认发送";
+        armTimer = setTimeout(disarm, 5000);
         return;
       }
-      armed = false;
+      disarm();
+      busy = true;
       button.disabled = true;
       button.textContent = "进行中…";
       status.textContent = "";
@@ -86,9 +104,15 @@ export function renderPage(container: HTMLElement, spec: PageSpec, env: PageEnv)
         status.dataset.tone = "ok";
         await refresh();
       } catch (error) {
-        status.textContent = error instanceof Error ? error.message : String(error);
+        if (error instanceof PageActionError) {
+          status.textContent = error.message;
+        } else {
+          const { code } = describeError(error);
+          status.textContent = env.developerMode() ? `操作失败（${code}）` : "操作失败，请稍后重试";
+        }
         status.dataset.tone = "error";
       } finally {
+        busy = false;
         if (!disposed) {
           button.disabled = false;
           button.textContent = label;

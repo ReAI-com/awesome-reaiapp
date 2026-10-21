@@ -2,7 +2,7 @@
  * 探针清单：每个探针 = 一个按钮 = 对一项能力的一次真实调用。
  *
  * 档位：P0 本地开发包就能跑；P1 需要连上外脑（插件自己的 OAuth 应用）；P2 需要平台批准。
- * 本版只构建 P0，P1 / P2 只列出「会调什么、预期什么」，按钮保持关闭。
+ * 本版只构建 P0，P1 / P2 只列出「会做什么、预期什么」，按钮保持关闭。
  */
 import { checkBlobScript, checkEval, checkIframe, checkInlineScript, type CspCheckResult } from "./csp-check";
 import { describeError, gateHint, isGateCode, scrub } from "./errors";
@@ -10,10 +10,13 @@ import type { ProbePort } from "./port";
 
 export type Level = "P0" | "P1" | "P2";
 export type ProbeSection = "basic" | "permission" | "page" | "cloud" | "gated";
-/** safe：只读或只写本插件自己的测试数据；navigate：会切到 Driver 别的页面；notify：会弹系统通知。 */
-export type Risk = "safe" | "navigate" | "notify";
 /**
- * ok：按预期成功；blocked：被拦下（反例就是要它被拦，或者用户还没同意）；
+ * safe：只读，或只写本插件自己的测试数据并删掉；navigate：会切到 Driver 别的页面；
+ * notify：会弹系统通知；wake：会启动另一个插件。只有 safe 进「全部测试」。
+ */
+export type Risk = "safe" | "navigate" | "notify" | "wake";
+/**
+ * ok：按预期成功；blocked：被拦下（反例按预期被拒，或者用户还没同意）；
  * unexpected：结果和预期不一样；failed：出错；waiting：需要你先做一步操作。
  */
 export type Outcome = "ok" | "blocked" | "unexpected" | "failed" | "waiting";
@@ -73,15 +76,35 @@ export const SECTION_LABELS: Record<ProbeSection, string> = {
 export const VOICE_SERVICE_ID = "com.reai.voice/request-text@1";
 export const HEALTH_URL = "https://block2-api.wainao.chat/health";
 export const PING_KEY = "probe.lastPing";
-const ROUNDTRIP_KEY = "probe.roundtrip";
 const OVERSIZE_KEY = "probe.oversize";
 const KV_VALUE_LIMIT = 256 * 1024;
 
-function failure(error: unknown, expectBlocked = false): ProbeRun {
+/** 等待可被取消；无论哪种结束都摘掉监听，避免在界面生命周期内越积越多。 */
+export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted) return resolve();
+    const onAbort = () => { clearTimeout(timer); resolve(); };
+    const timer = setTimeout(() => { signal?.removeEventListener("abort", onAbort); resolve(); }, ms);
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+/** 正常调用失败：没同意 / Host 没这项能力算「被拦下」，其他算「出错」。 */
+function failure(error: unknown): ProbeRun {
   const { code, message } = describeError(error);
-  if (expectBlocked) return { outcome: "blocked", summary: "按预期被拦下", code, detail: scrub(message) };
   if (isGateCode(code)) return { outcome: "blocked", summary: gateHint(code), code, detail: scrub(message) };
   return { outcome: "failed", summary: "调用出错", code, detail: scrub(message) };
+}
+
+/**
+ * 反例失败：只有预期的错误码才算「按预期被拦下」。
+ * 别的原因（没同意、限流、超时）照常分类，不能冒充「反例通过」。
+ */
+function expectedRejection(error: unknown, expected: (code: string) => boolean, reason: string): ProbeRun {
+  const { code, message } = describeError(error);
+  if (expected(code)) return { outcome: "blocked", summary: `按预期被拦下：${reason}`, code, detail: scrub(message) };
+  if (isGateCode(code)) return { outcome: "blocked", summary: `没测到：${gateHint(code)}`, code, detail: scrub(message) };
+  return { outcome: "failed", summary: "被拒了，但原因不是预期的那一个", code, detail: scrub(message) };
 }
 
 function formatTime(iso: string): string {
@@ -89,6 +112,27 @@ function formatTime(iso: string): string {
   if (Number.isNaN(date.getTime())) return iso;
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function nonce(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/** Voice 只接受 `<毫秒时间>:<UUIDv4>` 形式的请求号。 */
+export function voiceRequestId(now = Date.now()): string {
+  const uuid = typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : (() => {
+      const bytes = new Uint8Array(16);
+      crypto.getRandomValues(bytes);
+      bytes[6] = (bytes[6]! & 0x0f) | 0x40;
+      bytes[8] = (bytes[8]! & 0x3f) | 0x80;
+      const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    })();
+  return `${now}:${uuid}`;
 }
 
 function cspProbe(id: string, title: string, what: string, check: (doc: Document, signal?: AbortSignal) => Promise<CspCheckResult>): ProbeDefinition {
@@ -114,8 +158,8 @@ function cspProbe(id: string, title: string, what: string, check: (doc: Document
   };
 }
 
-const P1_REASON = "需要先连上外脑：在开放平台给插件建 OAuth 应用、把应用编号写进插件后重新打包（见 README「连接外脑」）";
-const P2_REASON = "需要平台批准：本地开发包只要声明这项能力就会装不上（APP_CAPABILITY_NOT_GRANTED）";
+const P1_REASON = "需要先连上外脑：给插件建 OAuth 应用、把应用编号写进插件后重新打包（见 README「连接外脑」）";
+const P2_REASON = "需要平台批准：本地开发包只要声明这项能力就会装不上";
 
 function cloudProbe(id: string, title: string, what: string, capability: string, expect: string): ProbeDefinition {
   return { id, section: "cloud", level: "P1", title, what, expect, capability, risk: "safe", disabledReason: P1_REASON };
@@ -124,6 +168,10 @@ function cloudProbe(id: string, title: string, what: string, capability: string,
 function gatedProbe(id: string, title: string, what: string, capability: string, expect: string): ProbeDefinition {
   return { id, section: "gated", level: "P2", title, what, expect, capability, risk: "safe", disabledReason: P2_REASON };
 }
+
+const UNDECLARED_NETWORK = new Set(["NETWORK_ENDPOINT_NOT_DECLARED", "NETWORK_PATH_DENIED", "NETWORK_METHOD_DENIED"]);
+const INSECURE_NETWORK = new Set(["NETWORK_SCHEME_DENIED", "NETWORK_ENDPOINT_NOT_DECLARED"]);
+const LENIENT_NOTE = "如果你用的是较旧的 Driver，开发者模式下本地包可能走宽松网络档，没声明的请求也会放行；打开「设置 → 开发者 → 严格网络预览」后再测。";
 
 export const PROBES: ProbeDefinition[] = [
   {
@@ -136,9 +184,13 @@ export const PROBES: ProbeDefinition[] = [
     capability: "environment.get",
     risk: "safe",
     async run({ port }) {
-      const env = await port.environment();
-      const locale = port.locale() === "en" ? "英文" : "中文";
-      return { outcome: "ok", summary: `开发者模式：${env.developerMode ? "开" : "关"}；界面语言：${locale}` };
+      try {
+        const env = await port.environment();
+        const locale = port.locale() === "en" ? "英文" : "中文";
+        return { outcome: "ok", summary: `开发者模式：${env.developerMode ? "开" : "关"}；界面语言：${locale}` };
+      } catch (error) {
+        return failure(error);
+      }
     },
   },
   {
@@ -157,11 +209,9 @@ export const PROBES: ProbeDefinition[] = [
           status = await port.versionStatus();
         } catch (error) {
           // Driver 限制同一界面 2 秒内只查一次（打开插件时已经查过一次）；等一下再试一次。
-          if (!/BUSY|RATE|FREQUENT/.test(describeError(error).code)) throw error;
-          await new Promise<void>((resolve) => {
-            const timer = setTimeout(resolve, 2100);
-            signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true });
-          });
+          if (describeError(error).code !== "SYSTEM_TASK_RATE_LIMITED") throw error;
+          await sleep(2100, signal);
+          if (signal.aborted) return { outcome: "waiting", summary: "界面已关闭，没有再查" };
           status = await port.versionStatus();
         }
         const firmware = status.firmware.connected
@@ -184,21 +234,25 @@ export const PROBES: ProbeDefinition[] = [
     capability: "storage.kv@1",
     risk: "safe",
     async run({ port }) {
+      // 每次用自己的键，并发运行也互不干扰；无论成败最后都删掉。
+      const key = `probe.roundtrip.${nonce()}`;
       try {
-        const value = { nonce: Math.random().toString(36).slice(2), at: new Date().toISOString() };
-        await port.kv.set(ROUNDTRIP_KEY, value);
-        const back = (await port.kv.get(ROUNDTRIP_KEY)) as typeof value | undefined;
+        const value = { nonce: nonce(), at: new Date().toISOString() };
+        await port.kv.set(key, value);
+        const back = (await port.kv.get(key)) as typeof value | undefined;
         if (!back || back.nonce !== value.nonce) return { outcome: "unexpected", summary: "读回的数据和写入的不一致" };
-        const swapped = await port.kv.compareAndSet(ROUNDTRIP_KEY, back, { ...value, swapped: true });
+        const swapped = await port.kv.compareAndSet(key, back, { ...value, swapped: true });
         const keys = await port.kv.keys();
-        await port.kv.delete(ROUNDTRIP_KEY);
-        const gone = (await port.kv.get(ROUNDTRIP_KEY)) === undefined;
-        if (!swapped || !keys.includes(ROUNDTRIP_KEY) || !gone) {
-          return { outcome: "unexpected", summary: `部分步骤和预期不同：比较后再写 ${swapped ? "成功" : "失败"}，键列表${keys.includes(ROUNDTRIP_KEY) ? "包含" : "不含"}测试键，删除${gone ? "成功" : "后仍能读到"}` };
+        await port.kv.delete(key);
+        const gone = (await port.kv.get(key)) === undefined;
+        if (!swapped || !keys.includes(key) || !gone) {
+          return { outcome: "unexpected", summary: `部分步骤和预期不同：比较后再写 ${swapped ? "成功" : "失败"}，键列表${keys.includes(key) ? "包含" : "不含"}测试键，删除${gone ? "成功" : "后仍能读到"}` };
         }
         return { outcome: "ok", summary: "写入、读回、比较后再写、列键、删除都正常" };
       } catch (error) {
         return failure(error);
+      } finally {
+        await port.kv.delete(key).catch(() => undefined);
       }
     },
   },
@@ -215,7 +269,7 @@ export const PROBES: ProbeDefinition[] = [
       try {
         await port.kv.set(OVERSIZE_KEY, "x".repeat(KV_VALUE_LIMIT + 44 * 1024));
       } catch (error) {
-        return failure(error, true);
+        return expectedRejection(error, (code) => code === "STORAGE_QUOTA_EXCEEDED", "单条超过 256 KB");
       }
       await port.kv.delete(OVERSIZE_KEY).catch(() => undefined);
       return { outcome: "unexpected", summary: "300 KB 的数据被接受了，和公开的 256 KB 上限不一致（已删除）" };
@@ -227,7 +281,7 @@ export const PROBES: ProbeDefinition[] = [
     level: "P0",
     title: "没声明的存储空间（反例）",
     what: "往清单里没声明的存储空间写一条数据",
-    expect: "被拒绝（文档说未声明的 storeId 会被拒）",
+    expect: "被拒绝（文档说未声明的存储空间会被拒）",
     capability: "storage.kv@1",
     risk: "safe",
     async run({ port }) {
@@ -235,7 +289,7 @@ export const PROBES: ProbeDefinition[] = [
       try {
         await store.set("probe", 1);
       } catch (error) {
-        return failure(error, true);
+        return expectedRejection(error, (code) => code.startsWith("STORAGE_") || code.includes("NOT_DECLARED"), "存储空间没有声明");
       }
       await store.delete("probe").catch(() => undefined);
       return { outcome: "unexpected", summary: "没被拒：Driver 目前不检查存储空间是否声明过（已删除测试数据）" };
@@ -267,18 +321,21 @@ export const PROBES: ProbeDefinition[] = [
     section: "basic",
     level: "P0",
     title: "调用 Voice 插件的服务",
-    what: "问一下 Voice 的文字服务「这个请求现在什么状态」，用的是一个不存在的请求号，不会开始录音",
-    expect: "装了 Voice：返回「找不到这个请求」；没装：给出原因",
+    what: "问 Voice 的文字服务「一个刚编出来的请求现在什么状态」，不会开始录音；Voice 没在运行时会被唤醒",
+    expect: "装了 Voice：服务能应答（「找不到这个请求」也算能应答）；没装或没同意：给出原因",
     capability: "apps.service@1",
-    risk: "safe",
+    risk: "wake",
     async run({ port, signal }) {
       try {
-        const result = (await port.callService(VOICE_SERVICE_ID, "status", { requestId: `probe-${Math.random().toString(36).slice(2)}` }, signal)) as { phase?: unknown } | null;
+        const result = (await port.callService(VOICE_SERVICE_ID, "status", { requestId: voiceRequestId() }, signal)) as { phase?: unknown } | null;
         const phase = typeof result?.phase === "string" ? result.phase : "未知";
-        return { outcome: "ok", summary: `Voice 服务可以调用（返回状态：${phase}）` };
+        return { outcome: "ok", summary: `Voice 服务能应答（返回状态：${phase === "not_found" ? "找不到这个请求，符合预期" : phase}）` };
       } catch (error) {
         const { code, message } = describeError(error);
-        if (isGateCode(code) || /NOT_INSTALLED|UNAVAILABLE|NOT_FOUND|DISABLED|CONSENT/.test(code)) {
+        if (code.startsWith("VOICE_REQUEST_")) {
+          return { outcome: "ok", summary: "Voice 服务能应答（它拒绝了这个测试请求，说明服务在线）", code, detail: scrub(message) };
+        }
+        if (code === "SERVICE_PROVIDER_UNAVAILABLE" || isGateCode(code) || /CONSENT|DEPENDENCY|NOT_INSTALLED/.test(code)) {
           return { outcome: "blocked", summary: "Voice 服务现在调不了：可能没装、没启用，或你还没同意这个依赖", code, detail: scrub(message) };
         }
         return { outcome: "failed", summary: "调用出错", code, detail: scrub(message) };
@@ -368,15 +425,15 @@ export const PROBES: ProbeDefinition[] = [
     level: "P0",
     title: "访问没声明的网址（反例）",
     what: "请求清单里没声明的 https://example.com/",
-    expect: "被 Driver 拦下",
+    expect: "被 Driver 拦下（只放行清单里声明过的地址）",
     capability: "http.fetch@1",
     risk: "safe",
     async run({ port, signal }) {
       try {
         const response = await port.fetch("https://example.com/", { method: "GET", signal });
-        return { outcome: "unexpected", summary: `没被拦：返回了 HTTP ${response.status}` };
+        return { outcome: "unexpected", summary: `没被拦：返回了 HTTP ${response.status}。${LENIENT_NOTE}` };
       } catch (error) {
-        return failure(error, true);
+        return expectedRejection(error, (code) => UNDECLARED_NETWORK.has(code), "地址没有在清单里声明");
       }
     },
   },
@@ -392,9 +449,9 @@ export const PROBES: ProbeDefinition[] = [
     async run({ port, signal }) {
       try {
         const response = await port.fetch(HEALTH_URL.replace("https://", "http://"), { method: "GET", signal });
-        return { outcome: "unexpected", summary: `没被拦：返回了 HTTP ${response.status}` };
+        return { outcome: "unexpected", summary: `没被拦：返回了 HTTP ${response.status}。${LENIENT_NOTE}` };
       } catch (error) {
-        return failure(error, true);
+        return expectedRejection(error, (code) => INSECURE_NETWORK.has(code), "只允许 https");
       }
     },
   },
@@ -403,23 +460,23 @@ export const PROBES: ProbeDefinition[] = [
   cspProbe("csp-blob", "运行时生成脚本文件", "把代码打成一个临时文件再加载", checkBlobScript),
   cspProbe("csp-iframe", "页面里嵌一个网页", "用 iframe 嵌入一个运行时生成的网页", checkIframe),
 
-  cloudProbe("cloud-userinfo", "读当前用户", "GET /oauth/userinfo", "profile:read", "返回用户编号和昵称，不返回邮箱"),
-  cloudProbe("cloud-projects", "列出项目", "GET /projects", "projects:read", "返回能读的项目"),
-  cloudProbe("cloud-files-list", "列出云端文件", "GET /storage/:项目/files", "project:files:read", "返回文件列表"),
-  cloudProbe("cloud-files-upload", "上传文件到云端", "选一个文件，POST /storage/:项目/upload", "project:files:write", "上传成功；同内容再传一次，内容指纹相同"),
-  cloudProbe("cloud-files-delete", "删除云端文件（反例）", "DELETE /storage/:项目/files/:文件", "project:files:write", "被拒（403），外脑没对插件开放删除"),
-  cloudProbe("cloud-vfs", "云端目录接口（反例）", "GET /vfs/:项目/driver-v105/resources/root:<项目>", "project:files:read", "被拒或 503：统一文件接口的云端部分还没上线"),
-  cloudProbe("cloud-kb", "知识库写入与搜索", "POST /projects/:项目/kb/nodes，再 POST …/kb/search", "project:kb:read + project:kb:write", "写入成功，搜得到"),
-  cloudProbe("cloud-data", "数据表的行增删改", "GET …/collections，POST / PATCH / DELETE …/data", "project:data:read + project:data:write", "增、改、删、恢复都成功"),
-  cloudProbe("cloud-collections", "新建数据表（反例）", "POST /projects/:项目/collections", "project:data:write", "被拒（401），外脑没对插件开放改表结构"),
-  cloudProbe("cloud-workflow", "工作流新建、编辑、运行", "POST /documents → POST /documents/:id/edit → POST /runs → GET /runs/:id", "documents:write + flows:execute + runs:read", "跑通一个最小工作流"),
-  cloudProbe("cloud-model", "调用大模型", "GET /api/model-gateway/v1/models，确认后 POST …/chat/completions", "model-gateway:invoke", "返回模型列表和一次回复（会消耗额度）"),
-  cloudProbe("cloud-graph", "图谱（反例）", "GET /projects/:项目/graph/config", "—", "被拒（401），图谱只对网页登录开放"),
+  cloudProbe("cloud-userinfo", "读当前用户", "读取当前用户的编号和昵称（/oauth/userinfo）", "profile:read", "返回用户编号和昵称，不返回邮箱"),
+  cloudProbe("cloud-projects", "列出项目", "列出当前用户能读的项目", "projects:read", "返回项目列表"),
+  cloudProbe("cloud-files-list", "列出云端文件", "列出测试项目里的文件", "project:files:read", "返回文件列表"),
+  cloudProbe("cloud-files-upload", "上传文件到云端", "选一个文件上传到测试项目", "project:files:write", "上传成功；同一内容再传一次，内容指纹相同"),
+  cloudProbe("cloud-files-delete", "删除云端文件（反例）", "尝试删除刚上传的文件", "project:files:write", "预期被拒：外脑目前没对插件开放删除"),
+  cloudProbe("cloud-folder", "云端文件夹（反例）", "尝试在测试项目里建文件夹、改名、移动", "project:files:write", "预期被拒或提示服务未开放：统一文件接口的云端部分还没上线"),
+  cloudProbe("cloud-kb", "知识库写入与搜索", "写一条知识库内容，再搜索它", "project:kb:read + project:kb:write", "写入成功，搜得到"),
+  cloudProbe("cloud-data", "数据表的行增删改", "读数据表，增、改、删、恢复一行", "project:data:read + project:data:write", "每一步都成功"),
+  cloudProbe("cloud-collections", "新建数据表（反例）", "尝试新建一张数据表", "project:data:write", "预期被拒：外脑目前没对插件开放改表结构"),
+  cloudProbe("cloud-workflow", "工作流新建、编辑、运行", "新建一个最小工作流，编辑它，跑一次并读结果", "documents:write + flows:execute + runs:read", "跑通一个最小工作流"),
+  cloudProbe("cloud-model", "调用大模型", "列出模型，确认后发一次对话", "model-gateway:invoke", "返回模型列表和一次回复（会消耗额度）"),
+  cloudProbe("cloud-graph", "图谱（反例）", "尝试读取项目图谱", "—", "预期被拒：外脑目前没对插件开放图谱"),
 
   gatedProbe("gated-agent", "Agent 会话", "建一个 Agent 会话并跑一轮（Pi / DSH / Codex 各一次）", "agent.session@2 + cloud.model.invoke@1", "三个引擎各回复一次"),
-  gatedProbe("gated-model", "经 Driver 调用云端模型", "ctx.aiApi 列出模型", "cloud.model.invoke@1", "返回模型列表"),
+  gatedProbe("gated-model", "经 Driver 调用云端模型", "经 Driver 列出模型", "cloud.model.invoke@1", "返回模型列表"),
   gatedProbe("gated-folder", "本地文件夹增删改查", "让用户选一个文件夹，列目录、读、新建、写、改名、删除", "resources.files@1", "每一步都成功；同时改同一文件会提示冲突"),
-  gatedProbe("gated-cloud-folder", "云项目文件夹", "挂上一个外脑云项目当文件夹", "resources.files@1", "目前返回「云文件服务尚未开放」"),
+  gatedProbe("gated-cloud-folder", "云项目文件夹", "挂上一个外脑云项目当文件夹", "resources.files@1", "能列出和读写；如果云端服务还没开放，会如实提示"),
   gatedProbe("gated-agent-folder", "Agent 在文件夹里干活", "把上面的文件夹交给 Agent，让它读一个文件、写一个新文件", "agent.session@2 + resources.files@1", "插件能读到 Agent 写的新文件；只读模式下 Agent 写入被拒"),
 ];
 
@@ -427,7 +484,7 @@ export function probeById(id: string): ProbeDefinition | undefined {
   return PROBES.find((probe) => probe.id === id);
 }
 
-/** 「全部测试」只跑不会离开页面、不会弹通知的 P0 探针。 */
+/** 「全部测试」只跑不会离开页面、不会弹通知、不会启动别的插件的 P0 探针。 */
 export function safeProbes(): ProbeDefinition[] {
   return PROBES.filter((probe) => probe.run && !probe.disabledReason && probe.risk === "safe");
 }

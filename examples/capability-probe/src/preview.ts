@@ -39,7 +39,7 @@ let port = createPreviewPort();
 function mount(): void {
   view?.dispose();
   port = createPreviewPort({ developerMode, deniedPermissions: deny ? new Set(["account.status@1", "os.notification.post@1", "http.fetch@1"]) : new Set(), voiceInstalled: true });
-  view = mountProbeView(root, { port, hostVersion: Promise.resolve("预览（不是真实 Driver）") });
+  view = mountProbeView(root, { port, hostVersion: Promise.resolve({ ok: true as const, version: "预览（不是真实 Driver）" }) });
 }
 
 function control(label: string, run: () => void): void {
@@ -57,7 +57,8 @@ control("切换明暗", () => { dark = !dark; applyTheme(); });
 control("切换开发者模式", () => { developerMode = !developerMode; port.setDeveloperMode(developerMode); });
 control("切换「用户拒绝权限」", () => { deny = !deny; mount(); });
 control("模拟标题栏「全部测试」", () => void view?.runSafe());
-control("模拟标题栏「设置」", () => view?.toggleSettings());
+control("模拟标题栏「设置」", () => view?.openSettings());
+control("模拟面包屑返回首页", () => view?.backToRoot());
 
 applyTheme();
 mount();

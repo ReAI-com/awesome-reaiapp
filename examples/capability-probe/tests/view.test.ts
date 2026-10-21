@@ -27,7 +27,7 @@ function mount(developerMode = true) {
   document.body.append(root);
   const navs: ({ key: string; label: string } | null)[] = [];
   const port = createPreviewPort({ delayMs: 0, developerMode, voiceInstalled: true });
-  view = mountProbeView(root, { port, hostVersion: Promise.resolve("1.0.5"), reportNav: (nav) => navs.push(nav) });
+  view = mountProbeView(root, { port, hostVersion: Promise.resolve({ ok: true as const, version: "1.0.5" }), reportNav: (nav) => navs.push(nav) });
   return { root, navs, port };
 }
 
@@ -60,7 +60,8 @@ describe("能力探针界面", () => {
     expect(root.querySelectorAll("[data-probe] .cp-locked").length).toBeGreaterThan(5);
     expect(root.querySelector("[data-probe] button")).toBeNull();
     view!.show("gated");
-    expect(root.textContent).toContain("APP_CAPABILITY_NOT_GRANTED");
+    expect(root.textContent).toContain("需要平台批准");
+    expect(root.textContent).not.toContain("APP_CAPABILITY_NOT_GRANTED");
   });
 
   test("诊断信息只在开发者模式显示", async () => {
@@ -73,18 +74,66 @@ describe("能力探针界面", () => {
     expect(root.querySelector("[data-probe='http-undeclared'] .cp-diag")?.textContent).toContain("NETWORK_ENDPOINT_NOT_DECLARED");
   });
 
-  test("设置页：底部依次是版本和关于插件，并上报面包屑", () => {
+  test("设置页：底部依次是版本和关于插件，并上报面包屑；面包屑返回回到原来的根页", () => {
     const { root, navs } = mount();
-    view!.toggleSettings();
+    view!.show("basic");
+    view!.openSettings();
     expect(navs.at(-1)).toEqual({ key: "settings", label: "设置" });
     const buttons = [...root.querySelectorAll(".cp-settings-footer button")];
     expect(buttons.map((button) => button.textContent)).toEqual(["版本 0.1.0", "关于插件"]);
     expect(buttons[0]?.getAttribute("aria-label")).toBe("查看版本 0.1.0 的更新日志");
     (buttons[0] as HTMLButtonElement).click();
     expect(root.querySelector(".cp-changelog")?.textContent).toContain("## 0.1.0");
-    view!.toggleSettings();
-    expect(view!.currentPage).toBe("overview");
+    // 标题栏「打开设置」总是打开设置页，不会因为再点一次就跑回首页。
+    view!.openSettings();
+    view!.openSettings();
+    expect(view!.currentPage).toBe("settings");
+    view!.backToRoot();
+    expect(view!.currentPage).toBe("basic");
     expect(navs.at(-1)).toBeNull();
+  });
+
+  test("开发者模式关闭时，报告和设置页都不出现错误码", async () => {
+    const { root, port } = mount(false);
+    port.versionStatus = async () => { throw Object.assign(new Error("限频"), { code: "SYSTEM_TASK_RATE_LIMITED" }); };
+    view!.show("permission");
+    root.querySelector<HTMLButtonElement>("[data-probe='http-undeclared'] button")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    view!.show("records");
+    const report = root.querySelector<HTMLTextAreaElement>("textarea[aria-label='测试报告 JSON']")!;
+    expect(report.value).not.toContain("NETWORK_ENDPOINT_NOT_DECLARED");
+    expect(root.textContent).not.toContain("下载报告");
+  });
+
+  test("同一个测试在跑时，再点或从声明式页面触发都不会并发跑第二次", async () => {
+    const { root, port } = mount();
+    let calls = 0;
+    const original = port.kv.set.bind(port.kv);
+    port.kv.set = async (key, value) => { calls += key.startsWith("probe.roundtrip.") ? 1 : 0; await new Promise((resolve) => setTimeout(resolve, 20)); return original(key, value); };
+    view!.show("basic");
+    root.querySelector<HTMLButtonElement>("[data-probe='kv-roundtrip'] button")!.click();
+    await tick();
+    expect(root.querySelector<HTMLButtonElement>("[data-probe='kv-roundtrip'] button")!.disabled).toBe(true);
+    view!.show("page");
+    await tick();
+    const check = [...root.querySelectorAll<HTMLButtonElement>(".cp-spec-canvas button")].find((button) => button.textContent === "顺便测一下存储")!;
+    check.click();
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(calls).toBe(1);
+    expect(root.querySelector(".cp-spec-canvas")?.textContent).toContain("正在运行");
+  });
+
+  test("声明式页面区域在探针结果更新时不被重建（编辑中的内容和光标保留）", async () => {
+    const { root } = mount();
+    view!.show("page");
+    await tick();
+    const editor = root.querySelector<HTMLTextAreaElement>(".cp-spec textarea")!;
+    editor.value = "{ 正在编辑";
+    editor.dispatchEvent(new Event("input"));
+    root.querySelector<HTMLButtonElement>("[data-probe='csp-eval'] button")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(root.querySelector(".cp-spec textarea")).toBe(editor);
+    expect(root.querySelector(".cp-section-summary")?.textContent).toContain("与预期不同");
   });
 
   test("声明式页面：示例被画出来，表单写入后数字跟着变；反例不画并列出问题", async () => {

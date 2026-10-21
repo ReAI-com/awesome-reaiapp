@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { describeError, scrub } from "../src/errors";
 import { createPreviewPort, type PreviewOptions } from "../src/preview-port";
-import { PING_KEY, PROBES, probeById, runProbe, safeProbes } from "../src/probes";
+import { PING_KEY, PROBES, probeById, runProbe, safeProbes, voiceRequestId } from "../src/probes";
 import { buildReport } from "../src/report";
 
 let ownsDom = false;
@@ -33,12 +33,17 @@ describe("探针清单", () => {
     }
   });
 
-  test("「全部测试」不包含会跳页面或弹通知的探针", () => {
+  test("「全部测试」不包含会跳页面、弹通知或启动别的插件的探针", () => {
     const ids = safeProbes().map((probe) => probe.id);
     expect(ids).not.toContain("system-task-open");
     expect(ids).not.toContain("notify");
+    expect(ids).not.toContain("voice-service");
     expect(ids).toContain("kv-roundtrip");
     expect(ids).toContain("http-health");
+  });
+
+  test("关闭的探针说明里不出现内部错误码", () => {
+    for (const probe of PROBES.filter((item) => item.disabledReason)) expect(probe.disabledReason).not.toMatch(/[A-Z]{3,}_[A-Z_]+/);
   });
 });
 
@@ -50,8 +55,26 @@ describe("探针结果（假 Host）", () => {
     expect(await port.kv.keys()).toEqual([]);
   });
 
+  test("存储读写中途出错也会删掉测试数据", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    port.kv.compareAndSet = async () => { throw Object.assign(new Error("存储暂时不可用"), { code: "STORAGE_UNAVAILABLE" }); };
+    const result = await runProbe(probeById("kv-roundtrip")!, { port, document, signal: new AbortController().signal });
+    expect(result.outcome).toBe("failed");
+    expect(await port.kv.keys()).toEqual([]);
+  });
+
+  test("同时跑两次存储读写互不干扰", async () => {
+    const port = createPreviewPort({ delayMs: 1 });
+    const context = { port, document, signal: new AbortController().signal };
+    const [a, b] = await Promise.all([runProbe(probeById("kv-roundtrip")!, context), runProbe(probeById("kv-roundtrip")!, context)]);
+    expect([a.outcome, b.outcome]).toEqual(["ok", "ok"]);
+    expect(await port.kv.keys()).toEqual([]);
+  });
+
   test("超大数据被拒是预期结果", async () => {
-    expect((await run("kv-oversize")).outcome).toBe("blocked");
+    const result = await run("kv-oversize");
+    expect(result.outcome).toBe("blocked");
+    expect(result.code).toBe("STORAGE_QUOTA_EXCEEDED");
   });
 
   test("未声明的存储空间：没被拒时如实标「与预期不同」，被拒时标「被拦下」", async () => {
@@ -82,29 +105,58 @@ describe("探针结果（假 Host）", () => {
     expect((await run("http-health")).outcome).toBe("ok");
   });
 
-  test("网络反例被拦下", async () => {
-    expect((await run("http-undeclared")).outcome).toBe("blocked");
-    expect((await run("http-insecure")).outcome).toBe("blocked");
+  test("网络反例：只有预期的错误码算「按预期被拦下」", async () => {
+    const undeclared = await run("http-undeclared");
+    expect(undeclared.outcome).toBe("blocked");
+    expect(undeclared.summary).toContain("按预期");
+    expect((await run("http-insecure")).code).toBe("NETWORK_SCHEME_DENIED");
+    // 没同意网络权限时，反例其实没测到，不能冒充「按预期被拦下」。
+    const notConsented = await run("http-undeclared", { deniedPermissions: new Set(["http.fetch@1"]) });
+    expect(notConsented.outcome).toBe("blocked");
+    expect(notConsented.summary).toContain("没测到");
   });
 
-  test("Voice 没装时说清原因", async () => {
+  test("网络反例遇到宽松网络档时，提示打开严格网络预览", async () => {
+    for (const id of ["http-undeclared", "http-insecure"]) {
+      const result = await run(id, { lenientNetwork: true });
+      expect(result.outcome).toBe("unexpected");
+      expect(result.summary).toContain("严格网络预览");
+    }
+  });
+
+  test("Voice 请求号符合 Voice 的格式；服务能应答，没装时说清原因", async () => {
+    expect(voiceRequestId(1_700_000_000_000)).toMatch(/^1700000000000:[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/);
+    expect((await run("voice-service", { voiceInstalled: true })).outcome).toBe("ok");
     const missing = await run("voice-service", { voiceInstalled: false });
     expect(missing.outcome).toBe("blocked");
-    expect((await run("voice-service", { voiceInstalled: true })).outcome).toBe("ok");
+    expect(missing.code).toBe("SERVICE_PROVIDER_UNAVAILABLE");
   });
 
-  test("Driver 版本查询被限频时等一下重试", async () => {
+  test("Voice 拒绝了测试请求也算服务在线", async () => {
+    const port = createPreviewPort({ delayMs: 0, voiceInstalled: true });
+    port.callService = async () => { throw Object.assign(new Error("身份缺失"), { code: "VOICE_REQUEST_IDENTITY_REQUIRED" }); };
+    const result = await runProbe(probeById("voice-service")!, { port, document, signal: new AbortController().signal });
+    expect(result.outcome).toBe("ok");
+  });
+
+  test("Driver 版本查询被限频时等一下重试；别的错误不重试", async () => {
     const port = createPreviewPort({ delayMs: 0 });
     let calls = 0;
     const original = port.versionStatus.bind(port);
     port.versionStatus = async () => {
       calls += 1;
-      if (calls === 1) throw Object.assign(new Error("版本查询过于频繁"), { code: "SYSTEM_TASK_BUSY" });
+      if (calls === 1) throw Object.assign(new Error("版本查询过于频繁"), { code: "SYSTEM_TASK_RATE_LIMITED" });
       return original();
     };
     const result = await runProbe(probeById("host-version")!, { port, document, signal: new AbortController().signal });
     expect(result.outcome).toBe("ok");
     expect(calls).toBe(2);
+
+    let busyCalls = 0;
+    port.versionStatus = async () => { busyCalls += 1; throw Object.assign(new Error("固件升级进行中"), { code: "SYSTEM_TASK_BUSY" }); };
+    const busy = await runProbe(probeById("host-version")!, { port, document, signal: new AbortController().signal });
+    expect(busy.outcome).toBe("failed");
+    expect(busyCalls).toBe(1);
   });
 
   test("关闭的探针不执行，只返回原因", async () => {
@@ -127,23 +179,33 @@ describe("错误与报告", () => {
     expect(describeError("纯文字")).toEqual({ code: "NO_CODE", message: "纯文字" });
   });
 
-  test("报告和诊断里不出现令牌", () => {
-    const text = "Authorization: Bearer abc.def wno-secret-token https://x/y?token=zzz&a=1";
-    const cleaned = scrub(text);
-    expect(cleaned).not.toContain("abc.def");
-    expect(cleaned).not.toContain("wno-secret-token");
-    expect(cleaned).not.toContain("zzz");
-    const report = buildReport({
-      mode: "preview",
-      hostVersion: "1.0.5",
-      developerMode: true,
-      results: new Map([["env", { probeId: "env", outcome: "failed", summary: "Bearer abc.def", detail: text, startedAt: "2026-10-21T00:00:00.000Z", durationMs: 3 }]]),
-      now: new Date("2026-10-21T00:00:01.000Z"),
-    });
-    expect(report).not.toContain("abc.def");
-    expect(report).not.toContain("wno-secret-token");
-    const parsed = JSON.parse(report) as { plugin: { version: string }; results: unknown[] };
+  test("诊断文字里的各种凭据都被隐藏", () => {
+    const samples = [
+      ["Authorization: Bearer abc.def", "abc.def"],
+      ["Authorization: Basic dXNlcjpwYXNz", "dXNlcjpwYXNz"],
+      ["Cookie: sid=s3cr3t; theme=dark", "s3cr3t"],
+      ["Set-Cookie: session=zz9", "zz9"],
+      ["token wno-secret-token", "wno-secret-token"],
+      ["https://x/y?refresh_token=r1&a=1", "r1"],
+      ["https://x/y?X-Amz-Signature=deadbeef", "deadbeef"],
+      ["https://x/cb?code=c0de&state=1", "c0de"],
+      ["{\"access_token\":\"at1\",\"ok\":true}", "at1"],
+      ["{\"client_secret\": \"cs2\"}", "cs2"],
+    ] as const;
+    for (const [text, secret] of samples) expect(scrub(text)).not.toContain(secret);
+    expect(scrub("https://x/y?a=1&page=2")).toBe("https://x/y?a=1&page=2");
+  });
+
+  test("报告不含令牌；错误码只在开发者模式写进报告", () => {
+    const results = new Map([["env", { probeId: "env", outcome: "failed" as const, summary: "Bearer abc.def", code: "X_FAILED", detail: "wno-secret-token", startedAt: "2026-10-21T00:00:00.000Z", durationMs: 3 }]]);
+    const withDiagnostics = buildReport({ mode: "preview", hostVersion: "1.0.5", developerMode: true, results, now: new Date("2026-10-21T00:00:01.000Z") });
+    expect(withDiagnostics).not.toContain("abc.def");
+    expect(withDiagnostics).not.toContain("wno-secret-token");
+    expect(withDiagnostics).toContain("X_FAILED");
+    const parsed = JSON.parse(withDiagnostics) as { plugin: { version: string }; results: unknown[] };
     expect(parsed.plugin.version).toBe("0.1.0");
     expect(parsed.results).toHaveLength(1);
+    const plain = buildReport({ mode: "preview", hostVersion: "1.0.5", developerMode: false, results });
+    expect(plain).not.toContain("X_FAILED");
   });
 });

@@ -13,7 +13,12 @@ export interface PreviewOptions {
   /** 模拟 Driver 检查未声明的存储空间（真实行为未核实）。 */
   rejectUndeclaredStore?: boolean;
   delayMs?: number;
+  /** 模拟旧版 Driver 的宽松网络档：不检查声明，也放行 http。默认按当前 Driver 的严格档。 */
+  lenientNetwork?: boolean;
 }
+
+/** 与 Voice 插件相同的请求号规则：`<毫秒时间>:<UUIDv4>`。 */
+const VOICE_REQUEST_ID = /^(\d{1,16}):[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i;
 
 const KV_VALUE_LIMIT = 256 * 1024;
 
@@ -92,15 +97,18 @@ export function createPreviewPort(options: PreviewOptions = {}): ProbePort & { s
       await delay();
       if (denied("http.fetch@1")) throw bridgeError("PLUGIN_PERMISSION_REQUIRED", "需要用户允许 http.fetch@1");
       const parsed = new URL(url);
+      if (options.lenientNetwork) return { status: 200, text: "预览假数据：宽松网络档放行了这个请求" };
       if (parsed.protocol !== "https:") throw bridgeError("NETWORK_SCHEME_DENIED", "严格模式只允许 HTTPS URL");
       if (parsed.origin !== "https://block2-api.wainao.chat" || !parsed.pathname.startsWith("/health")) {
         throw bridgeError("NETWORK_ENDPOINT_NOT_DECLARED", "请求不在已声明的 endpoint 范围内");
       }
       return { status: 200, text: "{\"status\":\"ok\",\"note\":\"预览假数据，没有真的访问网络\"}" };
     },
-    async callService(serviceId) {
+    async callService(serviceId, _method, input) {
       await delay();
-      if (!options.voiceInstalled) throw bridgeError("SERVICE_PROVIDER_NOT_INSTALLED", `${serviceId} 未安装`);
+      if (!options.voiceInstalled) throw bridgeError("SERVICE_PROVIDER_UNAVAILABLE", `${serviceId} 未安装或未启用`);
+      const requestId = (input as { requestId?: unknown } | null)?.requestId;
+      if (typeof requestId !== "string" || !VOICE_REQUEST_ID.test(requestId)) throw bridgeError("VOICE_REQUEST_INVALID", "请求号格式不对");
       return { requestId: "preview", phase: "not_found", revision: 0, captureStarted: false, pcmReceived: false };
     },
   };

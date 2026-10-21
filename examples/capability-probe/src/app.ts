@@ -7,16 +7,21 @@ import "./styles.css";
 
 type TitlebarPayload = { type: "run-safe" } | { type: "open-settings" };
 
+/** 只认 Manifest 里声明的两个标题栏动作：来源、动作 id 和负载三者都要对得上。 */
 function titlebarPayload(value: unknown): TitlebarPayload | undefined {
   const intent = value as HostTitlebarActionIntent<TitlebarPayload> | null | undefined;
   if (intent?.source !== "host.titlebarAction") return undefined;
   const type = intent.payload?.type;
-  return type === "run-safe" || type === "open-settings" ? intent.payload : undefined;
+  if (intent.actionId === "run-safe" && type === "run-safe") return intent.payload;
+  if (intent.actionId === "settings" && type === "open-settings") return intent.payload;
+  return undefined;
 }
 
 export default defineApp({
   async activate(ctx) {
     const port = createHostPort(ctx);
+    /** 当前挂载的界面；Host 面包屑点祖先时由 back-to-root 命令把它带回根页。 */
+    let activeView: ReturnType<typeof mountProbeView> | undefined;
 
     // 键盘按键 / 定时任务触发时只记一笔，「键盘按键触发命令」探针读这条记录。
     ctx.commands.register("com.example.capability-probe.ping", async () => {
@@ -25,28 +30,33 @@ export default defineApp({
       return { status: "ok" };
     });
 
+    ctx.commands.register("com.example.capability-probe.back-to-root", async () => {
+      activeView?.backToRoot();
+      return {};
+    });
+
     ctx.surfaces.register("main", async (surface) => {
       try {
-        // 插件版本来自 Manifest；Driver 版本在挂载时读一次，读不到就把错误码写进说明。
+        // 插件版本来自 Manifest；Driver 版本在挂载时读一次，读不到就保留错误码给开发者模式看。
         const hostVersion = ctx.systemTasks
           .getVersionStatus()
-          .then((status) => status.app.currentVersion)
-          .catch((error: unknown) => `读取失败（${describeError(error).code}）`);
+          .then((status) => ({ ok: true as const, version: status.app.currentVersion }))
+          .catch((error: unknown) => ({ ok: false as const, code: describeError(error).code }));
         const view = mountProbeView(surface.root, {
           port,
           hostVersion,
           ...(typeof surface.reportNav === "function" ? { reportNav: (nav) => surface.reportNav?.(nav) } : {}),
         });
-        const apply = (intent: unknown) => {
+        activeView = view;
+        const offIntent = surface.onIntent((intent) => {
           const payload = titlebarPayload(intent);
           if (payload?.type === "run-safe") void view.runSafe();
-          if (payload?.type === "open-settings") view.toggleSettings();
-        };
-        apply(surface.initialIntent);
-        const offIntent = surface.onIntent(apply);
+          if (payload?.type === "open-settings") view.openSettings();
+        });
         surface.ready();
         return () => {
           offIntent();
+          if (activeView === view) activeView = undefined;
           view.dispose();
         };
       } catch (cause) {

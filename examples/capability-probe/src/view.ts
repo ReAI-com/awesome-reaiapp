@@ -6,7 +6,7 @@ import { GROUP_LABELS } from "./capability-text";
 import { h, icon, type IconName } from "./dom";
 import { OFFICIAL_PLUGINS_SNAPSHOT } from "./generated/official-plugins";
 import { BAD_SPECS, DEMO_SPEC, parsePageSpec } from "./page-spec";
-import { renderPage, type RenderedPage } from "./page-renderer";
+import { PageActionError, renderPage, type RenderedPage } from "./page-renderer";
 import type { ProbePort } from "./port";
 import { OUTCOME_LABELS, PROBES, runProbe, safeProbes, SECTION_LABELS, type Outcome, type ProbeDefinition, type ProbeResult, type ProbeSection } from "./probes";
 import { CHANGELOG_TEXT } from "./release-notes";
@@ -16,14 +16,19 @@ export type PageId = "overview" | ProbeSection | "capabilities" | "official" | "
 
 export interface ProbeViewOptions {
   port: ProbePort;
-  /** Driver 版本；读取失败时传带错误码的说明。 */
-  hostVersion: Promise<string>;
+  /** Driver 版本；读取失败时带错误码（只在开发者模式显示）。 */
+  hostVersion: Promise<HostVersion>;
   reportNav?(nav: { key: string; label: string } | null): void;
 }
 
+export type HostVersion = { ok: true; version: string } | { ok: false; code: string };
+
 export interface ProbeView {
   show(page: PageId): void;
-  toggleSettings(): void;
+  /** 标题栏「设置」：总是打开设置页（Host 不把它当开关，标签固定是「打开设置」）。 */
+  openSettings(): void;
+  /** Host 面包屑点祖先时调用（back-to-root 命令）。 */
+  backToRoot(): void;
   runSafe(): Promise<void>;
   readonly currentPage: PageId;
   dispose(): void;
@@ -37,7 +42,7 @@ const NAV: { id: PageId; label: string; icon: IconName }[] = [
   { id: "cloud", label: "外脑云端", icon: "cloud" },
   { id: "gated", label: "需要平台批准", icon: "lock" },
   { id: "capabilities", label: "全部能力", icon: "list" },
-  { id: "official", label: "官方插件对照", icon: "file" },
+  { id: "official", label: "插件仓对照", icon: "file" },
   { id: "records", label: "记录与报告", icon: "clock" },
 ];
 
@@ -56,12 +61,13 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   const { port } = options;
   const catalog = buildCatalog();
   const results = new Map<string, ProbeResult>();
-  const running = new Set<string>();
+  /** 正在跑的探针 → 开始时间与进行中的 Promise；同一个探针不会并发跑两次。 */
+  const running = new Map<string, { startedAt: number; promise: Promise<ProbeResult> }>();
   const log: ProbeResult[] = [];
   let page: PageId = "overview";
   let rootPage: PageId = "overview";
   let developerMode = false;
-  let hostVersion = "读取中…";
+  let hostVersionState: HostVersion | undefined;
   let disposed = false;
   let runAll: { index: number; total: number; startedAt: number; current: string } | null = null;
   let renderedSpec: RenderedPage | null = null;
@@ -73,9 +79,11 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   const frame = h(doc, "div", { className: "cp-frame" });
   const body = h(doc, "main", { className: "main-body cp-body" });
   const nav = h(doc, "nav", { className: "cp-nav", attrs: { "aria-label": "能力探针导航" } });
-  const content = h(doc, "section", { className: "cp-content", attrs: { "aria-live": "polite" } });
+  const content = h(doc, "section", { className: "cp-content" });
+  // 读屏只播报「哪个测试完成、结果如何」，不播报整页重绘。
+  const live = h(doc, "div", { className: "cp-visually-hidden", attrs: { role: "status", "aria-live": "polite" } });
   body.append(nav, content);
-  frame.append(body);
+  frame.append(body, live);
   root.replaceChildren(frame);
 
   const offEnv = port.onEnvironmentChange((value) => {
@@ -83,7 +91,13 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     render();
   });
   void port.environment().then((value) => { developerMode = value.developerMode; render(); }).catch(() => undefined);
-  void options.hostVersion.then((value) => { hostVersion = value; render(); });
+  void options.hostVersion.then((value) => { hostVersionState = value; render(); });
+
+  function hostVersionText(): string {
+    if (!hostVersionState) return "读取中…";
+    if (hostVersionState.ok) return hostVersionState.version;
+    return developerMode ? `读取失败（${hostVersionState.code}）` : "读取失败";
+  }
 
   function reportNav(): void {
     const label = SUB_PAGES[page];
@@ -116,25 +130,61 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     return h(doc, "header", { className: "cp-intro" }, h(doc, "h2", { text: title }), description ? h(doc, "p", { text: description }) : null);
   }
 
-  async function execute(probe: ProbeDefinition): Promise<ProbeResult> {
-    running.add(probe.id);
+  function execute(probe: ProbeDefinition): Promise<ProbeResult> {
+    const existing = running.get(probe.id);
+    if (existing) return existing.promise;
+    const promise = (async () => {
+      const result = await runProbe(probe, { port, document: doc, signal: abort.signal });
+      running.delete(probe.id);
+      if (disposed) return result;
+      results.set(probe.id, result);
+      log.unshift(result);
+      if (log.length > 200) log.length = 200;
+      live.textContent = `「${probe.title}」测试完成：${OUTCOME_LABELS[result.outcome]}`;
+      render();
+      return result;
+    })();
+    running.set(probe.id, { startedAt: Date.now(), promise });
+    ensureTicker();
     render();
-    const result = await runProbe(probe, { port, document: doc, signal: abort.signal });
-    running.delete(probe.id);
-    if (disposed) return result;
-    results.set(probe.id, result);
-    log.unshift(result);
-    if (log.length > 200) log.length = 200;
-    render();
-    return result;
+    return promise;
+  }
+
+  /** 等待超过 1 秒时，原地更新「已用 N 秒」，不整页重绘。 */
+  let ticker: ReturnType<typeof setInterval> | undefined;
+  function ensureTicker(): void {
+    if (ticker !== undefined) return;
+    ticker = setInterval(() => {
+      if (running.size === 0 && !runAll) {
+        clearInterval(ticker);
+        timers.delete(ticker!);
+        ticker = undefined;
+        return;
+      }
+      updateElapsed();
+    }, 1000);
+    timers.add(ticker);
+  }
+
+  function elapsedText(startedAt: number): string {
+    const seconds = Math.floor((Date.now() - startedAt) / 1000);
+    return seconds >= 1 ? `已用 ${seconds} 秒` : "";
+  }
+
+  function updateElapsed(): void {
+    for (const node of content.querySelectorAll<HTMLElement>("[data-elapsed-for]")) {
+      const entry = running.get(node.dataset.elapsedFor ?? "");
+      node.textContent = entry ? elapsedText(entry.startedAt) : "";
+    }
+    const progress = content.querySelector<HTMLElement>(".cp-progress");
+    if (progress && runAll) progress.textContent = runAllText();
   }
 
   async function runSafe(): Promise<void> {
     if (runAll) return;
     const list = safeProbes();
     runAll = { index: 0, total: list.length, startedAt: Date.now(), current: list[0]?.title ?? "" };
-    const ticker = setInterval(() => render(), 1000);
-    timers.add(ticker);
+    ensureTicker();
     try {
       for (const [index, probe] of list.entries()) {
         if (disposed) return;
@@ -142,17 +192,18 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
         await execute(probe);
       }
     } finally {
-      clearInterval(ticker);
-      timers.delete(ticker);
       runAll = null;
-      if (!disposed) render();
+      if (!disposed) {
+        live.textContent = "全部安全测试已完成";
+        render();
+      }
     }
   }
 
   function resultBlock(probe: ProbeDefinition): HTMLElement | null {
     const result = results.get(probe.id);
     if (!result) return null;
-    const block = h(doc, "div", { className: `cp-result cp-result--${result.outcome}`, attrs: { role: "status" } });
+    const block = h(doc, "div", { className: `cp-result cp-result--${result.outcome}` });
     const head = h(doc, "div", { className: "cp-result-head" }, icon(doc, OUTCOME_ICON[result.outcome]), h(doc, "strong", { text: OUTCOME_LABELS[result.outcome] }), h(doc, "span", { text: result.summary }));
     block.append(head);
     const meta = `${clock(result.startedAt)} · 用时 ${result.durationMs} 毫秒`;
@@ -174,12 +225,14 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       card.append(h(doc, "p", { className: "cp-locked" }, icon(doc, "lock"), h(doc, "span", { text: probe.disabledReason })));
       return card;
     }
-    const busy = running.has(probe.id);
+    const entry = running.get(probe.id);
     const result = results.get(probe.id);
-    const label = busy ? "测试中…" : result ? "再测一次" : "测试";
-    const actions = h(doc, "div", { className: "cp-card-actions" }, button(label, () => void execute(probe), { disabled: busy || runAll !== null, icon: "play", aria: `${label}：${probe.title}` }));
+    const label = entry ? "测试中…" : result ? "再测一次" : "测试";
+    const actions = h(doc, "div", { className: "cp-card-actions" }, button(label, () => void execute(probe), { disabled: entry !== undefined || runAll !== null, icon: "play", aria: `${label}：${probe.title}` }));
+    if (entry) actions.append(h(doc, "span", { className: "cp-progress", text: elapsedText(entry.startedAt), attrs: { "data-elapsed-for": probe.id } }));
     if (probe.risk === "navigate") actions.append(h(doc, "span", { className: "cp-hint", text: "会离开当前页面" }));
     if (probe.risk === "notify") actions.append(h(doc, "span", { className: "cp-hint", text: "会弹出一条系统通知" }));
+    if (probe.risk === "wake") actions.append(h(doc, "span", { className: "cp-hint", text: "会启动 Voice 插件" }));
     card.append(actions);
     const block = resultBlock(probe);
     if (block) card.append(block);
@@ -191,12 +244,17 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     const safeCount = safeProbes().length;
     wrap.append(button(runAll ? "测试中…" : `运行全部安全测试（${safeCount} 项）`, () => void runSafe(), { tier: "primary", disabled: runAll !== null, icon: "play" }));
     if (runAll) {
-      const seconds = Math.floor((Date.now() - runAll.startedAt) / 1000);
-      wrap.append(h(doc, "span", { className: "cp-progress", text: `第 ${runAll.index} 个 / 共 ${runAll.total} 个：${runAll.current} · 已用 ${seconds} 秒` }));
+      wrap.append(h(doc, "span", { className: "cp-progress", text: runAllText() }));
     } else {
-      wrap.append(h(doc, "span", { className: "cp-hint", text: "不会跳转页面，也不会弹通知；只写本插件自己的测试数据，测完删掉。" }));
+      wrap.append(h(doc, "span", { className: "cp-hint", text: "不会跳转页面、不会弹通知、不会启动别的插件；只写本插件自己的测试数据，测完删掉。" }));
     }
     return wrap;
+  }
+
+  function runAllText(): string {
+    if (!runAll) return "";
+    const elapsed = elapsedText(runAll.startedAt);
+    return `第 ${runAll.index} 个 / 共 ${runAll.total} 个：${runAll.current}${elapsed ? ` · ${elapsed}` : ""}`;
   }
 
   function outcomeSummary(probes: ProbeDefinition[]): HTMLElement | null {
@@ -234,7 +292,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       h(doc, "p", { text: "把 Driver 给插件开放的每一项能力讲成人话，能测的点一下就真实调用一次，结果当场显示。外脑云端和需要平台批准的能力，本版只说明「会调什么、预期什么」，不发请求。" }),
       h(doc, "p", { className: "cp-card-sub", text: `能力清单来自插件开发包里的支持矩阵（Host API ${CONTRACT_HOST_API}），是打包那一刻的合同；能不能用，以下面按钮的真实结果为准。` }),
     );
-    return [intro("能力探针", ""), explain, tiles, runAllControl(), outcomeSummary(p0) ?? h(doc, "p", { className: "cp-hint", text: `本版有 ${p0.length} 个能实际运行的测试，还没有结果。其中 ${p0.length - safeProbes().length} 个会跳页面或弹通知，不在「全部测试」里，要到对应页面单独点。` })];
+    return [intro("能力探针", ""), explain, tiles, runAllControl(), outcomeSummary(p0) ?? h(doc, "p", { className: "cp-hint", text: `本版有 ${p0.length} 个能实际运行的测试，还没有结果。其中 ${p0.length - safeProbes().length} 个会跳页面、弹通知或启动别的插件，不在「全部测试」里，要到对应页面单独点。` })];
   }
 
   function renderSection(section: ProbeSection): HTMLElement[] {
@@ -247,8 +305,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       gated: "这些能力需要平台审核批准。本地开发包只要在清单里声明了其中任何一项，安装时就会整包失败，所以本版只做说明。",
     };
     const nodes: HTMLElement[] = [intro(SECTION_LABELS[section], descriptions[section])];
-    const summary = outcomeSummary(probes);
-    if (summary) nodes.push(summary);
+    nodes.push(h(doc, "div", { className: "cp-section-summary" }, outcomeSummary(probes)));
     nodes.push(h(doc, "div", { className: "cp-cards" }, ...probes.map(probeCard)));
     if (section === "page") nodes.push(renderSpecPlayground());
     return nodes;
@@ -279,7 +336,11 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       problems.append(h(doc, "span", { text: `检查通过：${parsed.spec.components.length} 个组件` }));
       renderedSpec = renderPage(canvas, parsed.spec, {
         kv: port.kv,
-        runProbe: async (probeId) => execute(PROBES.find((probe) => probe.id === probeId)!),
+        developerMode: () => developerMode,
+        runProbe: async (probeId) => {
+          if (runAll || running.has(probeId)) throw new PageActionError("这个测试正在运行，请等它结束再点");
+          return execute(PROBES.find((probe) => probe.id === probeId)!);
+        },
         lastResult: (probeId) => results.get(probeId),
         notify: async (title, body) => { await port.notify(title, body); },
       });
@@ -333,14 +394,14 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       for (const capability of plugin.capabilities) {
         const tone = capability.tier === "gated" ? (capability.approved ? "gated" : "unexpected") : capability.tier ?? "muted";
         const chip = badge(capability.id, tone);
-        chip.title = capability.tier === "gated" ? (capability.approved ? "需要平台批准：审核清单里已批准" : "需要平台批准：审核清单里没有批准记录") : capability.tier ? TIER_LABELS[capability.tier] : "支持矩阵里没有这一项";
+        chip.title = capability.tier === "gated" ? (capability.approved ? "需要平台批准：审核清单里有批准记录（任一版本）" : "需要平台批准：审核清单里没有批准记录") : capability.tier ? TIER_LABELS[capability.tier] : "支持矩阵里没有这一项";
         chips.append(chip);
       }
       card.append(chips);
       list.append(card);
     }
     return [
-      intro("官方插件对照", `插件仓里 ${rows.length} 个插件各声明了哪些能力。插件在运行时读不到别的插件的信息，所以这是 ${OFFICIAL_PLUGINS_SNAPSHOT.generatedOn} 打包时的静态快照。红色表示「需要平台批准，但审核清单里没有批准记录」。`),
+      intro("插件仓对照", `插件仓里 ${rows.length} 个插件（官方插件和 com.example 开头的示例）各声明了哪些能力。插件在运行时读不到别的插件的信息，所以这是 ${OFFICIAL_PLUGINS_SNAPSHOT.generatedOn} 打包时的静态快照。橙色是需要平台批准且审核清单里有批准记录的能力；红色表示需要平台批准，但审核清单里没有批准记录。`),
       list,
     ];
   }
@@ -362,23 +423,17 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       }
       nodes.push(table);
     }
-    const report = buildReport({ mode: port.mode, hostVersion, developerMode, results });
+    const report = buildReport({ mode: port.mode, hostVersion: hostVersionText(), developerMode, results });
     const area = h(doc, "textarea", { className: "cp-code", attrs: { readonly: "", rows: "12", "aria-label": "测试报告 JSON" } });
     area.value = report;
-    const download = button("下载报告", () => {
-      const url = URL.createObjectURL(new Blob([report], { type: "application/json" }));
-      const link = h(doc, "a", { attrs: { href: url, download: `capability-probe-${Date.now()}.json` } });
-      doc.body.append(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }, { icon: "file" });
-    const select = button("全选报告文字", () => { area.focus(); area.select(); }, { tier: "link" });
+    const select = button("全选报告文字", () => { area.focus(); area.select(); }, { tier: "secondary" });
     nodes.push(h(doc, "div", { className: "cp-card" },
       h(doc, "h3", { text: "导出报告" }),
-      h(doc, "p", { className: "cp-card-sub", text: "报告只含版本、档位和结果，不含令牌和用户数据。如果「下载报告」在 Driver 里没反应，全选下面的文字复制即可。" }),
+      h(doc, "p", { className: "cp-card-sub", text: developerMode
+        ? "报告含版本、档位、结果和错误码，不含令牌和用户数据。全选后复制即可。"
+        : "报告含版本、档位和结果，不含令牌和用户数据。打开 Driver 开发者模式后，报告里会多出错误码。全选后复制即可。" }),
       area,
-      h(doc, "div", { className: "cp-card-actions" }, download, select),
+      h(doc, "div", { className: "cp-card-actions" }, select),
     ));
     return nodes;
   }
@@ -387,7 +442,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     const rows = h(doc, "div", { className: "cp-card cp-settings" },
       settingRow("构建档位", "P0：本地开发包。只声明免审能力和三项需同意的权限。"),
       settingRow("诊断信息", developerMode ? "Driver 开发者模式已开：结果里显示错误码和原始原因。" : "Driver 开发者模式已关：只显示人话结果。"),
-      settingRow("Driver 版本", hostVersion),
+      settingRow("Driver 版本", hostVersionText()),
       settingRow("能力合同", `Host API ${CONTRACT_HOST_API}（打包时的支持矩阵）`),
     );
     const footer = h(doc, "footer", { className: "cp-settings-footer" },
@@ -430,13 +485,13 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
 
   function render(): void {
     if (disposed) return;
-    const keepSpec = page === "page" && renderedSpec !== null && content.querySelector(".cp-spec") !== null;
+    const keepSpec = page === "page" && content.querySelector(".cp-spec") !== null;
     renderNav();
     if (keepSpec) {
-      // 声明式页面区域有用户正在编辑的内容：只重画探针卡片，不重建编辑器和渲染结果。
-      const cards = content.querySelector(".cp-cards");
-      const fresh = h(doc, "div", { className: "cp-cards" }, ...PROBES.filter((probe) => probe.section === "page").map(probeCard));
-      cards?.replaceWith(fresh);
+      // 声明式页面区域有用户正在编辑的内容：只重画结果统计和探针卡片，不重建编辑器和渲染结果。
+      const probes = PROBES.filter((probe) => probe.section === "page");
+      content.querySelector(".cp-section-summary")?.replaceChildren(...[outcomeSummary(probes)].filter((node): node is HTMLElement => node !== null));
+      content.querySelector(".cp-cards")?.replaceWith(h(doc, "div", { className: "cp-cards" }, ...probes.map(probeCard)));
       void renderedSpec?.refresh();
       return;
     }
@@ -461,8 +516,11 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
 
   return {
     show,
-    toggleSettings() {
-      show(SUB_PAGES[page] ? rootPage : "settings");
+    openSettings() {
+      show("settings");
+    },
+    backToRoot() {
+      show(rootPage);
     },
     runSafe,
     get currentPage() { return page; },

@@ -22,8 +22,9 @@ export function buildReport(input: ReportInput): string {
       level: probe.level,
       outcome: result.outcome,
       summary: scrub(result.summary, 300),
-      ...(result.code ? { code: result.code } : {}),
-      ...(result.detail ? { detail: scrub(result.detail, 300) } : {}),
+      // 错误码和原始原因属于诊断信息，只在 Host 开发者模式打开时写进报告。
+      ...(input.developerMode && result.code ? { code: result.code } : {}),
+      ...(input.developerMode && result.detail ? { detail: scrub(result.detail, 300) } : {}),
       startedAt: result.startedAt,
       durationMs: result.durationMs,
     };

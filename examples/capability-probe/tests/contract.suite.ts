@@ -10,7 +10,7 @@ export default defineContractSuite({
   hostApi: "1.20.0",
   expect: {
     surfaces: ["main"],
-    commands: ["com.example.capability-probe.ping"],
+    commands: ["com.example.capability-probe.ping", "com.example.capability-probe.back-to-root"],
     intents: [],
     readySurfaces: ["main"],
     forbiddenNetworkRequests: "all",
