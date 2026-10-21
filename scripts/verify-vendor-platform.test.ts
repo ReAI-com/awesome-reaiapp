@@ -170,4 +170,15 @@ describe("verify-vendor-platform", () => {
     const text = '{\n  // 行注释\n  "a": "x // 不是注释, ]",\n  /* 块注释 */ "b": [1, 2,],\n  "c": "\\"q\\",",\n}\n';
     expect(JSON.parse(stripJsonc(text))).toEqual({ a: "x // 不是注释, ]", b: [1, 2], c: '"q",' });
   });
+
+  test("bun.lock 的 BOM 与纯 CR 换行不影响解析", () => {
+    const { root, base, verify } = fixture();
+    const integrity = `sha512-${createHash("sha512").update(readFileSync(join(base, "packs/app-sdk.tgz"))).digest("base64")}`;
+    const vendored = `../../vendor/platform/${DIR}/packs/app-sdk.tgz`;
+    const body = ['{', '  // 注释', '  "packages": {', `    "@reai/app-sdk": ["@reai/app-sdk@${vendored}", {}, "${integrity}"],`, '  },', '}', ''];
+    for (const text of [`\uFEFF${body.join("\n")}`, body.join("\r"), body.join("\r\n")]) {
+      writeFileSync(join(root, "plugins/demo/bun.lock"), text);
+      expect(verify()).toEqual([]);
+    }
+  });
 });

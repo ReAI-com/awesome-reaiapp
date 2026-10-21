@@ -149,7 +149,8 @@ export function stripJsonc(text: string): string {
       out += text.slice(index, end + 1);
       index = end;
     } else if (char === "/" && text[index + 1] === "/") {
-      while (index < text.length && text[index] !== "\n") index++;
+      // 行注释到 LF 或 CR 为止，换行本身保留。
+      while (index < text.length && text[index] !== "\n" && text[index] !== "\r") index++;
       index--;
     } else if (char === "/" && text[index + 1] === "*") {
       const end = text.indexOf("*/", index + 2);
@@ -168,7 +169,7 @@ export function stripJsonc(text: string): string {
 }
 
 function parseBunLock(text: string, shown: string): any {
-  return parseJson(stripJsonc(text), shown);
+  return parseJson(stripJsonc(text.replace(/^\uFEFF/, "")), shown);
 }
 
 /** 核对 bun.lock 中每个平台包条目都解析到已钉住的 tarball，且完整性摘要与 tarball 字节一致。 */
