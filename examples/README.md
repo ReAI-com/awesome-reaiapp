@@ -5,6 +5,8 @@
 - `todo-app/`：Surface、Command、Intent、存储与 Agent UI 样例。
 - `titlebar-actions-app/`：第三方标题栏动作最小样例。
 - `capability-probe/`：能力探针。列出插件平台全部能力，并用按钮逐项实测本机真实结果。
+- `project-data-app/`：读取项目数据表并提交 JSON 操作的数据接口样例，预览使用合成 fixture。
+- `workflow-app/`：启动、读取、继续与取消工作流运行的样例，预览使用合成 fixture。
 - `skins/codex/`、`skins/claude/`：声明式 Skin v1 样例。
 
 每个样例都有自己的 `package.json`、`bun.lock` 和验证命令。平台包来自仓库根 `vendor/platform/` 中按摘要锁定的 tarball，无需另行安装共享依赖。进入选定样例目录：

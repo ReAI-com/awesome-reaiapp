@@ -1,0 +1,5 @@
+# `reai-app build/pack` 全量重建的本地产物。
+node_modules/
+dist/
+build-manifest.json
+*.reaiapp
