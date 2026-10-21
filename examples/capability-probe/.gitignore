@@ -1,0 +1,5 @@
+# 构建产物：由 `reai-app build` 全量重建，不进版本库
+node_modules/
+dist/
+build-manifest.json
+*.reaiapp
