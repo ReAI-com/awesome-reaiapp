@@ -96,7 +96,7 @@ describe("Agents · 任务 Surface", () => {
     expect(root.querySelectorAll("[data-task-title]")).toHaveLength(1);
     expect(root.querySelectorAll("[data-project-dir]")).toHaveLength(totalProjects);
     const matchedTask = root.querySelector("[data-task-title]");
-    expect(matchedTask?.closest("[data-project-dir]")?.getAttribute("data-project-dir")).toBe("~/Projects/landing");
+    expect(matchedTask?.closest("[data-project-dir]")?.getAttribute("data-project-dir")).toBe("~/Developer/landing");
     expect(matchedTask?.textContent).toContain("官网价格表改版审查");
     view.dispose();
   });
@@ -127,7 +127,7 @@ describe("Agents · 任务 Surface", () => {
       stream: [
         { k: "day", t: "今天" },
         { k: "ask", brief: "确认归档", text: "要保留归档记录吗？", opts: ["保留"] },
-        { k: "anchor", icon: "✓", title: "已完成任务", meta: "今天完成", st: "done", dir: "~/Projects/demo" },
+        { k: "anchor", icon: "✓", title: "已完成任务", meta: "今天完成", st: "done", dir: "~/Developer/demo" },
       ],
     }];
     const { root, view } = await mountTasks(agents);

@@ -103,6 +103,9 @@ jobs:
           - text-editor
           - voice
           - wishing-wall
+    env:
+      # 受控插件的当前候选尚未通过源码审核：只要求按审批门被拒。审核通过、平台包带上批准记录后从这里移除。
+      AWAITING_REVIEW: ${{ contains(fromJSON('["voice"]'), matrix.plugin) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -120,18 +123,23 @@ jobs:
         working-directory: plugins/${{ matrix.plugin }}
         run: bun run typecheck
       - name: Validate the plugin
+        if: env.AWAITING_REVIEW != 'true'
         working-directory: plugins/${{ matrix.plugin }}
         run: bun run validate
       - name: Build the plugin
+        if: env.AWAITING_REVIEW != 'true'
         working-directory: plugins/${{ matrix.plugin }}
         run: bun run build
       - name: Test plugin contracts
+        if: env.AWAITING_REVIEW != 'true'
         working-directory: plugins/${{ matrix.plugin }}
         run: bun run test:contract
       - name: Pack the plugin
+        if: env.AWAITING_REVIEW != 'true'
         working-directory: plugins/${{ matrix.plugin }}
         run: bun run pack
       - name: Pack the plugin with Deflate
+        if: env.AWAITING_REVIEW != 'true'
         working-directory: plugins/${{ matrix.plugin }}
         run: |
           # 插件自己的锁文件必须带上语言工具的压缩依赖；只看共享工具的验证发现不了这类缺失。
@@ -140,3 +148,7 @@ jobs:
           else
             echo "Plugin does not use the language toolchain; Deflate packing is not applicable."
           fi
+      - name: Expect the source-review rejection
+        if: env.AWAITING_REVIEW == 'true'
+        working-directory: plugins/${{ matrix.plugin }}
+        run: bash ../../scripts/expect-review-rejection.sh validate build pack
