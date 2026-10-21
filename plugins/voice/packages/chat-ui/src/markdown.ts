@@ -2,8 +2,26 @@ import MarkdownIt from "markdown-it";
 import { element } from "./dom";
 
 // Model output is untrusted. Never enable raw HTML or a custom HTML highlighter.
-const markdown = new MarkdownIt({ html: false, breaks: true, linkify: false });
-markdown.validateLink = (url) => /^(https?:\/\/|mailto:)/i.test(url);
+const markdown = new MarkdownIt({ html: false, breaks: true, linkify: true });
+markdown.linkify.set({ fuzzyLink: false, fuzzyEmail: false, fuzzyIP: false });
+const standardLinks = new MarkdownIt().linkify;
+for (const scheme of ["http:", "https:"]) {
+  markdown.linkify.add(scheme, {
+    validate(text, position) {
+      // Do not turn a rejected credential URL into a shorter, different URL.
+      if (/^\/\/[^\s/?#<>()[\]，。；！？]*@/.test(text.slice(position))) return 0;
+      return standardLinks.testSchemaAt(text, scheme, position);
+    },
+  });
+}
+export function isExternalWebUrl(value: string): boolean {
+  if (value.length > 4096 || /[\s\u0000-\u001f\u007f]/u.test(value) || !/^https?:\/\//i.test(value)) return false;
+  try {
+    const url = new URL(value);
+    return (url.protocol === "http:" || url.protocol === "https:") && !!url.hostname && !url.username && !url.password;
+  } catch { return false; }
+}
+markdown.validateLink = isExternalWebUrl;
 // Rendering a reply must not fetch tracking images or local resources.
 markdown.renderer.rules.image = (tokens, index) =>
   markdown.utils.escapeHtml(tokens[index].content);
@@ -57,18 +75,26 @@ class CjkFriendlyInlineState extends markdown.inline.State {
 }
 markdown.inline.State = CjkFriendlyInlineState;
 
-export function renderMarkdownBubble(text: string): HTMLElement {
+export function renderMarkdownBubble(text: string, onOpenLink?: (url: string) => void): HTMLElement {
   const bubble = element("div", "chat-bubble chat-markdown");
   bubble.innerHTML = markdown.render(text).trim();
-  // Host surfaces deny external navigation/new windows. Keep sources readable and
-  // selectable instead of presenting links that cannot open in the installed App.
   for (const link of Array.from(bubble.querySelectorAll("a"))) {
-    const source = element("span", "chat-markdown-source");
     const url = link.getAttribute("href") ?? "";
     const label = link.textContent ?? "";
-    source.append(...Array.from(link.childNodes));
-    if (label !== url) source.append(document.createTextNode(` (${url})`));
-    link.replaceWith(source);
+    if (onOpenLink && isExternalWebUrl(url)) {
+      link.classList.add("chat-markdown-source");
+      link.setAttribute("title", url);
+      link.setAttribute("rel", "noopener noreferrer");
+      if (label !== url) link.append(document.createTextNode(` (${url})`));
+      // Keep plugin navigation inside its origin. Only the Host opens web links.
+      link.addEventListener("click", (event) => { event.preventDefault(); onOpenLink(url); });
+      link.addEventListener("auxclick", (event) => { event.preventDefault(); if (event.button === 1) onOpenLink(url); });
+    } else {
+      const source = element("span", "chat-markdown-source");
+      source.append(...Array.from(link.childNodes));
+      if (label !== url) source.append(document.createTextNode(` (${url})`));
+      link.replaceWith(source);
+    }
   }
   return bubble;
 }

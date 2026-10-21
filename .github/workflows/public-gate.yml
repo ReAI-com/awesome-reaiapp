@@ -1,0 +1,34 @@
+name: Public gate
+
+# 公开仓提交前的通用泄露闸门：提交身份、打包收据、密钥形态、个人绝对路径、真实邮箱。
+# 不设路径过滤，任何改动都扫描整棵树（含 vendor tarball 与 .reaiapp 解包内容）。
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  public-gate:
+    name: Scan the repository for private data
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: '1.3.14'
+      - name: Prove the gate blocks a synthetic leak
+        run: |
+          probe="$RUNNER_TEMP/gate-probe"
+          mkdir -p "$probe/plugins/demo"
+          printf '{"productId":"synthetic"}\n' > "$probe/plugins/demo/submission.identity.json"
+          if bun scripts/public-gate.ts --root "$probe" >/dev/null 2>&1; then
+            echo "public gate did not block a synthetic submission identity" >&2
+            exit 1
+          fi
+      - name: Run the public gate
+        # 导出物自带的豁免与插件仓自有豁免分两个文件，均按文件摘要绑定。
+        run: bun scripts/public-gate.ts --allow scripts/public-gate.allow.json --allow scripts/public-gate.local-allow.json

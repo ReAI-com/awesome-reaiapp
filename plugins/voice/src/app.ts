@@ -147,6 +147,7 @@ import { classifyUtterance, shouldTranslateUtterance } from "./voice-utterance";
 import { VoiceClipCapture, type VoiceClipPressToken } from "./voice-audio-clips";
 // 共享对话组件的样式先于插件自己的：voice.css 只通过 --chat-dock-x 变量调它，不覆盖其类规则。
 import "@reai/chat-ui/styles.css";
+import { openVoiceSourceLink } from "./voice-source-links";
 import "./voice.css";
 
 /**
@@ -5092,6 +5093,7 @@ export default defineApp({
             }
           },
           onPrepareAttachments: prepareCommandAttachments,
+          onOpenSourceLink: (url) => openVoiceSourceLink(ctx.surfaces as typeof ctx.surfaces & { openExternal?: (url: string) => Promise<void> }, url),
           onUploadAttachment: uploadCommandImage,
           onReleaseAttachment: releaseCommandAttachment,
           onSendCommandFollowUp: async (text, conversation, attachments) => {

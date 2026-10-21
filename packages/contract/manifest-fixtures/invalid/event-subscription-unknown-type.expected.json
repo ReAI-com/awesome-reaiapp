@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "订阅的事件类型必须在矩阵清单里（v1 只有 actionContext）——写错名字不能静默不生效"
-}

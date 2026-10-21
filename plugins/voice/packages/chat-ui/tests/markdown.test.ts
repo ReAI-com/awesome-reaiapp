@@ -34,13 +34,44 @@ describe("AI Markdown replies", () => {
     expect(bubble.textContent).toContain("本地图");
   });
 
-  test("sources remain readable without unsupported WebView navigation", () => {
+  test("sources remain readable without a Host link handler", () => {
     const bubble = renderMarkdownBubble('[天气来源](https://example.com/weather?a=1&b=2)');
     expect(bubble.querySelector("a")).toBeNull();
     expect(bubble.querySelector(".chat-markdown-source")?.textContent).toBe("天气来源 (https://example.com/weather?a=1&b=2)");
     for (const url of ["javascript:alert(1)", "data:text/html,test", "file:///tmp/private", "//example.com", "&#106;avascript:alert(1)"]) {
       const unsafe = renderMarkdownBubble(`[危险](${url})`);
       expect(unsafe.querySelector("a, .chat-markdown-source")).toBeNull();
+    }
+  });
+
+  test("Markdown and bare source URLs request the Host opener only after a click", () => {
+    const opened: string[] = [];
+    const bubble = renderMarkdownBubble('[天气来源](https://example.com/weather?a=1&b=2)\n\nhttps://example.org/source\n\n`https://example.net/code`', (url) => opened.push(url));
+    expect(opened).toEqual([]);
+    const links = bubble.querySelectorAll("a");
+    expect(links).toHaveLength(2);
+    expect(links[0]?.getAttribute("href")).toBe("https://example.com/weather?a=1&b=2");
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    links[0]!.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    expect(opened).toEqual(["https://example.com/weather?a=1&b=2"]);
+    links[1]!.click();
+    expect(opened).toHaveLength(2);
+  });
+
+  test("bare URLs allow at signs after the authority and Chinese text with an email", () => {
+    for (const text of ["https://medium.com/@name/post", "https://example.com/?email=a@b", "来源 https://a.com/x，作者邮箱 a@b.com"]) {
+      const bubble = renderMarkdownBubble(text, () => undefined);
+      expect(bubble.querySelector("a"), text).not.toBeNull();
+    }
+  });
+
+  test("source links reject non-web schemes, credentials and invalid web URLs", () => {
+    for (const url of ["mailto:a@example.com", "ftp://example.com/a", "file:///tmp/private", "data:text/html,test", "javascript:alert(1)", "//example.com/a", "https://user:pass@example.com/a", "https://"]) {
+      const opened: string[] = [];
+      const bubble = renderMarkdownBubble(`[来源](${url})`, (value) => opened.push(value));
+      expect(bubble.querySelector("a") === null, url).toBe(true);
+      expect(opened).toEqual([]);
     }
   });
 

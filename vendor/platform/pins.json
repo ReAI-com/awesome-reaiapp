@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "pins": [
+    {
+      "dir": "4ed2325a750e",
+      "batch": "v106.2",
+      "sourceHead": "4ed2325a750eef61413a630a443370e8feee3a3e",
+      "lockSha256": "b2ae12675209db6a0b3ea1e2ccb034620ec3818157e2e6af54a6176ffe39a02f"
+    }
+  ]
+}

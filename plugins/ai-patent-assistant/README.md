@@ -42,7 +42,7 @@ Dashboard「专利工作台」汇总进行中、待人确认、自检有问题�
 
 ## 跑通本地闭环
 
-先在仓库 `packages/` 目录安装冻结依赖，再在本目录执行：
+平台包来自仓库根 `vendor/platform/` 中按摘要锁定的 tarball。在本目录执行：
 
 ```sh
 bun install --frozen-lockfile --ignore-scripts

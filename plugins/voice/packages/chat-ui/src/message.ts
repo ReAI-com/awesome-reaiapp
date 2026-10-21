@@ -38,6 +38,7 @@ export function stableWaveform(seed: number, bars = CHAT_WAVEFORM_BARS): number[
 }
 
 export interface ChatAttachmentOptions {
+  onOpenLink?(url: string): void;
   developerMode?: boolean;
   /**
    * 语音气泡的播放回调。缺省时播放键仍按稿画出来但 disabled——没有音频来源的
@@ -218,7 +219,7 @@ export function renderChatMessage(
 ): HTMLElement {
   const row = element("div", `chat-msg from-${message.from}`);
   if (message.text) row.append(message.from === "ai" && message.format !== "plain"
-    ? renderMarkdownBubble(message.text)
+    ? renderMarkdownBubble(message.text, options.onOpenLink)
     : textElement("div", "chat-bubble", () => message.text));
   for (const attachment of message.attachments ?? []) {
     row.append(renderChatAttachment(attachment, options));

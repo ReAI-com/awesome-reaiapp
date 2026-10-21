@@ -3,6 +3,8 @@ dist/
 build-manifest.json
 *.reaiapp
 *.tgz
+# 平台包按摘要锁定、随仓提交（来源回执与 lock 见同目录）
+!/vendor/platform/*/packs/*.tgz
 .artifacts/
 .migration-evidence/
 .env
@@ -23,5 +25,9 @@ website/.vitepress/dist/
 /open-website/deploy/*.conf
 /open-website/deploy/*.sh
 /open-website/logo-candidates.html
-/plugins/*/submission.identity.json
+submission.identity.json
 *.submission.json
+*-submission.reaiapp*
+.cindy-worktrees/
+.worktree/
+.worktrees/

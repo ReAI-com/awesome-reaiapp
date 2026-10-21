@@ -13,23 +13,24 @@
     "validate": "reai-app-i18n validate .",
     "test:contract": "reai-app contract-test . --host-api 1.20",
     "pack": "reai-app-i18n pack . --out code-worker-0.2.1.reaiapp",
-    "check:submission": "bun ../../scripts/plugin-submission.ts check .",
-    "pack:submission": "bun ../../scripts/plugin-submission.ts pack . --out code-worker-0.2.1-submission.reaiapp"
+    "check:submission": "reai-app-i18n submission check .",
+    "pack:submission": "reai-app-i18n submission pack . --out code-worker-0.2.1-submission.reaiapp"
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.0.0",
-    "@reai/app-cli": "file:../../packages/cli",
-    "@reai/app-contract": "file:../../packages/contract",
-    "@reai/app-sdk": "file:../../packages/sdk",
-    "@reai/app-test": "file:../../packages/test-kit",
+    "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
+    "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+    "@reai/app-sdk": "file:../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz",
+    "@reai/app-test": "file:../../vendor/platform/4ed2325a750e/packs/app-test.tgz",
     "@types/bun": "^1.3.14",
     "typescript": "~5.6.0",
-    "@reai/app-i18n-cli": "file:../../packages/i18n-cli"
+    "@reai/app-i18n-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-i18n-cli.tgz"
   },
   "overrides": {
-    "@reai/app-cli": "file:../../packages/cli",
-    "@reai/app-contract": "file:../../packages/contract",
-    "@reai/app-sdk": "file:../../packages/sdk",
-    "@reai/app-test": "file:../../packages/test-kit"
+    "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
+    "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+    "@reai/app-sdk": "file:../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz",
+    "@reai/app-test": "file:../../vendor/platform/4ed2325a750e/packs/app-test.tgz",
+    "@reai/app-i18n-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-i18n-cli.tgz"
   }
 }

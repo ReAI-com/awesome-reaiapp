@@ -1,4 +1,3 @@
-// Synthetic credential bytes test diagnostic privacy.
 /**
  * Agent 失败按 Host 阶段细化（2.14.2；Host #956 的 `stderr_tail` / `message` 前缀）：
  * 只读前缀、得到登记表内的阶段码 / i32 退出码 / 登记过的上游码；前缀之后的原文不清洗、不导出；

@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "appId": "com.reai.codex-app",
+  "publisherId": "REPLACE_WITH_PUBLISHER_ID",
+  "oauthAppId": "REPLACE_WITH_OAUTH_CLIENT_ID",
+  "productId": "REPLACE_WITH_PRODUCT_ID",
+  "target": "universal",
+  "version": "0.1.9-h08.1"
+}

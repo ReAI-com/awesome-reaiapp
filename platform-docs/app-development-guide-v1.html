@@ -1,0 +1,2071 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="ReAI App Platform v1.1 开发指南：从零开发并接入一个 To-Do List App。">
+  <title>ReAI App 开发指南 v1.1 · 从 0 做一个 To-Do List</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f6fb;
+      --surface: #ffffff;
+      --surface-2: #f0f0f8;
+      --surface-3: #e9e9f5;
+      --ink: #171726;
+      --muted: #68687a;
+      --line: #ddddea;
+      --accent: #5c5ce0;
+      --accent-strong: #4444c7;
+      --accent-soft: rgba(92, 92, 224, .10);
+      --accent-glow: rgba(92, 92, 224, .22);
+      --green: #16845b;
+      --green-soft: rgba(22, 132, 91, .10);
+      --amber: #a96308;
+      --amber-soft: rgba(217, 133, 27, .13);
+      --red: #b33e4a;
+      --red-soft: rgba(179, 62, 74, .10);
+      --code: #171724;
+      --code-ink: #eeeeff;
+      --shadow: 0 18px 60px rgba(34, 34, 72, .10);
+      --radius: 22px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #111119;
+      --surface: #191923;
+      --surface-2: #22222f;
+      --surface-3: #2a2a39;
+      --ink: #f1f1f7;
+      --muted: #aaaabd;
+      --line: #353548;
+      --accent: #8585ff;
+      --accent-strong: #a4a4ff;
+      --accent-soft: rgba(133, 133, 255, .14);
+      --accent-glow: rgba(133, 133, 255, .30);
+      --green: #64d6a7;
+      --green-soft: rgba(100, 214, 167, .12);
+      --amber: #f2b45e;
+      --amber-soft: rgba(242, 180, 94, .12);
+      --red: #ff8d98;
+      --red-soft: rgba(255, 141, 152, .12);
+      --code: #0d0d14;
+      --code-ink: #efefff;
+      --shadow: 0 22px 70px rgba(0, 0, 0, .34);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+    }
+    button, input { font: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    a { color: var(--accent-strong); }
+    code { font-family: var(--mono); }
+    :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+
+    .skip-link {
+      position: fixed;
+      z-index: 100;
+      left: 16px;
+      top: -60px;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: var(--ink);
+      color: var(--bg);
+      transition: top .18s ease;
+    }
+    .skip-link:focus { top: 12px; }
+
+    .topbar {
+      position: sticky;
+      z-index: 50;
+      top: 0;
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      backdrop-filter: blur(18px);
+    }
+    .topbar-inner {
+      width: min(1460px, calc(100% - 32px));
+      min-height: 62px;
+      margin: auto;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .brand {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      color: var(--ink);
+      font-weight: 760;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .brand-mark {
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      background: var(--accent);
+      color: white;
+      box-shadow: 0 8px 22px var(--accent-glow);
+      font-size: 14px;
+    }
+    .doc-nav {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-left: auto;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .doc-nav::-webkit-scrollbar { display: none; }
+    .doc-nav a {
+      min-height: 44px;
+      display: inline-flex;
+      align-items: center;
+      padding: 7px 11px;
+      border-radius: 10px;
+      color: var(--ink);
+      text-decoration: none;
+      white-space: nowrap;
+      font-size: 14px;
+      font-weight: 650;
+    }
+    .doc-nav a:hover { color: var(--ink); background: var(--surface-2); }
+    .doc-nav a[aria-current="page"] { color: var(--accent-strong); background: var(--accent-soft); }
+    .top-actions { display: flex; gap: 7px; }
+    .icon-button {
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+    }
+    .icon-button:hover { border-color: var(--accent); background: var(--accent-soft); }
+
+    .page {
+      width: min(1460px, calc(100% - 32px));
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 214px minmax(0, 1fr);
+      gap: 42px;
+    }
+    .toc {
+      position: sticky;
+      top: 88px;
+      align-self: start;
+      max-height: calc(100vh - 110px);
+      overflow: auto;
+      padding: 26px 0 40px;
+    }
+    .toc p {
+      margin: 0 0 10px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .toc a {
+      display: block;
+      margin: 2px 0;
+      padding: 7px 10px;
+      border-left: 2px solid transparent;
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .toc a:hover { color: var(--ink); border-left-color: var(--accent); }
+
+    main { min-width: 0; padding-bottom: 100px; }
+    .hero {
+      position: relative;
+      min-height: 510px;
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr);
+      align-items: center;
+      gap: 54px;
+      overflow: hidden;
+      padding: 76px 0 64px;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      z-index: -1;
+      width: 410px;
+      height: 410px;
+      right: -100px;
+      top: 32px;
+      border-radius: 50%;
+      background: radial-gradient(circle, var(--accent-glow), transparent 68%);
+      filter: blur(16px);
+    }
+    .eyebrow {
+      margin: 0 0 14px;
+      color: var(--accent-strong);
+      font-size: 12px;
+      font-weight: 820;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+    h1 {
+      max-width: 830px;
+      margin: 0;
+      font-size: clamp(44px, 6.2vw, 82px);
+      line-height: .98;
+      letter-spacing: -.055em;
+      text-wrap: balance;
+    }
+    .hero-copy {
+      max-width: 720px;
+      margin: 26px 0 0;
+      color: var(--muted);
+      font-size: clamp(17px, 1.6vw, 21px);
+      line-height: 1.65;
+    }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 28px; }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--ink);
+      text-decoration: none;
+      font-weight: 720;
+      cursor: pointer;
+    }
+    .button.primary { border-color: #4444c7; background: #4444c7; color: white; }
+    .button:hover { transform: translateY(-1px); box-shadow: 0 9px 25px rgba(35, 35, 70, .10); }
+    .button:disabled { opacity: .42; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .status-card {
+      padding: 26px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, var(--surface), var(--surface-2));
+      box-shadow: var(--shadow);
+    }
+    .status-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 9px;
+      border-radius: 999px;
+      background: var(--amber-soft);
+      color: var(--amber);
+      font-size: 12px;
+      font-weight: 790;
+    }
+    .status-label::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+    .status-card h2 { margin: 18px 0 8px; font-size: 24px; letter-spacing: -.025em; }
+    .status-card p { margin: 0; color: var(--muted); font-size: 14px; }
+    .status-list { display: grid; gap: 9px; margin-top: 20px; }
+    .status-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding-top: 9px;
+      border-top: 1px solid var(--line);
+      font-size: 13px;
+    }
+    .status-row strong { color: var(--green); }
+    .status-row strong.pending { color: var(--amber); }
+
+    section.doc-section { padding: 72px 0 16px; scroll-margin-top: 68px; }
+    .section-head { display: grid; grid-template-columns: .72fr 1.28fr; gap: 40px; margin-bottom: 30px; }
+    .section-kicker { margin: 4px 0 0; color: var(--accent-strong); font-size: 12px; font-weight: 820; letter-spacing: .13em; text-transform: uppercase; }
+    .section-head h2 { margin: 0; font-size: clamp(30px, 4vw, 48px); line-height: 1.1; letter-spacing: -.04em; }
+    .section-head p { margin: 16px 0 0; color: var(--muted); font-size: 17px; }
+    .plain-language {
+      padding: 24px 26px;
+      border-left: 4px solid var(--accent);
+      border-radius: 0 16px 16px 0;
+      background: var(--accent-soft);
+      font-size: 18px;
+    }
+
+    .three-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .mini-card {
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--surface);
+    }
+    .mini-card .number { color: var(--accent-strong); font-family: var(--mono); font-size: 12px; font-weight: 800; }
+    .mini-card h3 { margin: 12px 0 7px; font-size: 19px; }
+    .mini-card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .shell-explorer {
+      display: grid;
+      grid-template-columns: minmax(570px, 1.35fr) minmax(280px, .65fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+    .mock-window {
+      min-height: 540px;
+      display: grid;
+      grid-template-columns: 190px 1fr;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .mock-sidebar {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      padding: 14px 10px;
+      border-right: 1px solid var(--line);
+      background: var(--accent-soft);
+    }
+    .window-dots { display: flex; gap: 6px; padding: 3px 8px 14px; }
+    .window-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
+    .zone-button {
+      min-height: 44px;
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 10px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+      text-align: left;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .zone-button:hover, .zone-button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--accent) 35%, transparent); background: var(--surface); color: var(--ink); }
+    .zone-button.todo { color: var(--accent-strong); }
+    .zone-icon { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 7px; background: var(--surface); font-size: 11px; }
+    .zone-label { margin: 15px 10px 4px; color: var(--muted); font-size: 9px; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+    .zone-grow { min-height: 22px; flex: 1; }
+    .mock-main { min-width: 0; display: grid; place-items: center; padding: 24px; background: linear-gradient(160deg, var(--surface), var(--surface-2)); }
+    .surface-frame {
+      width: min(520px, 100%);
+      min-height: 360px;
+      padding: 26px;
+      border: 2px dashed color-mix(in srgb, var(--accent) 48%, var(--line));
+      border-radius: 18px;
+      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      cursor: pointer;
+    }
+    .surface-tag { display: inline-block; padding: 4px 8px; border-radius: 7px; background: var(--accent-soft); color: var(--accent-strong); font-family: var(--mono); font-size: 11px; }
+    .surface-frame h3 { margin: 54px 0 8px; font-size: 30px; letter-spacing: -.035em; }
+    .surface-frame p { color: var(--muted); }
+    .surface-panes { display: grid; grid-template-columns: .72fr 1.28fr; gap: 10px; margin-top: 24px; }
+    .surface-panes div { min-height: 94px; padding: 12px; border-radius: 12px; background: var(--surface-2); color: var(--muted); font-size: 12px; }
+    .zone-detail {
+      min-height: 540px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--surface);
+    }
+    .zone-owner { display: inline-flex; padding: 5px 8px; border-radius: 8px; background: var(--surface-2); color: var(--muted); font-family: var(--mono); font-size: 11px; }
+    .zone-detail h3 { margin: 18px 0 7px; font-size: 27px; letter-spacing: -.03em; }
+    .zone-detail > p { min-height: 68px; color: var(--muted); }
+    .detail-block { padding: 14px 0; border-top: 1px solid var(--line); }
+    .detail-block span { display: block; margin-bottom: 5px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
+    .detail-block code { color: var(--accent-strong); font-size: 13px; overflow-wrap: anywhere; }
+    .detail-block strong { font-size: 14px; }
+
+    .roadmap {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(150px, 1fr));
+      gap: 8px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+    .road-step {
+      position: relative;
+      min-height: 150px;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+    }
+    .road-step:not(:last-child)::after { content: "→"; position: absolute; z-index: 2; right: -15px; top: 18px; color: var(--accent); font-weight: 800; }
+    .road-step b { display: block; margin-bottom: 28px; color: var(--accent-strong); font-family: var(--mono); font-size: 11px; }
+    .road-step strong { display: block; margin-bottom: 6px; }
+    .road-step span { color: var(--muted); font-size: 12px; }
+
+    .code-shell { overflow: hidden; border: 1px solid var(--line); border-radius: 20px; background: var(--code); box-shadow: var(--shadow); }
+    .code-toolbar { display: flex; align-items: center; gap: 8px; padding: 10px; border-bottom: 1px solid #303044; background: #12121c; overflow-x: auto; }
+    .code-tabs { display: flex; align-items: center; gap: 4px; min-width: max-content; }
+    .code-tab, .copy-button {
+      min-height: 44px;
+      padding: 7px 10px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: #a9a9bd;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 720;
+      white-space: nowrap;
+    }
+    .code-tab[aria-selected="true"] { background: #2b2b40; color: white; }
+    .copy-button { margin-left: auto; border: 1px solid #35354a; }
+    .copy-button:hover { color: white; border-color: #7777aa; }
+    .code-panel { display: none; }
+    .code-panel.active { display: block; }
+    pre { margin: 0; padding: 24px; overflow: auto; color: var(--code-ink); font: 12.5px/1.65 var(--mono); tab-size: 2; }
+    .code-note { padding: 12px 18px; border-top: 1px solid #303044; color: #b6b6c9; background: #12121c; font-size: 12px; }
+
+    .life-grid { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; }
+    .life-steps { display: grid; gap: 7px; align-content: start; }
+    .life-step {
+      display: grid;
+      grid-template-columns: 30px 1fr;
+      align-items: center;
+      gap: 10px;
+      padding: 11px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--surface);
+      color: var(--muted);
+      text-align: left;
+      cursor: pointer;
+    }
+    .life-step i { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; background: var(--surface-2); color: var(--accent-strong); font: 11px var(--mono); font-style: normal; }
+    .life-step[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--ink); }
+    .life-detail { min-height: 430px; padding: 32px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+    .life-detail h3 { margin: 10px 0; font-size: 30px; letter-spacing: -.03em; }
+    .life-detail > p { color: var(--muted); }
+    .event-flow { display: grid; gap: 9px; margin: 24px 0; }
+    .event-line { display: grid; grid-template-columns: 74px 1fr; gap: 14px; padding: 12px; border-radius: 12px; background: var(--surface-2); }
+    .event-line span { color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
+    .event-line code { color: var(--accent-strong); font-size: 13px; }
+    .life-rule { padding: 14px 16px; border-left: 3px solid var(--green); background: var(--green-soft); color: var(--ink); font-weight: 680; }
+
+    .simulator {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(280px, .8fr);
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .sim-stage { min-width: 0; border-right: 1px solid var(--line); }
+    .sim-controls { display: flex; flex-wrap: wrap; gap: 7px; padding: 12px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+    .sim-controls button {
+      min-height: 44px;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .sim-controls button:hover { border-color: var(--accent); }
+    .sim-window { min-height: 450px; display: grid; grid-template-columns: 150px 1fr; }
+    .sim-side { padding: 12px 8px; border-right: 1px solid var(--line); background: var(--accent-soft); }
+    .sim-side .sim-brand { margin: 5px 8px 14px; font-size: 12px; font-weight: 760; }
+    .sim-nav {
+      min-height: 44px;
+      width: 100%;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      border: 0;
+      border-radius: 9px;
+      background: transparent;
+      color: var(--muted);
+      text-align: left;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .sim-nav.active { background: var(--surface); color: var(--ink); }
+    .sim-nav:disabled { opacity: .52; cursor: not-allowed; }
+    .sim-nav[hidden] { display: none; }
+    .sim-view { min-width: 0; display: grid; place-items: center; padding: 24px; }
+    .sim-message { max-width: 380px; text-align: center; color: var(--muted); }
+    .spinner { width: 28px; height: 28px; margin: 0 auto 13px; border: 3px solid var(--line); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .todo-demo { width: min(480px, 100%); }
+    .todo-demo h3 { margin: 0 0 18px; font-size: 30px; }
+    .todo-form { display: flex; gap: 8px; }
+    .todo-form input { min-width: 0; min-height: 44px; flex: 1; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
+    .todo-form button { min-height: 44px; border: 0; border-radius: 10px; padding: 0 14px; background: var(--accent); color: white; cursor: pointer; }
+    .todo-list { display: grid; gap: 7px; margin: 18px 0 0; padding: 0; list-style: none; }
+    .todo-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 9px; padding: 9px; border-radius: 10px; background: var(--surface-2); font-size: 13px; }
+    .todo-row.done span { color: var(--muted); text-decoration: line-through; }
+    .todo-row button { border: 0; background: transparent; color: var(--red); cursor: pointer; }
+    .sim-inspector { min-width: 0; padding: 22px; background: var(--code); color: var(--code-ink); }
+    .sim-inspector h3 { margin: 0 0 4px; font-size: 18px; }
+    .sim-inspector > p { margin: 0 0 18px; color: #aaaabd; font-size: 12px; }
+    .sim-state { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; padding: 10px; border: 1px solid #343449; border-radius: 10px; font: 11px var(--mono); }
+    .sim-state strong { color: #9d9dff; }
+    .event-log { max-height: 350px; overflow: auto; margin: 0; padding: 0; list-style: none; font: 11px/1.55 var(--mono); }
+    .event-log li { padding: 7px 0; border-bottom: 1px solid #2c2c3b; color: #c9c9db; overflow-wrap: anywhere; }
+    .event-log time { margin-right: 8px; color: #9494aa; }
+
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 18px; }
+    table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: 13px; }
+    th, td { padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); background: var(--surface-2); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+    tr:last-child td { border-bottom: 0; }
+    td code { color: var(--accent-strong); font-size: 12px; }
+
+    .do-dont { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .practice { padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+    .practice h3 { margin: 0 0 16px; }
+    .practice ul { margin: 0; padding-left: 20px; }
+    .practice li { margin: 9px 0; color: var(--muted); }
+    .practice.do h3 { color: var(--green); }
+    .practice.dont h3 { color: var(--red); }
+
+    .gap-list { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .gap-item { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); }
+    .gap-icon { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 8px; background: var(--amber-soft); color: var(--amber); font-size: 12px; }
+    .gap-item strong { display: block; margin-bottom: 3px; font-size: 14px; }
+    .gap-item span { color: var(--muted); font-size: 12px; }
+
+    .appendix { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .appendix a { padding: 22px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); color: var(--ink); text-decoration: none; }
+    .appendix a:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .appendix small { color: var(--accent-strong); font-weight: 800; }
+    .appendix h3 { margin: 20px 0 7px; }
+    .appendix p { margin: 0; color: var(--muted); font-size: 13px; }
+
+    footer { margin-top: 84px; padding: 28px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+
+    @media (max-width: 1120px) {
+      .page { grid-template-columns: 1fr; }
+      .toc { display: none; }
+      .hero { grid-template-columns: 1fr .7fr; }
+      .shell-explorer { grid-template-columns: 1fr; }
+      .zone-detail { min-height: auto; }
+    }
+    @media (max-width: 800px) {
+      .topbar-inner { flex-wrap: wrap; gap: 8px; padding: 10px 0; }
+      .doc-nav { order: 3; width: 100%; margin: 0; }
+      .hero { grid-template-columns: 1fr; min-height: 0; padding: 54px 0; }
+      .section-head { grid-template-columns: 1fr; gap: 10px; }
+      .three-cards, .appendix { grid-template-columns: 1fr; }
+      .mock-window { grid-template-columns: 132px 1fr; min-height: 500px; }
+      .mock-sidebar { padding-inline: 6px; }
+      .zone-button { padding-inline: 7px; }
+      .zone-icon { display: none; }
+      .surface-frame { padding: 18px; }
+      .life-grid { grid-template-columns: 1fr; }
+      .life-steps { grid-template-columns: repeat(4, minmax(110px, 1fr)); overflow-x: auto; }
+      .simulator { grid-template-columns: 1fr; }
+      .sim-stage { border-right: 0; border-bottom: 1px solid var(--line); }
+      .do-dont, .gap-list { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      .page, .topbar-inner { width: min(100% - 22px, 1460px); }
+      h1 { font-size: 43px; }
+      .status-card { padding: 20px; }
+      section.doc-section { padding-top: 56px; }
+      .mock-window { grid-template-columns: 98px 1fr; min-height: 470px; }
+      .zone-button { font-size: 11px; }
+      .mock-main { padding: 10px; }
+      .surface-panes { grid-template-columns: 1fr; }
+      .surface-panes div:first-child { display: none; }
+      .sim-window { grid-template-columns: 96px 1fr; }
+      .sim-side .sim-brand { overflow: hidden; }
+      .sim-view { padding: 14px; }
+      .todo-form { flex-direction: column; }
+      .todo-form button { min-height: 44px; }
+      .life-steps { grid-template-columns: repeat(8, 128px); }
+      .life-detail { padding: 22px; }
+      .event-line { grid-template-columns: 1fr; gap: 4px; }
+    }
+
+    @media print {
+      :root, html[data-theme="dark"] { --bg: #fff; --surface: #fff; --surface-2: #f5f5f8; --ink: #111; --muted: #555; --line: #ddd; --accent: #4444c7; --accent-strong: #333399; --code: #f5f5f8; --code-ink: #111; }
+      .topbar, .toc, .hero-actions, .copy-button, .sim-controls, .no-print { display: none !important; }
+      .page { display: block; width: 100%; }
+      main { padding: 0; }
+      .hero { min-height: 0; grid-template-columns: 1fr; padding: 20px 0; }
+      .hero::after { display: none; }
+      section.doc-section { padding-top: 35px; break-inside: avoid; }
+      .shell-explorer, .simulator { grid-template-columns: 1fr; }
+      .zone-detail, .sim-inspector { display: none; }
+      .code-panel { display: block !important; break-inside: avoid; }
+      .code-panel::before { content: attr(data-title); display: block; padding: 10px 24px; color: #333; font-weight: 700; background: #eee; }
+      pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+    }
+  </style>
+</head>
+<body>
+<div style="position:sticky;top:0;z-index:9999;background:#b45309;color:#fff;padding:10px 16px;font:600 14px/1.5 system-ui;">本页是手工维护的交互快照，内容可能落后于同名 .md——平台合同一律以 Markdown 版为准（横幅添加于 2026-08-13，当时已知本页未同步 http.fetch@1 等 1.2 内容）。</div>
+
+  <a class="skip-link" href="#main">跳到正文</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">R</span>App Platform v1.1</a>
+      <nav class="doc-nav" aria-label="App Platform v1.1 文档">
+        <a href="app-development-guide-v1.html" aria-current="page">开发指南</a>
+        <a href="distribution-policy-v1.html">发行渠道</a>
+        <a href="runtime-dependencies-v1.html">运行依赖</a>
+        <a href="network-billing-policy-v1.html">网络与计费</a>
+      </nav>
+      <div class="top-actions">
+        <button class="icon-button" id="themeButton" type="button" aria-label="切换浅色或深色主题" aria-pressed="false" title="切换主题"><span aria-hidden="true">◐</span></button>
+        <button class="icon-button" id="printButton" type="button" aria-label="⌘P 打印或保存为 PDF" title="打印"><span aria-hidden="true">⌘P</span></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="page">
+    <aside class="toc" aria-label="本文目录">
+      <p>开发指南</p>
+      <a href="#plain">先说人话</a>
+      <a href="#ui-map">界面与接口</a>
+      <a href="#from-zero">从无到有</a>
+      <a href="#code">To-Do 代码</a>
+      <a href="#starter">完整 Starter</a>
+      <a href="#lifecycle">生命周期</a>
+      <a href="#simulator">运行模拟</a>
+      <a href="#triggers">触发与接口</a>
+      <a href="#data-runtime">存储与后台</a>
+      <a href="#errors-tools">错误与开发工具</a>
+      <a href="#platform-c1">平台机制与通知</a>
+      <a href="#practice">最佳实践</a>
+      <a href="#gaps">当前缺口</a>
+      <a href="#appendix">政策附录</a>
+    </aside>
+
+    <main id="main">
+      <section class="hero" id="top" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">ReAI App Developer Guide · Design v1.1</p>
+          <h1 id="page-title">从 0 做一个<br>To-Do List</h1>
+          <p class="hero-copy">先看懂 App 在 Design 界面的哪个位置，再用 Manifest、Surface、Command 和生命周期把它接进 Host。</p>
+          <div class="hero-actions">
+            <a class="button primary" href="#ui-map">先看界面边界</a>
+            <a class="button" href="app-development-guide-v1.md">阅读 Markdown</a>
+            <a class="button" href="#" data-unavailable="原 Board 仓库内 design/VoiceType_UI_Designs.html；未迁入">打开 Design 原型</a>
+          </div>
+        </div>
+        <aside class="status-card" aria-label="协议实现状态">
+          <span class="status-label">目标合同 · 基础子集已实现</span>
+          <h2>基础插件链路可运行，目标能力仍分阶段开放</h2>
+          <p>当前实操请先读 <a href="plugin-development-v1.md">Driver V2 插件开发指南</a> 与 <a href="plugin-api-reference-v1.md">接口参考</a>；本页同时保留尚未实现的目标合同。</p>
+          <div class="status-list">
+            <div class="status-row"><span>Design 壳层</span><strong>已有原型</strong></div>
+            <div class="status-row"><span>硬件触发语义</span><strong>已有基础</strong></div>
+            <div class="status-row"><span>App SDK / Surface</span><strong>基础链路已实现</strong></div>
+            <div class="status-row"><span>Mock Host / CLI</span><strong>核心四条已实现</strong></div>
+            <div class="status-row"><span>插件权限 / 通知</span><strong>两项权限已开放</strong></div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="doc-section" id="plain">
+        <div class="section-head">
+          <p class="section-kicker">00 · 先说人话</p>
+          <div>
+            <h2>开发者只管右侧 App 空间</h2>
+            <p>左侧壳层由 Host 管。App 声明入口、渲染自己的 Surface，并把动作注册成 Command。</p>
+          </div>
+        </div>
+        <p class="plain-language"><strong>一个 ReAI App 做三件事：</strong>用 Manifest 说明“我是谁”，在 Host 给出的右侧工作区画自己的界面，再注册 Command 让鼠标或硬件能调用功能。</p>
+        <p class="plain-language" style="margin-top:16px"><strong>Host 是架构规则，不是某个目录：</strong>未来唯一桌面 Host 通过每款硬件自己的 SDK / Provider 接入设备。当前根目录产品计划退役，<code>driver/</code> 是首个 SDK 探索；开发合同不绑定二者。AI Board 01 只是可选增强，没有它 App 也能走普通软件与键盘逻辑。</p>
+        <div class="three-cards" style="margin-top:16px">
+          <article class="mini-card"><span class="number">01 / MANIFEST</span><h3>声明入口</h3><p>名称、图标、侧栏项、Surface、Command、权限和兼容范围。</p></article>
+          <article class="mini-card"><span class="number">02 / SURFACE</span><h3>渲染界面</h3><p>只在 Host 给出的 root 内工作；页面、列表和局部抽屉归 App。</p></article>
+          <article class="mini-card"><span class="number">03 / COMMAND</span><h3>接收动作</h3><p>侧栏、按钮和硬件最终都调用有稳定 ID 的 Command。</p></article>
+        </div>
+      </section>
+
+      <section class="doc-section" id="ui-map">
+        <div class="section-head">
+          <p class="section-kicker">01 · 界面与接口</p>
+          <div>
+            <h2>点一下，看看每个位置归谁</h2>
+            <p>这里直接把 Design 界面翻译成开发边界。App 可以声明侧栏入口，但不能操作侧栏本身。</p>
+          </div>
+        </div>
+
+        <div class="shell-explorer">
+          <div class="mock-window" aria-label="ReAI Host 界面区域示意">
+            <aside class="mock-sidebar">
+              <div class="window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+              <button class="zone-button" type="button" data-zone="home" aria-pressed="false"><span class="zone-icon">⌂</span>Home</button>
+              <p class="zone-label">Apps</p>
+              <button class="zone-button" type="button" data-zone="apps" aria-pressed="false"><span class="zone-icon">A</span>Voice</button>
+              <button class="zone-button todo" type="button" data-zone="apps" aria-pressed="false"><span class="zone-icon">✓</span>To-Do</button>
+              <button class="zone-button" type="button" data-zone="store" aria-pressed="false"><span class="zone-icon">＋</span>Browse Extensions</button>
+              <button class="zone-button" type="button" data-zone="installed" aria-pressed="false"><span class="zone-icon">↓</span>Extensions · Installed</button>
+              <div class="zone-grow"></div>
+              <button class="zone-button" type="button" data-zone="media" aria-pressed="false"><span class="zone-icon">▶</span>Mini Player</button>
+              <button class="zone-button" type="button" data-zone="device" aria-pressed="false"><span class="zone-icon">⌨</span>Devices</button>
+              <button class="zone-button" type="button" data-zone="account" aria-pressed="false"><span class="zone-icon">●</span>Account</button>
+            </aside>
+            <div class="mock-main">
+              <div class="surface-frame" role="button" tabindex="0">
+                <span class="surface-tag">surface.root · app.main</span>
+                <h3>你的 App 在这里</h3>
+                <p>列表、详情、空状态和局部抽屉，都只能出现在这个边界内。</p>
+                <div class="surface-panes" aria-hidden="true"><div>App 内列表</div><div>App 主内容 / 局部抽屉</div></div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="zone-detail" aria-live="polite">
+            <span class="zone-owner" id="zoneOwner">APP OWNED</span>
+            <h3 id="zoneTitle">App 主工作区</h3>
+            <p id="zoneDescription">这是普通 App 的主要渲染边界。Host 保留窗口外框，App 在 root 内自由组织页面。</p>
+            <div class="detail-block"><span>开发接口</span><code id="zoneApi">ctx.surfaces.register("main", handler)</code></div>
+            <div class="detail-block"><span>触发时机</span><strong id="zoneTrigger">用户点侧栏，或 Command 请求打开</strong></div>
+            <div class="detail-block"><span>禁止事项</span><strong id="zoneNo">越过 root、污染 Host CSS、接管全局 Esc</strong></div>
+          </aside>
+        </div>
+
+        <h3 style="margin:30px 0 12px;font-size:22px">Design 里的全局层</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>全局层</th><th>普通 App 能做什么</th><th>公开合同 / 状态</th><th>什么时候触发</th></tr></thead>
+            <tbody>
+              <tr><td>Voice Input</td><td>Host 绘制；已安装并启用的 Voice App 提供能力</td><td><code>VoiceSurfaceProvider.input</code></td><td>普通快捷键或已配置的硬件语音键</td></tr>
+              <tr><td>Voice Command</td><td>Voice App 接收结构化 Command</td><td><code>VoiceSurfaceProvider.command</code></td><td>普通快捷键或已配置的硬件语音键</td></tr>
+              <tr><td>Tab 全局层</td><td>提交结构化候选，不能绘制全屏 UI</td><td><code>TabProvider.list(query)</code></td><td>任意位置按 Tab</td></tr>
+              <tr><td>短按 Action</td><td>给当前 App 已登记的 Dock 提交能力</td><td><code>DockCapabilityProvider</code></td><td>有待确认先展开，否则开 Dock 菜单</td></tr>
+              <tr><td>长按 Action</td><td>不能接管截图和录音；只接收 Host 产物</td><td><code>ScreenExplanationArtifact</code></td><td>长按越过阈值</td></tr>
+              <tr><td>Title Bar</td><td>声明状态与最多 3 个白名单 AppIcon / 文本动作；不能注入 DOM</td><td><code>contributes.titlebarStatus/titlebarActions</code>（已开放）</td><td>当前 Surface Ready；常驻或整条标题栏 hover / 键盘 focus</td></tr>
+              <tr><td>Media 输入</td><td>不直接取得原始麦克风；Host 管权限和隐私状态</td><td><code>MediaInputSession</code></td><td>用户明确授权输入会话</td></tr>
+              <tr><td>Media 输出</td><td>提交播放会话，Host 决定 Mini Player</td><td><code>MediaSession.publish()</code></td><td>App 开始可控的音频播放</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="plain-language" style="margin-top:16px"><strong>能力状态：</strong>Voice 是推荐安装、允许停用和卸载的第一方 App，不是 Host 强制组件。Title Bar 动作已按 Host 托管声明式合同开放；表中其余 Provider 名仍只锁定设计方向，使用前必须以支持矩阵和接口参考为准。</p>
+      </section>
+
+      <section class="doc-section" id="from-zero">
+        <div class="section-head">
+          <p class="section-kicker">02 · 从无到有</p>
+          <div>
+            <h2>六步走完开发链路</h2>
+            <p>开发期可以使用任意构建工具；正式 Package 只带 Manifest、编译后 UI 和静态资源，不能要求用户安装 Node。</p>
+          </div>
+        </div>
+        <div class="roadmap" aria-label="App 开发步骤">
+          <article class="road-step"><b>01</b><strong>创建目录</strong><span>源代码、资源、测试和 dist 分开</span></article>
+          <article class="road-step"><b>02</b><strong>写 Manifest</strong><span>声明入口、能力和安全边界</span></article>
+          <article class="road-step"><b>03</b><strong>实现 Surface</strong><span>在 root 内渲染第一屏</span></article>
+          <article class="road-step"><b>04</b><strong>注册 Command</strong><span>接通按钮和硬件动作</span></article>
+          <article class="road-step"><b>05</b><strong>合同测试</strong><span>核对声明与实际注册一致</span></article>
+          <article class="road-step"><b>06</b><strong>打包审核</strong><span>受控构建、签名与发布</span></article>
+        </div>
+      </section>
+
+      <section class="doc-section" id="code">
+        <div class="section-head">
+          <p class="section-kicker">03 · To-Do 代码</p>
+          <div>
+            <h2>Manifest、生命周期、界面三件套</h2>
+            <p>切换标签查看最小合同。当前 SDK 为 <code>@reai/app-sdk/v1</code>，仓库内已经提供实现、Mock Host 与合同测试。</p>
+          </div>
+        </div>
+
+        <div class="code-shell">
+          <div class="code-toolbar">
+            <div class="code-tabs" role="tablist" aria-label="To-Do 示例文件">
+              <button class="code-tab" type="button" role="tab" aria-selected="true" aria-controls="codeManifest" data-code="manifest" tabindex="0">app.manifest.json</button>
+              <button class="code-tab" type="button" role="tab" aria-selected="false" aria-controls="codeApp" data-code="app" tabindex="-1">src/app.ts</button>
+              <button class="code-tab" type="button" role="tab" aria-selected="false" aria-controls="codeView" data-code="view" tabindex="-1">src/todo-view.ts</button>
+            </div>
+            <button class="copy-button" id="copyCode" type="button">复制当前代码</button>
+          </div>
+          <div class="code-panel active" id="codeManifest" role="tabpanel" data-panel="manifest" data-title="app.manifest.json"><pre><code>{
+  "manifestVersion": "1.1",
+  "appId": "com.example.todo",
+  "version": "1.0.0",
+  "publisherId": "example",
+  "name": "To-Do List",
+  "description": "一个只保存在本机的待办事项 App",
+  "icon": "assets/icon.svg",
+  "targets": [
+    { "platform": "macos", "architectures": ["aarch64", "x86_64"] },
+    { "platform": "windows", "architectures": ["aarch64", "x86_64"] }
+  ],
+  "hostApi": { "range": ">=1.1.0 &lt;2.0.0" },
+  "requires": {
+    "hostCapabilities": [
+      "surface.main@1",
+      "sidebar.item@1",
+      "storage.kv@1",
+      "commands@1",
+      "apps.intent@1",
+      "bindings.recommended@1"
+    ],
+    "hardwareServices": [{
+      "id": "com.reai.hardware.board01",
+      "sdkApi": "^1.0.0",
+      "capabilities": ["controls.binding@1"],
+      "purpose": "允许用户把 AI Board 01 New 键绑定为新建待办",
+      "grantDuration": "while_enabled",
+      "optional": true,
+      "requiredFor": ["binding:board01-new-task"]
+    }],
+    "appIntents": []
+  },
+  "runtime": {
+    "components": [{
+      "id": "ui",
+      "kind": "web-surface",
+      "protocol": "web-surface@1",
+      "required": true,
+      "headless": false,
+      "activation": "on-demand",
+      "entry": "dist/app.js",
+      "dependsOn": [],
+      "lifecycle": {
+        "activate": "default.activate",
+        "deactivate": "default.deactivate"
+      }
+    }]
+  },
+  "permissions": [],
+  "requirementsVersion": "1.1",
+  "requirements": [],
+  "network": { "policyVersion": 1, "endpoints": [] },
+  "billing": { "mode": "none" },
+  "data": {
+    "privateStores": [{ "id": "tasks", "schemaVersion": 1 }],
+    "imports": [],
+    "exports": []
+  },
+  "dataCompatibility": { "rollbackFloor": "1.0.0" },
+  "contributes": {
+    "surfaces": [{
+      "id": "main",
+      "componentId": "ui",
+      "location": "app.main",
+      "title": "To-Do List"
+    }],
+    "sidebarItems": [{
+      "id": "todo",
+      "label": "To-Do",
+      "icon": "assets/icon.svg",
+      "opens": "surface:main"
+    }],
+    "commands": [{
+      "id": "com.example.todo.new",
+      "componentId": "ui",
+      "title": "新建待办",
+      "inputSchema": { "type": "object", "additionalProperties": false },
+      "outputSchema": {
+        "type": "object",
+        "properties": { "status": { "const": "ok" } },
+        "required": ["status"],
+        "additionalProperties": false
+      },
+      "timeoutMs": 5000,
+      "supportsCancellation": true,
+      "concurrency": "serial",
+      "idempotency": "not-idempotent",
+      "callers": ["host", "user"]
+    }],
+    "intents": [{
+      "id": "new-task",
+      "version": "1.0.0",
+      "componentId": "ui",
+      "opens": "surface:main",
+      "inputSchema": { "type": "object", "additionalProperties": false }
+    }],
+    "recommendedBindings": [
+      {
+        "id": "keyboard-new-task",
+        "trigger": {
+          "kind": "system-shortcut",
+          "shortcut": "Primary+Shift+N"
+        },
+        "command": "com.example.todo.new",
+        "description": "即使没有 ReAI 硬件，也可通过普通键盘触发"
+      },
+      {
+        "id": "board01-new-task",
+        "trigger": {
+          "kind": "hardware-control",
+          "hardwareService": "com.reai.hardware.board01",
+          "control": "key.new"
+        },
+        "command": "com.example.todo.new",
+        "description": "有 AI Board 01 时可把 New 键绑定到新建待办"
+      }
+    ]
+  }
+}</code></pre></div>
+          <div class="code-panel" id="codeApp" role="tabpanel" data-panel="app" data-title="src/app.ts"><pre><code>import { defineApp, AppError } from "@reai/app-sdk/v1";
+import { mountTodoView } from "./todo-view";
+
+export default defineApp({
+  async activate(ctx) {
+    const tasks = ctx.storage.private("tasks");
+
+    ctx.commands.register("com.example.todo.new", async ({ signal }) =&gt; {
+      await ctx.surfaces.open(
+        "main",
+        { intent: { type: "new-task" } },
+        { signal },
+      );
+      return { status: "ok" };
+    });
+
+    ctx.surfaces.register("main", async (surface) =&gt; {
+      let items;
+      try {
+        items = (await tasks.get("items")) ?? [];
+      } catch (cause) {
+        surface.fail(new AppError({
+          code: "com.example.todo/STORAGE_READ_FAILED",
+          userMessage: "无法读取待办事项",
+          retryable: true,
+          cause,
+        }));
+        return;
+      }
+
+      let view;
+      let offIntent;
+      try {
+        const mountedView = mountTodoView(surface.root, {
+          items,
+          onItemsChanged: (next) =&gt; tasks.set("items", next),
+          onPersistenceError: (cause) =&gt; surface.reportError(new AppError({
+            code: "com.example.todo/STORAGE_WRITE_FAILED",
+            userMessage: "保存失败，请重试。",
+            retryable: true,
+            cause,
+          })),
+        });
+        view = mountedView;
+
+        const applyIntent = (intent) =&gt; {
+          if (intent?.type === "new-task") mountedView.focusNewTaskInput();
+        };
+        applyIntent(surface.initialIntent);
+        offIntent = surface.onIntent(applyIntent);
+
+        surface.ready();
+      } catch (cause) {
+        offIntent?.();
+        view?.dispose();
+        surface.fail(new AppError({
+          code: "com.example.todo/SURFACE_INIT_FAILED",
+          userMessage: "无法打开待办事项",
+          retryable: true,
+          cause,
+        }));
+        return;
+      }
+
+      return () =&gt; {
+        offIntent?.();
+        view?.dispose();
+      };
+    });
+  },
+
+  async deactivate() {
+    // 清理 App 自己创建的计时器、连接和观察器。
+  },
+});</code></pre></div>
+          <div class="code-panel" id="codeView" role="tabpanel" data-panel="view" data-title="src/todo-view.ts"><pre><code>export function mountTodoView(root, options) {
+  let items = [...options.items];
+  let saving = false;
+  let disposed = false;
+  const page = document.createElement("main");
+  const form = document.createElement("form");
+  const input = document.createElement("input");
+  input.id = "todo-new-task";
+  input.name = "todo-title";
+  const add = document.createElement("button");
+  const list = document.createElement("ul");
+  const status = document.createElement("p");
+
+  input.placeholder = "要做什么？";
+  input.setAttribute("aria-label", "新待办内容");
+  add.type = "submit";
+  add.textContent = "添加";
+  status.setAttribute("role", "status");
+  form.append(input, add);
+  page.append(form, status, list);
+  root.replaceChildren(page);
+
+  const save = async (next) =&gt; {
+    if (saving || disposed) return false;
+    saving = true;
+    status.textContent = "正在保存…";
+    render();
+    try {
+      await options.onItemsChanged(next);
+      if (disposed) return false;
+      items = next;
+      status.textContent = "已保存";
+      return true;
+    } catch (cause) {
+      options.onPersistenceError?.(cause);
+      if (!disposed) status.textContent = "保存失败，请重试。";
+      return false;
+    } finally {
+      saving = false;
+      if (!disposed) render();
+    }
+  };
+
+  const render = () =&gt; {
+    input.disabled = saving;
+    add.disabled = saving;
+    list.replaceChildren();
+    for (const item of items) {
+      const row = document.createElement("li");
+      const toggle = document.createElement("input");
+      const label = document.createElement("span");
+      toggle.type = "checkbox";
+      toggle.checked = item.done;
+      toggle.disabled = saving;
+      label.textContent = item.title;
+      toggle.addEventListener("change", () =&gt; void save(
+        items.map((current) =&gt; current.id === item.id
+          ? { ...current, done: toggle.checked }
+          : current),
+      ));
+      row.append(toggle, label);
+      list.append(row);
+    }
+  };
+
+  const onSubmit = async (event) =&gt; {
+    event.preventDefault();
+    const title = input.value.trim();
+    if (!title) return;
+    const saved = await save([...items, {
+      id: crypto.randomUUID(),
+      title,
+      done: false,
+    }]);
+    if (saved) input.value = "";
+  };
+
+  form.addEventListener("submit", onSubmit);
+  render();
+  return {
+    focusNewTaskInput: () =&gt; input.focus(),
+    dispose() {
+      disposed = true;
+      form.removeEventListener("submit", onSubmit);
+      root.replaceChildren();
+    },
+  };
+}</code></pre></div>
+          <p class="code-note">这是开发者维护的 Source Manifest。Runtime 可以由多个 Component 组成；pack / 发布系统按 target 生成 Package 与 release-envelope.json，绑定 Manifest 摘要、Package 摘要、构建 ID 和发布签名。</p>
+        </div>
+        <div class="three-cards" style="margin-top:16px">
+          <article class="mini-card"><span class="number">COMPOSITE RUNTIME</span><h3>一个 App 可有多个组件</h3><p>组件固定声明 <code>id / kind / protocol / required / headless / activation</code>；<code>web-surface@1</code> 入口统一为 ESM JavaScript。</p></article>
+          <article class="mini-card"><span class="number">HEADLESS</span><h3>无页面也能管理</h3><p>没有 Surface 的 App 仍出现在 <strong>Extensions → Installed</strong>，可查看状态、权限、错误并启停或卸载。</p></article>
+          <article class="mini-card"><span class="number">PERMISSIONS</span><h3>能力不等于授权</h3><p>Host、OS、数据、后台、网络、硬件和文件七类分项授权；能力存在不代表用户已经同意。</p></article>
+        </div>
+        <div class="code-shell" style="margin-top:16px"><pre><code>{
+  "id": "voice-microphone",
+  "kind": "os",
+  "componentId": "voice-worker",
+  "capability": "os.microphone.capture@1",
+  "purpose": "录制用户主动发起的语音输入",
+  "required": true,
+  "requiredFor": ["command:voice-capture"],
+  "grantDuration": "while_enabled",
+  "platforms": ["macos", "windows"]
+}</code></pre></div>
+        <p class="plain-language" style="margin-top:16px"><code>permissions[]</code> 只承载需要用户授权的 Host、OS、后台与文件能力；网络、数据共享和硬件使用各自的结构化声明。<code>grantDuration</code> 只允许 once / session / while_enabled / until_revoked，用户始终能撤销。</p>
+        <h3 style="margin:28px 0 12px;font-size:22px">Driver V2 当前权限子集（2026-08-09）</h3>
+        <p class="plain-language"><strong>目标合同与当前实现要分开：</strong>上面的完整对象描述 v1.1 目标；Driver V2 当前 Manifest 只接受 <code>{ id, purpose, required }</code>，开放 <code>account.status@1</code> 与 <code>os.notification.post@1</code> 两项本机设备级插件权限。</p>
+        <div class="table-wrap" style="margin-top:16px">
+          <table>
+            <caption>Driver V2 当前开放的插件权限</caption>
+            <thead><tr><th>权限</th><th>SDK</th><th>当前边界</th></tr></thead>
+            <tbody>
+              <tr><td><code>account.status@1</code></td><td><code>ctx.account.status()</code></td><td>只返回账户功能是否启用、当前是否登录；不返回身份、Team、余额或 Token。</td></tr>
+              <tr><td><code>os.notification.post@1</code></td><td><code>ctx.notifications.post({ title, body })</code></td><td>只提交纯文本通知；插件不能申请系统授权，也拿不到 Tauri notification JS API。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="do-dont" style="margin-top:16px">
+          <div class="code-shell"><pre><code>"permissions": [
+  {
+    "id": "os.notification.post@1",
+    "purpose": "任务完成后提醒用户回来查看结果",
+    "required": false
+  }
+]
+
+await ctx.notifications.post({
+  title: "任务已完成",
+  body: "打开 ReAI Board 查看结果"
+});</code></pre></div>
+          <article class="practice">
+            <h3>授权必须由用户发起</h3>
+            <p>通知调用依次经过有效会话、Manifest 声明、当前插件的用户授权和系统通知授权。Host 启动只查询、不申请；macOS 用户必须点击首次引导中的“开启通知”或设置页的“允许通知”才会请求系统授权。首次未决定时直接弹出系统确认；已拒绝后只能由用户从系统设置重新开启。</p>
+            <p style="margin-top:12px">标题最多 80 字符、正文最多 500 字符；Host 加入插件名与 appId 指纹，每插件每 10 秒最多发起 5 次通知请求。<code>{ queued: true }</code> 只表示加入本地发送队列。</p>
+            <p style="margin-top:12px">Windows/其他非 macOS 构建当前暂由 Host 视为系统通知已授权，但插件自己的 Manifest 声明与用户授权仍不可省略。appId 指纹用于追踪来源；插件显示名不是可信发布者身份。</p>
+          </article>
+        </div>
+        <div class="table-wrap" style="margin-top:16px">
+          <table>
+            <caption>v1.1 Contribution Registry</caption>
+            <thead><tr><th>贡献</th><th>负责什么</th><th>关键规则</th></tr></thead>
+            <tbody>
+              <tr><td><code>surfaces / sidebarItems</code></td><td>页面与侧栏入口</td><td>页面代码绑定 <code>componentId</code></td></tr>
+              <tr><td><code>commands / intents</code></td><td>动作与跨 App 跳转</td><td>输入输出有版本、Schema、超时和调用方</td></tr>
+              <tr><td><code>recommendedBindings</code></td><td>普通快捷键与硬件控制项建议</td><td>只贡献建议，不覆盖用户有效绑定</td></tr>
+              <tr><td><code>contextProviders / services / settings / mediaSessions / tabProviders / dockCapabilities / badges / attention</code></td><td>后续 Capability 方向</td><td>当前是保留名称；写入 v1.1 Manifest 必须返回 <code>HOST_CAPABILITY_NOT_AVAILABLE</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="plain-language" style="margin-top:16px"><strong>安全边界：</strong>每个 App UI 必须运行在独立 renderer / security origin；<code>surface.root</code> 属于该隔离文档。App 拿不到 Host DOM、Tauri 原生命令或直通网络，只能通过带 App 身份和 Capability 的 SDK Bridge 调用 Host。</p>
+        <div class="table-wrap" style="margin-top:16px">
+          <table>
+            <caption>v1.1 最小 Sandbox 合同</caption>
+            <thead><tr><th>项目</th><th>默认规则</th></tr></thead>
+            <tbody>
+              <tr><td>CSP</td><td><code>default-src 'self'</code>、<code>connect-src 'none'</code>；禁用 eval，网络只走 Broker。</td></tr>
+              <tr><td>导航 / 下载</td><td>只允许同源导航；外部 HTTPS 由 Host 确认；下载默认拒绝并走 Export Capability。</td></tr>
+              <tr><td>剪贴板 / 文件</td><td>只能用 Broker；文件选择返回有范围、可撤销的 Handle。</td></tr>
+              <tr><td>Worker</td><td>只加载同 Package、同 security origin 的代码，并计入 Component 资源预算。</td></tr>
+              <tr><td>Bridge</td><td>目标合同为双向 1 MiB 与可取消调用；当前只对 Host→插件事件执行 1 MiB，插件→Host 请求和 Host 超时取消仍待补齐。</td></tr>
+              <tr><td>身份 / 崩溃</td><td>Host 注入不可伪造的 App、Component 与 Session 身份；组件崩溃不拖垮 Host。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="table-wrap" style="margin-top:16px">
+          <table>
+            <caption>Surface 嵌入合同</caption>
+            <thead><tr><th>项目</th><th>v1.1 规则</th></tr></thead>
+            <tbody>
+              <tr><td>尺寸</td><td>Host 提供右侧工作区视口；App 根节点填满可用宽高，不假设固定窗口尺寸。</td></tr>
+              <tr><td>滚动</td><td>App 只管理自己 Surface 内的滚动，不能推动 Host 侧栏或窗口根节点。</td></tr>
+              <tr><td>主题</td><td>Host 通过版本化 CSS Token 与 <code>color-scheme</code> 提供主题；App 不读取 Host 样式表。</td></tr>
+              <tr><td>Resize</td><td>App 监听自己根节点的 <code>ResizeObserver</code> 做响应式布局，不依赖 Host DOM 尺寸。</td></tr>
+              <tr><td>焦点</td><td>普通打开不抢焦点；只有明确 intent（如“新建待办”）才聚焦指定控件。</td></tr>
+              <tr><td>浮层</td><td>App 内 Dialog / Popover 留在隔离 Surface；系统权限、设备和账号浮层由 Host 绘制。</td></tr>
+              <tr><td>导航</td><td>App 登记自己的局部导航层；Esc 先关闭最内层，再交还 Host。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="plain-language" style="margin-top:16px"><code>surface.navigation.pushLayer()</code> 与非致命诊断的 <code>surface.reportError()</code> 都属于 <code>surface.main@1</code> 子合同，不是额外权限，也不需要在 Manifest 重复声明；它们是 Design v1.1 目标接口，当前尚未实现。</p>
+      </section>
+
+      <section class="doc-section" id="starter">
+        <div class="section-head">
+          <p class="section-kicker">04 · 完整 Starter</p>
+          <div>
+            <h2>目录里每个文件都给出来</h2>
+            <p>不只给三段片段：样例目录还包含图标、样式、TypeScript 配置、开发命令和合同测试。</p>
+          </div>
+        </div>
+        <div class="code-shell">
+          <pre><code>todo-app/
+├── app.manifest.json
+├── assets/icon.svg
+├── src/app.ts
+├── src/todo-view.ts
+├── src/todo.css
+├── tests/contract.suite.ts
+├── package.json
+└── tsconfig.json</code></pre>
+        </div>
+        <div class="three-cards" style="margin-top:16px">
+          <article class="mini-card"><span class="number">BUILD</span><h3>目标开发命令</h3><p><code>validate</code> → <code>contract-test</code> → <code>dev</code> → <code>pack</code>。</p></article>
+          <article class="mini-card"><span class="number">PACKAGE</span><h3>用户不装 Node</h3><p>正式包只含 Manifest、<code>dist/</code> 和 <code>assets/</code>；构建工具不进入运行依赖。</p></article>
+          <article class="mini-card"><span class="number">STATUS</span><h3>样例可独立交付</h3><p>SDK、CLI 与 Mock Host 已落地；样例住在 <code>plugins/examples/todo-app</code>，拥有独立 lock，并在仓库外重复测试、构建、合同测试、确定性打包与 Host 安装生命周期。</p></article>
+        </div>
+        <div class="hero-actions">
+          <a class="button primary" href="../examples/todo-app/README.md">打开完整样例目录说明</a>
+          <a class="button" href="../examples/todo-app/app.manifest.json">查看独立 Manifest</a>
+          <a class="button" href="../examples/todo-app/tests/contract.suite.ts">查看合同测试</a>
+        </div>
+      </section>
+
+      <section class="doc-section" id="lifecycle">
+        <div class="section-head">
+          <p class="section-kicker">05 · 生命周期</p>
+          <div>
+            <h2>点一个阶段，看谁调用谁</h2>
+            <p>安装、启用、打开和卸载不是一个动作。Host 负责状态机，App 只响应明确的运行时回调。</p>
+          </div>
+        </div>
+        <div class="life-grid">
+          <div class="life-steps" id="lifeSteps">
+            <button class="life-step" type="button" data-life="install" aria-pressed="true"><i>01</i><span>安装</span></button>
+            <button class="life-step" type="button" data-life="enable" aria-pressed="false"><i>02</i><span>启用</span></button>
+            <button class="life-step" type="button" data-life="open" aria-pressed="false"><i>03</i><span>打开</span></button>
+            <button class="life-step" type="button" data-life="ready" aria-pressed="false"><i>04</i><span>Ready</span></button>
+            <button class="life-step" type="button" data-life="hide" aria-pressed="false"><i>05</i><span>切走</span></button>
+            <button class="life-step" type="button" data-life="unmount" aria-pressed="false"><i>06</i><span>回收界面</span></button>
+            <button class="life-step" type="button" data-life="update" aria-pressed="false"><i>07</i><span>更新</span></button>
+            <button class="life-step" type="button" data-life="remove" aria-pressed="false"><i>08</i><span>卸载 App</span></button>
+          </div>
+          <article class="life-detail" aria-live="polite">
+            <span class="zone-owner" id="lifeState">PACKAGE · NO CODE</span>
+            <h3 id="lifeTitle">安装：只验证和落盘</h3>
+            <p id="lifeDescription">安装阶段不执行 App 代码。Host 按 Release Envelope 验证签名、Source Manifest 摘要、Package 摘要、兼容性与渠道政策。</p>
+            <div class="event-flow">
+              <div class="event-line"><span>触发</span><code id="lifeTrigger">用户在 Browse Extensions 点击“安装”</code></div>
+              <div class="event-line"><span>Host</span><code id="lifeHost">verify → stage → registry commit</code></div>
+              <div class="event-line"><span>App</span><code id="lifeApp">无回调；禁止 onInstall 脚本</code></div>
+            </div>
+            <div class="life-rule" id="lifeRule">Registry commit 后 installation=installed、activation=disabled；不执行代码，也不自动跳进 App。</div>
+          </article>
+        </div>
+        <div class="table-wrap" style="margin-top:16px">
+          <table>
+            <caption>Core 保存六个正交状态；界面摘要由它们推导</caption>
+            <thead><tr><th>维度</th><th>典型值</th><th>回答的问题</th></tr></thead>
+            <tbody>
+              <tr><td><code>installation</code></td><td>absent / downloading / verifying / staged / installed / removing</td><td>Package 是否已进入 Registry</td></tr>
+              <tr><td><code>activation</code></td><td>disabled / starting / active / stopping</td><td>用户是否允许 App 运行</td></tr>
+              <tr><td><code>health</code></td><td>unknown / healthy / degraded / unhealthy / crash_loop</td><td>各 Runtime Component 是否健康</td></tr>
+              <tr><td><code>permissions</code></td><td>not_required / pending / granted / partial / denied</td><td>授权是否齐全</td></tr>
+              <tr><td><code>dependencies</code></td><td>checking / ready / missing_optional / missing_required / incompatible</td><td>硬件与系统依赖是否满足</td></tr>
+              <tr><td><code>update</code></td><td>idle / available / downloading / ready / applying / blocked / rollback_pending</td><td>是否有更新以及正在做什么</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="plain-language" style="margin-top:16px"><strong>为什么进入 Core：</strong>“已安装、未启用、缺权限、某组件降级、有更新”可以同时成立。<code>activation=active</code> 只表示用户允许 Host 运行 App；按需组件仍可 stopped。required 组件失败聚合为 <code>health=unhealthy</code>，optional 组件失败聚合为 <code>health=degraded</code>，故障不能偷偷改写用户的启用选择。</p>
+      </section>
+
+      <section class="doc-section" id="simulator">
+        <div class="section-head">
+          <p class="section-kicker">06 · 运行模拟</p>
+          <div>
+            <h2>亲手走一遍安装到卸载</h2>
+            <p>这个模拟器把 Design 行为和生命周期事件放在一起。安装、启用和打开是三个独立动作。</p>
+          </div>
+        </div>
+
+        <div class="simulator">
+          <div class="sim-stage">
+            <div class="sim-controls" aria-label="生命周期模拟控制">
+              <button id="simInstall" type="button">1. 安装</button>
+              <button id="simEnable" type="button">2. 启用</button>
+              <button id="simOpen" type="button">3. 打开 To-Do</button>
+              <button id="simCommand" type="button">按 New Command</button>
+              <button id="simHome" type="button">切到 Home</button>
+              <button id="simRemove" type="button">卸载</button>
+            </div>
+            <div class="sim-window">
+              <aside class="sim-side">
+                <p class="sim-brand">ReAI</p>
+                <button class="sim-nav active" id="simHomeNav" type="button">⌂ Home</button>
+                <button class="sim-nav" id="simTodoNav" type="button" hidden>✓ To-Do</button>
+                <button class="sim-nav" type="button">＋ Browse Extensions</button>
+              </aside>
+              <div class="sim-view" id="simView">
+                <div class="sim-message"><strong>Home</strong><br>To-Do 当前可在 Browse Extensions 安装；未安装前不会出现在侧栏。</div>
+              </div>
+            </div>
+          </div>
+          <aside class="sim-inspector">
+            <h3>Developer Inspector</h3>
+            <p>目标工具需要把 Host 与 App 事件按顺序展示出来。</p>
+            <div class="sim-state"><span>installation</span><strong id="simInstallationState">absent</strong></div>
+            <div class="sim-state"><span>activation</span><strong id="simActivationState">disabled</strong></div>
+            <div class="sim-state"><span>health</span><strong id="simHealthState">unknown</strong></div>
+            <div class="sim-state"><span>permissions</span><strong id="simPermissionState">not_required</strong></div>
+            <div class="sim-state"><span>dependencies</span><strong id="simDependencyState">ready</strong></div>
+            <div class="sim-state"><span>update</span><strong id="simUpdateState">idle</strong></div>
+            <div class="sim-state"><span>surfaceState</span><strong id="simSurfaceState">absent</strong></div>
+            <ol class="event-log" id="eventLog" aria-live="polite"></ol>
+          </aside>
+        </div>
+      </section>
+
+      <section class="doc-section" id="triggers">
+        <div class="section-head">
+          <p class="section-kicker">07 · 触发与接口</p>
+          <div>
+            <h2>每个接口在什么情况下触发</h2>
+            <p>开发者不需要猜。Host 负责触发，App 负责在限定时间内完成对应动作。</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>接口</th><th>触发条件</th><th>App 的责任</th><th>用户看到什么</th></tr></thead>
+            <tbody>
+              <tr><td><code>activate(ctx)</code></td><td>明确启用；或已启用 Runtime 被回收后再次打开/调用</td><td>幂等注册 Manifest 声明的 Surface / Command</td><td><code>activation</code> 与组件状态分别更新，摘要由 Host 推导</td></tr>
+              <tr><td><code>surfaces.register("main")</code></td><td>在 activate 期间</td><td>提供 mount handler</td><td>Host 知道如何打开右侧工作区</td></tr>
+              <tr><td><code>surface.ready()</code></td><td>第一屏有意义内容已渲染</td><td>只调用一次</td><td>Host 移除标准 Loading</td></tr>
+              <tr><td><code>surface.fail(error)</code></td><td>必需数据或初始化失败</td><td>给稳定错误码和用户文案</td><td>Host 标准错误页与重试按钮</td></tr>
+              <tr><td><code>surface.onIntent()</code></td><td>已打开的 App 再收到结构化 Intent，或 Command 请求打开现有 Surface</td><td>更新现有 Surface，不重复建 App</td><td>To-Do 聚焦“新待办”输入框</td></tr>
+              <tr><td><code>onVisibilityChange()</code></td><td>切 App、进入或离开全局覆盖层</td><td>暂停非必要动画，保留业务状态</td><td>返回时继续原位置</td></tr>
+              <tr><td><code>mount cleanup</code></td><td>SDK 收到 unmount 时</td><td>移除监听、定时器、观察器和局部层</td><td>目标要求覆盖回收、更新、停用、卸载；当前生产 Host 尚未保证全部送达</td></tr>
+              <tr><td><code>deactivate()</code></td><td>SDK 收到 deactivate 时</td><td>释放 App 级资源，不阻塞退出</td><td>Mock Host 已覆盖；生产 Host 的停用、卸载与退出送达尚未闭环</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="doc-section" id="data-runtime">
+        <div class="section-head">
+          <p class="section-kicker">08 · 存储与后台</p>
+          <div>
+            <h2>To-Do 只用本地存储</h2>
+            <p>它不联网、不收费、没有后台服务。缺少这些能力不是省略，而是 Manifest 明确选择的安全边界。</p>
+          </div>
+        </div>
+        <div class="three-cards">
+          <article class="mini-card"><span class="number">STORAGE</span><h3>默认私有 KV</h3><p><code>ctx.storage.private("tasks")</code> 的真实命名空间由 Host 组合为 <code>appId / tasks</code>，App 不知道磁盘路径。</p></article>
+          <article class="mini-card"><span class="number">RUNTIME</span><h3>一个 UI 组件</h3><p>To-Do 只有 <code>web-surface</code>；复杂 App 可组合 Wasm、远端服务或严格审核的原生 Companion，并独立降级。</p></article>
+          <article class="mini-card"><span class="number">NETWORK + BILLING</span><h3>默认拒绝</h3><p><code>endpoints: []</code> 和 <code>billing.mode: none</code> 表示不得联网，也没有付费解锁。</p></article>
+        </div>
+        <div class="code-shell" style="margin-top:16px"><pre><code>const tasks = ctx.storage.private("tasks");
+
+const items = (await tasks.get("items")) ?? [];
+await tasks.set("items", nextItems);
+
+// Manifest
+"runtime": {
+  "components": [
+    {
+      "id": "ui",
+      "kind": "web-surface",
+      "protocol": "web-surface@1",
+      "required": true,
+      "headless": false,
+      "activation": "on-demand",
+      "entry": "dist/app.js",
+      "lifecycle": { "activate": "default.activate", "deactivate": "default.deactivate" }
+    }
+  ]
+},
+"network": { "policyVersion": 1, "endpoints": [] },
+"billing": { "mode": "none" }</code></pre></div>
+        <div class="table-wrap" style="margin-top:16px">
+          <table>
+            <thead><tr><th>动作</th><th>数据规则</th></tr></thead>
+            <tbody>
+              <tr><td>停用</td><td>保留数据；App 不能运行，Command 不再派发。</td></tr>
+              <tr><td>升级</td><td>版本属于每个命名 Store；任一 <code>schemaVersion</code> 上升都必须走 <code>data.migration</code> 指向的事务型 Hook。</td></tr>
+              <tr><td>卸载</td><td>Host 询问“保留数据 / 同时删除”；App 没有卸载 Hook。</td></tr>
+              <tr><td>跨 App 共享</td><td>默认拒绝。只共享命名 Store + Schema；Importer request 与 Owner export allow 双边声明、同一签名 Publisher、用户同意、Host Broker 审计缺一不可。</td></tr>
+              <tr><td>需要后台</td><td>在 <code>runtime.components[]</code> 显式组合 <code>wasm-component</code>、<code>remote-service</code> 或严格例外的 <code>native-companion</code>。</td></tr>
+              <tr><td>Headless</td><td>Surface 可以为空，但必须在 <code>Extensions → Installed</code> 管理组件健康、权限、错误、启停和卸载。</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="code-shell" style="margin-top:16px"><pre><code>"data": {
+  "privateStores": [
+    { "id": "tasks", "schemaVersion": 2 },
+    { "id": "preferences", "schemaVersion": 1 }
+  ],
+  "migration": {
+    "componentId": "ui",
+    "hook": "default.migrate"
+  }
+}</code></pre></div>
+        <p class="plain-language" style="margin-top:16px"><strong>逐 Store 迁移：</strong>Host 比较旧、新 Manifest，生成 <code>{ id, fromSchemaVersion, toSchemaVersion }</code> 列表并在一次 App 更新事务中交给 Hook。全部成功才提交；任一失败则数据与新 Package 一起回滚。新 Store 从 0 开始，v1.1 不提供降级 Hook。</p>
+        <div class="code-shell" style="margin-top:16px"><pre><code>"requires": {
+  "appIntents": [{
+    "appId": "com.example.todo",
+    "intent": "new-task",
+    "version": "^1.0.0",
+    "required": false,
+    "purpose": "从总览页创建待办"
+  }]
+}
+
+await ctx.apps.open({
+  appId: "com.example.todo",
+  intent: "new-task",
+  version: "1.0.0",
+  payload: {}
+});</code></pre></div>
+        <p class="plain-language" style="margin-top:16px"><strong>跨 App 跳转：</strong>目标 App 在 <code>contributes.intents</code> 声明入口；调用方在 <code>requires.appIntents</code> 写依赖。Manifest 的 <code>inputSchema</code> 只校验 payload；App 不解析 Deep Link。<code>reai-app://…</code> 只是序列化格式，Host 始终校验双方声明、安装、启用、版本和 Payload Schema。</p>
+        <p class="plain-language" style="margin-top:16px"><strong>双边数据授权：</strong>Importer 的请求与 Owner 的允许必须精确匹配，并校验同一签名 Publisher、命名 Store、Schema、operations 和用户同意。这只授权一个方向；若 Owner 也要反向读取，必须再声明一组 import/export。</p>
+        <p class="plain-language" style="margin-top:16px"><strong>按键绑定：</strong>普通系统快捷键与 AI Board 01 Hardware Service 分开。App 只贡献建议；同键多任务必须显示并由用户启用。卸载只移除仍归该 App 的项，绝不恢复整张旧快照覆盖用户后来的修改。</p>
+        <p class="plain-language" style="margin-top:16px"><strong>键位页绑定插件 Command（M6 已落地）：</strong>声明了 <code>contributes.commands</code> 的 App，用户在「键位」页给任何硬件键（按一下 / 按住 / 组合）绑「插件动作」，按下经异步 Dispatcher 调用（App 没开会自动拉起）。绑定是用户的：停用/卸载不动配置，键位列表显示不可用原因，插件恢复后绑定自动复活（恢复判据是绑定时对 Command 声明算出的 <code>target_digest</code> 指纹）。首版边界：<code>static_input</code> 恒空对象、不支持平台覆写、含插件绑定的 profile 导出适配包整包拒绝（<code>PACK_EXPORT_UNSUPPORTED_ACTION</code>）。</p>
+        <p class="plain-language" style="margin-top:16px"><strong>插件与硬件解耦（2026-08-16 架构拍板）：</strong>上一条 M6 的落地语义在这次拍板中升级成架构红线，适用于所有插件、所有硬件——合同面只有插件暴露的事件（<code>contributes.commands</code>，跨插件入口是 <code>contributes.intents</code>），硬件要触发插件只能触发这些事件——这里的「事件」特指硬件到插件的可绑定动作，跟 <code>contributes.eventSubscriptions</code>（Host 到插件的订阅）不是同一件事；按键 / 拨杆 / 旋钮与事件之间的映射归 Host 键位设置持有和管理，插件既不声明也不读取这层映射。插件不得内置硬件绑定逻辑，不得假设某款硬件存在（含 AI Board 01），也不得因为缺少该硬件而整体失效；插件设置页也不得出现「按哪个键触发我」这类绑定配置——那是键位设置的界面，出现在插件里就是耦合。理由很直接：以后还会有别的硬件，穷举硬件行为不现实，让插件暴露事件、让硬件去触发事件，键盘的事留在键盘自己那边。拨杆的分层覆盖模型（CHAT / YOLO / PLAN 三档各算一层，档位层覆盖通用层）是 Host 键位系统自己的规格，不进入插件合同——插件只会收到自己那条事件被调用，看不到也不需要看到这套分层。</p>
+        <p class="plain-language" style="margin-top:16px"><strong><code>surfaces.open</code> 的真实语义是幂等 reveal（M6.1）：</strong>合同是「让我的主界面被看见」——已挂载则主窗口前置聚焦、Host 前端跳到该 App 的扩展页、携带的 intent 按 <code>surface.intent</code> 信封投递给当前 mount，返回 <code>{ accepted: true }</code>；Command 拉起界面时同样「跳到现场」，界面由扩展页接管落位/关闭/Esc。只有开自己没声明的界面才拒绝（<code>HOST_CAPABILITY_NOT_AVAILABLE</code>，首版矩阵限单个 <code>main</code>）；「窗口在、登记不在」的中间态会得到说明原因的拒绝文案。Host 拒绝在 SDK 进门处归一为 <code>AppError</code>（<code>userMessage</code> 取 Host 文案），不再退化成「扩展遇到未处理的错误」。<code>onIntent</code> 注册前到达的 intent 由 SDK 为每个 mount 缓冲最近一条、注册时补发（unmount 即清），App 不需要自己防丢。</p>
+      </section>
+
+      <section class="doc-section" id="errors-tools">
+        <div class="section-head">
+          <p class="section-kicker">09 · 错误与开发工具</p>
+          <div>
+            <h2>失败必须能看懂、能重试、能追踪</h2>
+            <p>Surface mount 最终只能进入 ready、fail 或 timeout。用户看行动文案，Developer Inspector 看技术原因与 trace。</p>
+          </div>
+        </div>
+        <div class="do-dont">
+          <div class="code-shell"><pre><code>{
+  "code": "com.example.todo/STORAGE_READ_FAILED",
+  "userMessage": "无法读取待办事项",
+  "retryable": true,
+  "suggestedAction": "retry",
+  "traceId": "由 Host 补充"
+}</code></pre></div>
+          <article class="practice">
+            <h3>Host 稳定错误码</h3>
+            <p><code>APP_ACTIVATE_FAILED</code> · <code>APP_ACTIVATE_TIMEOUT</code> · <code>MISSING_COMMAND_HANDLER</code> · <code>MISSING_SURFACE_HANDLER</code> · <code>SURFACE_READY_TIMEOUT</code> · <code>COMMAND_TIMEOUT</code> · <code>STORAGE_UNAVAILABLE</code> · <code>HOST_API_INCOMPATIBLE</code></p>
+          </article>
+        </div>
+        <p class="plain-language" style="margin-top:16px"><strong>两类失败要分开：</strong>首屏无法建立时调用 <code>surface.fail(error)</code> 结束 Loading；页面 ready 后的可恢复错误调用 <code>surface.reportError(error)</code>，保留页面并把原始 cause 交给 Developer Inspector。两者都属于 <code>surface.main@1</code>。</p>
+        <h3 style="margin:28px 0 12px;font-size:22px">当前 CLI（核心四条已实现）</h3>
+        <div class="code-shell"><pre><code>bun platform/cli/src/cli.ts validate ./todo-app
+bun platform/cli/src/cli.ts build ./todo-app
+bun platform/cli/src/cli.ts contract-test ./todo-app --host-api 1.1
+bun platform/cli/src/cli.ts pack ./todo-app --out todo-1.0.0.reaiapp</code></pre></div>
+        <div class="table-wrap" style="margin-top:16px">
+          <table>
+            <thead><tr><th>合同测试</th><th>必须证明什么</th></tr></thead>
+            <tbody>
+              <tr><td>Manifest</td><td>Schema 合法、Host API 与 Capability 兼容。</td></tr>
+              <tr><td>注册一致性</td><td><code>main</code> Surface 和 <code>com.example.todo.new</code> 既声明也注册。</td></tr>
+              <tr><td>页面结果</td><td>mount 最终调用 <code>ready()</code> 或 <code>fail()</code>，不留下无限 Loading。</td></tr>
+              <tr><td>命令链</td><td>New Command 打开现有 Surface，并投递 <code>{ type: "new-task" }</code>。</td></tr>
+              <tr><td>隔离</td><td>存储不能越过 App 命名空间；网络请求全部被阻止。</td></tr>
+              <tr><td>清理</td><td>unmount 后无 listener、timer、局部层或绑定残留。</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="doc-section" id="platform-c1">
+        <div class="section-head">
+          <p class="section-kicker">09.5 · 平台机制（2026-08-12 同步）</p>
+          <div>
+            <h2>能力授予、标题栏动作、插件权限、Tab 层与 Action 广播</h2>
+            <p>通用平台机制由所有插件共用——不是某个插件的专属 UI。系统通知同样只能通过 Host Broker。完整合同见 Markdown 版第 11 章。</p>
+          </div>
+        </div>
+        <div class="three-cards">
+          <article class="mini-card"><span class="number">GRANTS</span><h3>能力授予分档</h3><p><code>grantGated</code> 是需按 appId 授予的官方窄能力（Codex、startup、Voice Input / Command）。<code>titlebar.action@1</code> 属于通用 <code>granted</code>：生产 Catalog 仍受 official-only 分发限制，Developer Mode 本地插件可按同一合同使用。</p></article>
+          <article class="mini-card"><span class="number">TITLEBAR</span><h3>Host 托管状态与动作</h3><p><code>titlebarActions</code> 最多 3 个，支持默认、描边与危险动作；可选 <code>titlebarStatus</code> 显示静态状态胶囊。Host 只渲染白名单图标与纯文本。省略或关闭 <code>showOnTitlebarHover</code> 时常驻，适合设置等需持续可发现的入口；开启后仅在整条 44px 标题栏 hover 或键盘 focus 时显示，适合低频辅助动作。点击按当前 presentation 投递 Manifest intent，切换、停用或卸载自动清场。<code>source</code> 是 Host 保留字段，peer App 不能通过普通 intent 伪造同形点击。</p></article>
+          <article class="mini-card"><span class="number">TAB</span><h3>Tab 层实体条目</h3><p>声明 <code>contributes.tabItems</code> 后经 <code>ctx.tabItems.upsert</code> 供给：同实体重推只重排不产生第二条；<code>requiresInteraction</code> 只许配 <code>waiting_input</code>（举旗门禁）；停用/卸载清场、回收保留。Tab 层是全局置顶浮窗（Tab 键默认唤起），条目零决策、点击只跳转。</p></article>
+          <article class="mini-card"><span class="number">EVENTS</span><h3>事件订阅与广播</h3><p><code>eventSubscriptions</code> 声明即订阅（mount 关闭即退订），v1 仅 <code>actionContext</code>，SDK 侧 <code>ctx.events.on</code>。Action 上下文广播=数据向下（声明 <code>acceptsActionContext</code> 才收），存证走 TTL/容量自动清理 + 一次性取件 token（<code>ctx.evidence.fetch</code>）；Action 菜单=动作向上单选（Action 键默认唤起，实时聚合、选中只有那条执行）。</p></article>
+        </div>
+        <div class="do-dont" style="margin-top:16px">
+          <article class="practice do">
+            <h3>通知 Broker 做什么</h3>
+            <ul>
+              <li>校验插件会话、安装与启用状态。</li>
+              <li>校验 Manifest 和当前插件的用户授权。</li>
+              <li>只读检查系统通知授权，不替插件弹授权框。</li>
+              <li>加入插件来源指纹、校验负载并执行速率限制。</li>
+            </ul>
+          </article>
+          <article class="practice dont">
+            <h3>插件不能做什么</h3>
+            <ul>
+              <li>不能在 App 启动或插件调用时触发系统授权。</li>
+              <li>不能绕过 Host 调 Tauri notification JS API。</li>
+              <li>不能移除 Host 注入的来源标签；显示名本身不代表可信发布者。</li>
+              <li>不能把 <code>queued: true</code> 当成用户一定看到。</li>
+            </ul>
+          </article>
+        </div>
+        <p class="plain-language" style="margin-top:16px"><strong>稳定失败：</strong>系统通知尚未决定或已拒绝时分别返回 <code>SYSTEM_NOTIFICATION_PERMISSION_REQUIRED</code> / <code>SYSTEM_NOTIFICATION_PERMISSION_DENIED</code>；状态不可读、速率超限、负载非法和入队失败也都有独立错误码。插件必须给出可执行说明，不能循环重试或自行申请系统授权；完整错误表见 <a href="plugin-api-reference-v1.md">插件接口参考</a>。</p>
+      </section>
+
+      <section class="doc-section" id="practice">
+        <div class="section-head">
+          <p class="section-kicker">10 · 最佳实践</p>
+          <div>
+            <h2>边界清楚，开发才会简单</h2>
+            <p>Design 原型内部函数不是公开 SDK。产品实现要使用 Host 合同，不要复制原型 DOM 技巧。</p>
+          </div>
+        </div>
+
+        <h3 style="margin:8px 0 12px;font-size:22px">界面克制：只显示此刻要紧的那件事</h3>
+        <p class="plain-language"><strong>这是全局设计哲学，优先于下面所有具体条目。</strong>一个功能做得再对，出现在不该出现的时刻，它就是干扰。一句话：<strong>根据用户当前的场景和需求渐进披露，不要把所有东西堆到一起。</strong>用户在一个时刻只关心一件事，界面要替他把别的收起来，而不是把选择权连同认知负担一起丢回去。下面五条是它的可执行判据。</p>
+        <div class="gap-list">
+          <article class="gap-item"><span class="gap-icon">1</span><div><strong>无必要，勿增按钮</strong><span>能自动发生的事不要做成开关。判据：不给这颗按钮，用户会失去什么？如果什么都不失去（那件事本来就会自己发生），它就只剩负担。日程页 V1.3 撤掉的「日历展开」与「日程助理」都属此类——点日期日历自己会开，助理该出现时自己会来。注意同一颗按钮在不同尺寸下必要性可能不同：日历按钮宽屏多余、窄屏必要，所以它只在窄屏出现。</span></div></article>
+          <article class="gap-item"><span class="gap-icon">2</span><div><strong>全局能力不在单个 App 里开第二个入口</strong><span>提醒、通知、待办这类「有事要你处理」是全平台共有的语义。每个 App 各开一个铃铛，用户就得挨个 App 巡一遍——注意力被切成 N 份。App 只负责把事件记进 Host，不自己造呈现入口；自己那一侧的出声方式是让相关界面在相关时刻自己出现（助理主动来问），而不是在角落点亮小红点等用户发现。</span></div></article>
+          <article class="gap-item"><span class="gap-icon">3</span><div><strong>留白是用来分组的，不是装饰</strong><span>相邻两块如果回答的不是同一个问题（「我在看哪天」和「我要做什么」就是两个问题），它们之间必须有明显大于组内间距的留白。Host 注入 <code>--reai-plugin-titlebar-safe-top</code>（macOS 44px、其他平台 0px），App 根框架只消费一次；正文里的留白仍按语义分组，不能在安全区下面再堆一层装饰性空白。顶部交界只允许“同色连续”或“异色内缩”：同色时使用同一主题背景且不加装饰性间距；异色时把第一块 Surface 内缩到 <code>main-body</code>，桌面默认 16px、紧凑布局最低 12px。禁止两个不同颜色的全宽大色块零距离硬切，1px 分割线不算留白。</span></div></article>
+          <article class="gap-item"><span class="gap-icon">4</span><div><strong>按钮的长相由设计系统给，不由浏览器给</strong><span>任何 <code>&lt;button&gt;</code> 只要样式没写全，浏览器默认的灰底黑框就会顶出来。这不是某一处写漏了，是缺一条地基：样式表必须有全局按钮基线，把 border / background / font / color 归零，视觉一律由 class 显式给出，<code>:focus-visible</code> 的可见描边保留。同层级操作用同一套按钮语言，Review 判据是——遮住页面其余部分单看这颗按钮，说得出它属于哪一档吗？</span></div></article>
+          <article class="gap-item"><span class="gap-icon">5</span><div><strong>渐进式披露：先收下，再补全</strong><span>输入流程不要一上来铺开完整表单。先拿到最少必要信息把事办成，其余做成按需展开的可选补充。日程页新增流程是样板：入口收成一颗按钮 → 点开铺满整页（此刻别的都不重要，所以别的都不在）→ 默认语音待命，敲键盘即转打字 → 属性只是一排图标，点哪个展开哪一条 → 收下后缺信息由助理自己来问。<strong>「可以不理」必须真的零代价</strong>：追问时不顶开详情、不抢焦点、不挡住原本在看的东西，否则「不理它」就变成了「先退出来再说」。</span></div></article>
+        </div>
+        <div class="code-shell" style="margin:16px 0 8px">
+          <pre style="margin:0;padding:18px 20px;overflow-x:auto"><code>button{font:inherit;color:inherit;border:0;background:transparent;cursor:pointer;
+       -webkit-appearance:none;appearance:none;text-align:inherit}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}</code></pre>
+        </div>
+
+        <h3 style="margin:30px 0 12px;font-size:22px">工程边界</h3>
+        <div class="do-dont">
+          <article class="practice do">
+            <h3>应该这样做</h3>
+            <ul>
+              <li>只在 <code>surface.root</code> 内渲染。</li>
+              <li>第一屏真正可用后再调用 <code>ready()</code>。</li>
+              <li>每次 mount 都返回完整 cleanup。</li>
+              <li>用 Manifest 静态声明侧栏和 Command。</li>
+              <li>推荐键位交给用户确认。</li>
+              <li>错误提供稳定 code、可执行动作和 trace。</li>
+              <li>样式表先立一条全局按钮基线，再由 class 给长相。</li>
+              <li>能自动发生的事就让它自动发生，不做成开关。</li>
+            </ul>
+          </article>
+          <article class="practice dont">
+            <h3>不要这样做</h3>
+            <ul>
+              <li>修改侧栏、Browse Extensions、设备卡或账户 DOM。</li>
+              <li>在自己 App 里另开通知、提醒等全局能力的入口。</li>
+              <li>一上来铺开完整表单，把所有字段堆给用户。</li>
+              <li>调用原型里的 <code>setV()</code>、<code>VIEWS</code>、<code>rail-slot</code>。</li>
+              <li>刚开始执行就 ready，之后给用户看白屏。</li>
+              <li>偷偷启动 npm、Python、Shell 或常驻进程。</li>
+              <li>监听整个窗口并吞掉 Host 的 Esc。</li>
+              <li>用远程配置下载或解释新的可执行逻辑。</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="doc-section" id="gaps">
+        <div class="section-head">
+          <p class="section-kicker">11 · 当前缺口</p>
+          <div>
+            <h2>To-Do 纵向链路已跑通，平台能力继续分阶段开放</h2>
+            <p>下面保留的是目标合同版图。当前能否使用请以支持矩阵和接口参考为准。</p>
+          </div>
+        </div>
+        <div class="gap-list">
+          <article class="gap-item"><span class="gap-icon">1</span><div><strong>Composite Runtime + Headless</strong><span>当前只允许一个 on-demand web-surface 组件。</span></div></article>
+          <article class="gap-item"><span class="gap-icon">2</span><div><strong>Package 签名与公开审核</strong><span>开发者模式不等于公开分发资格。</span></div></article>
+          <article class="gap-item"><span class="gap-icon">3</span><div><strong>在线更新与数据迁移</strong><span>当前同 appId 必须先卸载再安装，不能作为正式升级方案。</span></div></article>
+          <article class="gap-item"><span class="gap-icon">4</span><div><strong>云模型权限</strong><span>等待作者自用额度、窄 scope 与正式审核合同。</span></div></article>
+          <article class="gap-item"><span class="gap-icon">5</span><div><strong>外脑工作流实例</strong><span>等待 Team/Project 归属、不可修改快照与复制安装合同。</span></div></article>
+          <article class="gap-item"><span class="gap-icon">6</span><div><strong>终端 Broker</strong><span>等待程序和参数 allowlist、审计与用户授权。</span></div></article>
+          <article class="gap-item"><span class="gap-icon">7</span><div><strong>团队空间切换</strong><span>当前固定个人 Team 与默认 Project。</span></div></article>
+          <article class="gap-item"><span class="gap-icon">8</span><div><strong>Developer Inspector</strong><span>当前用 Host 日志排查，独立诊断界面仍待实现。</span></div></article>
+        </div>
+      </section>
+
+      <section class="doc-section" id="appendix">
+        <div class="section-head">
+          <p class="section-kicker">12 · 政策附录</p>
+          <div>
+            <h2>开发先读本文，遇到问题再查规则</h2>
+            <p>三份原文保留为政策事实源，不再承担“教开发者怎么上手”的职责。</p>
+          </div>
+        </div>
+        <div class="appendix">
+          <a href="distribution-policy-v1.html"><small>APPENDIX A</small><h3>发行渠道</h3><p>Mac App Store、Microsoft Store、官网版的打包、更新和审核。</p></a>
+          <a href="runtime-dependencies-v1.html"><small>APPENDIX B</small><h3>运行依赖</h3><p>Node、Python、CLI、系统组件和后台运行形态。</p></a>
+          <a href="network-billing-policy-v1.html"><small>APPENDIX C</small><h3>网络与计费</h3><p>域名、凭据、第三方云服务、BYOK 和统一支付。</p></a>
+        </div>
+      </section>
+
+      <footer>ReAI App Platform v1.1 · Developer Guide · Design target reviewed 2026-08-12</footer>
+    </main>
+  </div>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const themeButton = document.getElementById("themeButton");
+      let savedTheme = null;
+      try { savedTheme = localStorage.getItem("reai-doc-theme"); } catch { /* file:// may not expose storage */ }
+      const preferredDark = window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+      if (savedTheme === "dark" || (!savedTheme && preferredDark)) root.dataset.theme = "dark";
+      themeButton.setAttribute("aria-pressed", String(root.dataset.theme === "dark"));
+      themeButton.addEventListener("click", () => {
+        const next = root.dataset.theme === "dark" ? "light" : "dark";
+        root.dataset.theme = next;
+        try { localStorage.setItem("reai-doc-theme", next); } catch { /* theme still works for this page */ }
+        themeButton.setAttribute("aria-pressed", String(next === "dark"));
+      });
+      document.getElementById("printButton").addEventListener("click", () => window.print());
+
+      const zoneData = {
+        home: {
+          owner: "HOST OWNED",
+          title: "Home",
+          description: "Host 的默认页面和最外层返回点。普通 App 不能替换，也不能往里面注入 UI。",
+          api: "无 App UI 接口",
+          trigger: "启动、用户点击 Home、最外层返回",
+          no: "把 App 的入口或广告塞进 Home",
+        },
+        apps: {
+          owner: "HOST SHELL · APP DECLARES",
+          title: "侧栏 Apps 列表",
+          description: "App 只在 Manifest 声明图标、文字和打开哪个 Surface；真实布局、滚动、选中态和折叠态由 Host 渲染。",
+          api: "manifest.contributes.sidebarItems[]",
+          trigger: "Package 安装并写入 Registry；启用和 Runtime 状态由 Host 标识",
+          no: "操作侧栏 DOM、动态插入口、静默改顺序",
+        },
+        store: {
+          owner: "HOST OWNED",
+          title: "Browse Extensions",
+          description: "只负责发现、查看详情和安装；它可以链接到 Extensions，但不维护第二套本机安装状态。",
+          api: "Catalog + Source Manifest 元数据；无 App 运行时 DOM 接口",
+          trigger: "用户主动浏览或安装",
+          no: "App 冒充 Host 画安装、卸载或购买状态",
+        },
+        installed: {
+          owner: "HOST OWNED",
+          title: "Extensions · Installed",
+          description: "唯一的本机 App 管理入口。包括 Headless App，并显示启停、权限、依赖、健康、更新、诊断和卸载。",
+          api: "Registry + six-dimensional Local State；无 App 运行时 DOM 接口",
+          trigger: "安装完成，或用户进入本机管理",
+          no: "维护第二套状态、隐藏 Headless App 或卸载入口",
+        },
+        main: {
+          owner: "APP OWNED",
+          title: "App 主工作区",
+          description: "这是普通 App 的主要渲染边界。Host 保留窗口外框，App 在 root 内自由组织页面。",
+          api: "ctx.surfaces.register(\"main\", handler)",
+          trigger: "用户点侧栏，或 Command 请求打开",
+          no: "越过 root、污染 Host CSS、接管全局 Esc",
+        },
+        media: {
+          owner: "HOST SLOT · FUTURE CAPABILITY",
+          title: "Media 输入 / 输出",
+          description: "输入由 Host 管麦克风权限和隐私状态；输出 App 只提交结构化播放会话。Mini Player 是全局控制，不是 Podcast 页面。",
+          api: "预留（未开放）：MediaInputSession / ctx.media.publish(session)",
+          trigger: "用户授权输入；或 App 创建有效播放会话",
+          no: "直接取得原始麦克风、替换播放器、控制其他 App 会话",
+        },
+        device: {
+          owner: "HOST + HARDWARE SDK",
+          title: "Devices",
+          description: "设备选择、键位设置和正在监听的隐私状态属于 Host 与该硬件的 SDK Provider。App 只能使用已声明、已授权的 Hardware Service。",
+          api: "目标：requires.hardwareServices + ctx.hardware.service(id)",
+          trigger: "连接、断开、活跃设备或授权变化",
+          no: "直接读硬件、隐藏监听状态、伪造设备状态",
+        },
+        account: {
+          owner: "HOST OWNED",
+          title: "Account / Billing",
+          description: "账号、订阅和权益由 Host 管。App 的设置应放在自己的 Surface，付费调用统一 Billing。",
+          api: "目标：ctx.billing.*；普通 UI 无注入接口",
+          trigger: "登录、购买、恢复权益、订阅变化",
+          no: "注入账户页、伪造权益、未授权站外支付",
+        },
+      };
+      const zoneButtons = [...document.querySelectorAll("[data-zone]")];
+      const renderZone = (key, activeButton = null) => {
+        const data = zoneData[key];
+        document.getElementById("zoneOwner").textContent = data.owner;
+        document.getElementById("zoneTitle").textContent = data.title;
+        document.getElementById("zoneDescription").textContent = data.description;
+        document.getElementById("zoneApi").textContent = data.api;
+        document.getElementById("zoneTrigger").textContent = data.trigger;
+        document.getElementById("zoneNo").textContent = data.no;
+        zoneButtons.forEach((button) => button.setAttribute("aria-pressed", String(button === activeButton)));
+      };
+      zoneButtons.forEach((button) => button.addEventListener("click", () => renderZone(button.dataset.zone, button)));
+      const surfaceFrame = document.querySelector(".surface-frame");
+      surfaceFrame.addEventListener("click", () => renderZone("main"));
+      surfaceFrame.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          renderZone("main");
+        }
+      });
+
+      const codeTabs = [...document.querySelectorAll(".code-tab")];
+      const codePanels = [...document.querySelectorAll(".code-panel")];
+      let activeCode = "manifest";
+      const selectCode = (name) => {
+        activeCode = name;
+        codeTabs.forEach((tab) => {
+          const selected = tab.dataset.code === name;
+          tab.setAttribute("aria-selected", String(selected));
+          tab.tabIndex = selected ? 0 : -1;
+        });
+        codePanels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === name));
+      };
+      codeTabs.forEach((tab) => tab.addEventListener("click", () => selectCode(tab.dataset.code)));
+      codeTabs.forEach((tab, index) => tab.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+        event.preventDefault();
+        const offset = event.key === "ArrowRight" ? 1 : -1;
+        const next = codeTabs[(index + offset + codeTabs.length) % codeTabs.length];
+        selectCode(next.dataset.code);
+        next.focus();
+      }));
+      document.getElementById("copyCode").addEventListener("click", async (event) => {
+        const text = document.querySelector(`[data-panel="${activeCode}"] code`).textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+          event.currentTarget.textContent = "已复制";
+        } catch {
+          event.currentTarget.textContent = "复制失败";
+        }
+        window.setTimeout(() => { event.currentTarget.textContent = "复制当前代码"; }, 1200);
+      });
+
+      const lifeData = {
+        install: {
+          state: "PACKAGE · NO CODE",
+          title: "安装：只验证和落盘",
+          description: "安装阶段不执行 App 代码。Host 按 Release Envelope 验证签名、Source Manifest 摘要、Package 摘要、兼容性与渠道政策。",
+          trigger: "用户在 Browse Extensions 点击“安装”",
+          host: "verify → stage → registry commit",
+          app: "无回调；禁止 onInstall 脚本",
+          rule: "Registry commit 后 installation=installed、activation=disabled；不执行代码，也不自动跳进 App。",
+        },
+        enable: {
+          state: "RUNTIME · ACTIVATE",
+          title: "启用：注册能力",
+          description: "Host 创建隔离上下文并调用 activate。App 声明了什么，就必须注册什么。",
+          trigger: "用户明确同意权限摘要并启用",
+          host: "create context → call activate → validate registrations",
+          app: "activate(ctx)：幂等注册 main Surface 与 Command",
+          rule: "activate 失败时保留已安装入口，并显示 Host 标准失败与修复状态；Command 不得绕过 disabled。",
+        },
+        open: {
+          state: "SURFACE · LOADING",
+          title: "打开：Host 先显示 Loading",
+          description: "用户点击 To-Do 或 Command 请求打开。Host 创建 main Surface，并把隔离 root 交给 App。",
+          trigger: "侧栏点击、Extensions 的“打开”、结构化 Intent 或 Command",
+          host: "show loading → create root → call mount handler",
+          app: "读取必需数据，渲染第一屏",
+          rule: "切换到已打开的 App 时复用 Surface，不重复创建整套 App。",
+        },
+        ready: {
+          state: "SURFACE · READY",
+          title: "Ready：第一屏真的能用了",
+          description: "列表或空状态已经画出来，交互已经绑定完成，这时才能结束 Host Loading。",
+          trigger: "App 首次有意义渲染完成",
+          host: "收到 ready → 移除 Loading → 开放交互",
+          app: "surface.ready()，只能调用一次",
+          rule: "不要在 JS 刚开始执行时 ready，然后自己再画一层假 Loading。",
+        },
+        hide: {
+          state: "SURFACE · HIDDEN",
+          title: "切走：隐藏不等于卸载",
+          description: "用户切到其他 App 或进入全局覆盖层。业务状态通常保留，非必要动画可以暂停。",
+          trigger: "Host 前台焦点改变",
+          host: "emit visibility hidden / visible",
+          app: "暂停非必要工作，返回时恢复；不清用户状态",
+          rule: "不要把每次切走当成 dispose，也不要在后台继续抢焦点。",
+        },
+        unmount: {
+          state: "SURFACE · CLEANUP",
+          title: "回收界面（unmount）：root 即将失效",
+          description: "Host 可因内存、重载、更新或停用回收 Surface。下一次打开可能重新 mount。",
+          trigger: "内存回收、热重载、更新、停用或卸载",
+          host: "stop intents → call cleanup → revoke root",
+          app: "移除 listener、observer、timer、局部浮层",
+          rule: "mount 必须返回 cleanup；所有关闭操作都要能安全重复。",
+        },
+        update: {
+          state: "PACKAGE · MIGRATE",
+          title: "更新：先迁移，再切换",
+          description: "新 Package 暂存后，Host 逐 Store 比较 schemaVersion，并把变化合成一次事务迁移计划。",
+          trigger: "签名新版本通过兼容和权限门禁",
+          host: "stage → unmount → deactivate → build store plan → migrate → activate new",
+          app: "default.migrate(ctx, plan) 必须幂等、无网络、无 UI",
+          rule: "任一 Store 失败，数据与新 Package 一起回滚到 last-known-good。",
+        },
+        remove: {
+          state: "APP · REMOVE",
+          title: "卸载：集中清理所有贡献",
+          description: "Host 关闭 App 浮层、注销 Provider、停止后台能力、刷新跨 App 入口并移除侧栏项。",
+          trigger: "用户确认卸载，或紧急安全停用",
+          host: "unmount → deactivate → revoke contributions → remove package",
+          app: "无卸载脚本；不能上传、隐藏或保留额外数据",
+          rule: "用户正位于该 App 时回到 Home；数据保留与否由 Host 询问。",
+        },
+      };
+      const lifeButtons = [...document.querySelectorAll("[data-life]")];
+      const renderLife = (key) => {
+        const data = lifeData[key];
+        document.getElementById("lifeState").textContent = data.state;
+        document.getElementById("lifeTitle").textContent = data.title;
+        document.getElementById("lifeDescription").textContent = data.description;
+        document.getElementById("lifeTrigger").textContent = data.trigger;
+        document.getElementById("lifeHost").textContent = data.host;
+        document.getElementById("lifeApp").textContent = data.app;
+        document.getElementById("lifeRule").textContent = data.rule;
+        lifeButtons.forEach((button) => button.setAttribute("aria-pressed", String(button.dataset.life === key)));
+      };
+      lifeButtons.forEach((button) => button.addEventListener("click", () => renderLife(button.dataset.life)));
+
+      const sim = {
+        installed: false,
+        enabled: false,
+        activated: false,
+        removed: false,
+        mounted: false,
+        surfaceReady: false,
+        view: "home",
+        pendingIntent: null,
+        tasks: [],
+        timer: null,
+        generation: 0,
+      };
+      const simView = document.getElementById("simView");
+      const simTodoNav = document.getElementById("simTodoNav");
+      const simHomeNav = document.getElementById("simHomeNav");
+      const simInstallationState = document.getElementById("simInstallationState");
+      const simActivationState = document.getElementById("simActivationState");
+      const simHealthState = document.getElementById("simHealthState");
+      const simPermissionState = document.getElementById("simPermissionState");
+      const simDependencyState = document.getElementById("simDependencyState");
+      const simUpdateState = document.getElementById("simUpdateState");
+      const simSurfaceState = document.getElementById("simSurfaceState");
+      const eventLog = document.getElementById("eventLog");
+      simTodoNav.disabled = true;
+      const time = () => new Date().toLocaleTimeString("zh-CN", { hour12: false });
+      const log = (message) => {
+        const item = document.createElement("li");
+        const stamp = document.createElement("time");
+        stamp.textContent = time();
+        item.append(stamp, document.createTextNode(message));
+        eventLog.prepend(item);
+      };
+      const setInstallationState = (value) => { simInstallationState.textContent = value; };
+      const setActivationState = (value) => { simActivationState.textContent = value; };
+      const setHealthState = (value) => { simHealthState.textContent = value; };
+      const setSurfaceState = (value) => { simSurfaceState.textContent = value; };
+      const syncAppStates = () => {
+        setInstallationState(sim.installed ? "installed" : "absent");
+        setActivationState(sim.enabled ? "active" : "disabled");
+        setHealthState(sim.activated ? "healthy" : "unknown");
+        simPermissionState.textContent = "not_required";
+        simDependencyState.textContent = "ready";
+        simUpdateState.textContent = "idle";
+      };
+      const renderHome = () => {
+        sim.view = "home";
+        simHomeNav.classList.add("active");
+        simTodoNav.classList.remove("active");
+        simView.replaceChildren();
+        const message = document.createElement("div");
+        message.className = "sim-message";
+        const strong = document.createElement("strong");
+        strong.textContent = "Home";
+        let copy = sim.removed
+          ? "To-Do 已卸载；Catalog 仍可提供重新安装入口。"
+          : "To-Do 当前可在 Browse Extensions 安装；未安装前不会出现在侧栏。";
+        if (sim.installed && !sim.enabled) copy = "To-Do 已安装但尚未启用；侧栏入口可见，Host 不执行 App 代码。";
+        if (sim.enabled) copy = "To-Do 已启用，但 Host 不会因为启用而自动跳转。";
+        message.append(strong, document.createElement("br"), document.createTextNode(copy));
+        simView.append(message);
+        syncAppStates();
+        setSurfaceState(sim.mounted
+          ? (sim.surfaceReady ? "ready_hidden" : "loading_hidden")
+          : "absent");
+      };
+      const renderTodo = (focusInput = false) => {
+        sim.view = "todo";
+        simHomeNav.classList.remove("active");
+        simTodoNav.classList.add("active");
+        simView.replaceChildren();
+        const wrap = document.createElement("div");
+        wrap.className = "todo-demo";
+        const title = document.createElement("h3");
+        title.textContent = "To-Do";
+        const form = document.createElement("form");
+        form.className = "todo-form";
+        const input = document.createElement("input");
+        input.id = "sim-todo-new-task";
+        input.name = "todo-title";
+        input.placeholder = "要做什么？";
+        input.setAttribute("aria-label", "模拟器中的新待办内容");
+        const add = document.createElement("button");
+        add.type = "submit";
+        add.textContent = "添加";
+        const list = document.createElement("ul");
+        list.className = "todo-list";
+        sim.tasks.forEach((task) => {
+          const row = document.createElement("li");
+          row.className = `todo-row${task.done ? " done" : ""}`;
+          const toggle = document.createElement("input");
+          toggle.type = "checkbox";
+          toggle.checked = task.done;
+          const label = document.createElement("span");
+          label.textContent = task.title;
+          const remove = document.createElement("button");
+          remove.type = "button";
+          remove.textContent = "删除";
+          toggle.addEventListener("change", () => {
+            task.done = toggle.checked;
+            log(`storage.set(items) · ${task.done ? "完成" : "恢复"} ${task.title}`);
+            renderTodo();
+          });
+          remove.addEventListener("click", () => {
+            sim.tasks = sim.tasks.filter((item) => item.id !== task.id);
+            log(`storage.set(items) · 删除 ${task.title}`);
+            renderTodo();
+          });
+          row.append(toggle, label, remove);
+          list.append(row);
+        });
+        form.append(input, add);
+        wrap.append(title, form, list);
+        simView.append(wrap);
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          const titleValue = input.value.trim();
+          if (!titleValue) return;
+          sim.tasks.push({ id: crypto.randomUUID(), title: titleValue, done: false });
+          log(`storage.set(items) · 新增 ${titleValue}`);
+          renderTodo(true);
+        });
+        syncAppStates();
+        setSurfaceState("ready_visible");
+        if (focusInput) requestAnimationFrame(() => input.focus());
+      };
+      const showSurfaceLoading = () => {
+        sim.view = "todo";
+        simHomeNav.classList.remove("active");
+        simTodoNav.classList.add("active");
+        setSurfaceState("loading_visible");
+        simView.innerHTML = '<div class="sim-message"><div class="spinner" aria-hidden="true"></div>Host Loading<br><small>等待 surface.ready()</small></div>';
+      };
+      const activateApp = () => {
+        if (!sim.enabled) return false;
+        if (sim.activated) return true;
+        setActivationState("starting");
+        setHealthState("unknown");
+        log("Host → activate(ctx) · App 已启用");
+        sim.activated = true;
+        log("App → register main Surface + com.example.todo.new");
+        setActivationState("active");
+        setHealthState("healthy");
+        return true;
+      };
+      const openTodo = (intent = null) => {
+        if (!sim.installed) {
+          log("BLOCKED · App 尚未安装");
+          return;
+        }
+        if (!sim.enabled) {
+          setActivationState("disabled");
+          log("BLOCKED · App 未启用；进入 Host 启用流程，不调用 activate");
+          document.getElementById("simEnable").focus();
+          return;
+        }
+        if (!activateApp()) return;
+        if (intent) sim.pendingIntent = intent;
+
+        if (sim.mounted && sim.surfaceReady) {
+          log("Host → visibility visible · reuse mounted Surface");
+          if (sim.pendingIntent) log(`Host → surface.onIntent({type:${sim.pendingIntent}})`);
+          const nextIntent = sim.pendingIntent;
+          sim.pendingIntent = null;
+          renderTodo(nextIntent === "new-task");
+          return;
+        }
+
+        if (sim.mounted) {
+          showSurfaceLoading();
+          log("Host → visibility visible · Surface 仍在 loading");
+          return;
+        }
+
+        sim.mounted = true;
+        showSurfaceLoading();
+        log("Host → mount main · show loading");
+        const generation = ++sim.generation;
+        sim.timer = setTimeout(() => {
+          if (generation !== sim.generation || !sim.mounted) return;
+          sim.surfaceReady = true;
+          log("App → surface.ready()");
+          const nextIntent = sim.pendingIntent;
+          sim.pendingIntent = null;
+          if (nextIntent) log(`Host → surface.onIntent({type:${nextIntent}})`);
+          if (sim.view === "todo") renderTodo(nextIntent === "new-task");
+          else setSurfaceState("ready_hidden");
+        }, 520);
+      };
+
+      document.getElementById("simInstall").addEventListener("click", () => {
+        if (sim.installed) { log("NOOP · 已安装"); return; }
+        sim.installed = true;
+        sim.enabled = false;
+        sim.activated = false;
+        sim.removed = false;
+        simTodoNav.hidden = false;
+        simTodoNav.disabled = false;
+        log("Host → verify Release Envelope + Source Manifest + Package digests");
+        log("Host → registry commit · no App code executed");
+        log("Host → installation=installed · activation=disabled · stay in Browse Extensions/Home");
+        renderHome();
+      });
+      document.getElementById("simEnable").addEventListener("click", () => {
+        if (!sim.installed) { log("BLOCKED · 请先安装 App"); return; }
+        if (sim.enabled) { log("NOOP · 已启用"); return; }
+        log("Host → show permission / dependency / network summary");
+        log("User → enable App");
+        sim.enabled = true;
+        simTodoNav.disabled = false;
+        activateApp();
+        renderHome();
+      });
+      document.getElementById("simOpen").addEventListener("click", () => openTodo());
+      document.getElementById("simCommand").addEventListener("click", () => {
+        log("Binding Manager → system shortcut or Hardware Service control");
+        if (!sim.installed) {
+          log("BLOCKED · 没有已安装 App 与已确认绑定；Command 未派发");
+          return;
+        }
+        if (!sim.enabled) {
+          setActivationState("disabled");
+          log("BLOCKED · Host 先进入启用流程；Command 未派发");
+          document.getElementById("simEnable").focus();
+          return;
+        }
+        log("Host → dispatch command com.example.todo.new");
+        openTodo("new-task");
+      });
+      document.getElementById("simHome").addEventListener("click", () => {
+        if (sim.view === "todo") log("Host → visibility hidden · switch Home");
+        renderHome();
+      });
+      document.getElementById("simRemove").addEventListener("click", () => {
+        if (!sim.installed) { log("NOOP · 没有可卸载的 App"); return; }
+        sim.generation += 1;
+        if (sim.timer) clearTimeout(sim.timer);
+        if (sim.mounted) log("Host → cleanup main Surface");
+        if (sim.activated) log("Host → deactivate()");
+        log("Host → revoke Command + remove sidebar item");
+        sim.installed = false;
+        sim.enabled = false;
+        sim.activated = false;
+        sim.removed = true;
+        sim.mounted = false;
+        sim.surfaceReady = false;
+        sim.pendingIntent = null;
+        sim.tasks = [];
+        simTodoNav.hidden = true;
+        simTodoNav.disabled = true;
+        renderHome();
+        log("Host → removed · demo chooses delete local data");
+      });
+      simHomeNav.addEventListener("click", renderHome);
+      simTodoNav.addEventListener("click", () => openTodo());
+      syncAppStates();
+      log("Simulator ready · installation absent · activation disabled · surface absent");
+    })();
+  </script>
+</body>
+</html>

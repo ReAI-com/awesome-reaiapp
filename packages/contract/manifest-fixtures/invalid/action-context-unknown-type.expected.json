@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "接受的 Action 上下文类型必须在矩阵清单里（v1 只有 recording）——写错名字不能静默收不到广播"
-}

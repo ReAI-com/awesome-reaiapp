@@ -1,0 +1,734 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="ReAI Board 插件设计规范 v1 的可运行示例页：单层 Host Title Bar、main-body、颜色 Token、图标、按钮档位、刻度、抽屉与状态的验收基准。">
+<title>ReAI Board 插件设计规范 v1 · 示例页</title>
+<style>
+/* ─────────────────────────────────────────────────────────────
+   本页的 Token 与 Host 的 design-base.css 逐字一致（body.aura.light / .dark）。
+   插件照抄这些变量名即可，不要照抄这里的十六进制值。
+   ───────────────────────────────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box}
+body.aura.light{--bg:#f4f3f9;--card-bg:rgba(255,255,255,.8);--card-border:rgba(92,92,224,.1);--card-shadow:0 8px 32px rgba(92,92,224,.07);--text-primary:#1c1c2e;--text-secondary:#6b6b80;--text-tertiary:#a5a5b8;--accent:#5c5ce0;--accent-soft:rgba(92,92,224,.07);--accent-glow:rgba(92,92,224,.22);--alert:#ff3b30;--alert-soft:rgba(255,59,48,.07);--alert-line:rgba(255,59,48,.32);--divider:rgba(92,92,224,.08);--panel-bg:rgba(255,255,255,.9);--panel-border:rgba(92,92,224,.1);--panel-shadow:0 12px 48px rgba(26,26,46,.1);--bound:#1f9d55;--bound-soft:rgba(31,157,85,.1);--bound-line:rgba(31,157,85,.34);--warn:#b3701a;--warn-soft:rgba(179,112,26,.09);--warn-line:rgba(179,112,26,.3);color-scheme:light}
+body.aura.dark{--bg:#0e0e1a;--card-bg:rgba(26,26,46,.8);--card-border:rgba(123,123,247,.12);--card-shadow:0 8px 32px rgba(0,0,0,.3);--text-primary:#ededf5;--text-secondary:#9494a8;--text-tertiary:#505068;--accent:#7b7bf7;--accent-soft:rgba(123,123,247,.1);--accent-glow:rgba(123,123,247,.3);--alert:#ff5a4e;--alert-soft:rgba(255,90,78,.15);--alert-line:rgba(255,90,78,.42);--divider:rgba(123,123,247,.1);--panel-bg:rgba(26,26,46,.95);--panel-border:rgba(123,123,247,.1);--panel-shadow:0 12px 48px rgba(0,0,0,.35);--bound:#3ecf7a;--bound-soft:rgba(62,207,122,.14);--bound-line:rgba(62,207,122,.4);--warn:#f0a94c;--warn-soft:rgba(240,169,76,.14);--warn-line:rgba(240,169,76,.4);color-scheme:dark}
+
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;
+     -webkit-font-smoothing:antialiased;background:var(--bg);color:var(--text-primary);
+     transition:background-color .3s,color .3s;line-height:1.6}
+
+/* ── §3.1 全局 button 基线：插件必须照抄这一段 ── */
+button{font:inherit;color:inherit;border:0;background:transparent;cursor:pointer;
+       -webkit-appearance:none;appearance:none;text-align:inherit}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{cursor:not-allowed;opacity:.45}
+
+/* ── §2.1 图标基线：当前由插件自带，将来由 Host 注入（届时只删 defs，这段不变） ── */
+/* 精灵图必须脱离布局流：0×0 的 <svg> 在 flex/grid 里照样占一格 */
+.icon-sprite{position:absolute;width:0;height:0;overflow:hidden}
+.icon{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;
+      stroke-linecap:round;stroke-linejoin:round;flex:none}
+.icon--sm{width:14px;height:14px;stroke-width:2.4}
+.icon--lg{width:20px;height:20px;stroke-width:2}
+
+/* ── §3.2 按钮三档 ── */
+.btn,.btn-2{height:36px;padding:0 16px;border-radius:10px;font-size:14px;font-weight:500;
+            display:inline-flex;align-items:center;gap:8px;transition:.16s}
+.btn{background:var(--accent);color:#fff}
+.btn:hover:not(:disabled){filter:brightness(.92)}
+.btn-2{border:1px solid var(--card-border);color:var(--text-primary)}
+.btn-2:hover:not(:disabled){background:var(--accent-soft);border-color:var(--accent)}
+.btn-icon{position:relative;width:32px;height:32px;border-radius:8px;display:grid;place-items:center;
+          color:var(--text-secondary);transition:.16s}
+.btn-icon:hover:not(:disabled){background:var(--accent-soft);color:var(--text-primary)}
+.btn-icon::after{content:"";position:absolute;inset:-6px} /* §3.3 透明外扩到 44px */
+
+/* ── 页面骨架（示例页自身，不属于规范） ── */
+.wrap{max-width:940px;margin:0 auto;padding:0 24px 96px}
+header.top{position:sticky;top:0;z-index:20;background:var(--bg);border-bottom:1px solid var(--divider);
+           padding:16px 0;margin-bottom:32px}
+header.top .wrap{display:flex;align-items:center;gap:16px;padding-bottom:0}
+h1{font-size:20px;margin:0;font-weight:650;letter-spacing:-.01em}
+h2{font-size:17px;margin:0 0 4px;font-weight:600}
+.sec{margin-top:48px;padding-top:32px;border-top:1px solid var(--divider)}
+.sec:first-of-type{border-top:0}
+.lead{color:var(--text-secondary);font-size:14px;margin:0 0 20px;max-width:64ch}
+.card{background:var(--card-bg);border:1px solid var(--card-border);border-radius:14px;padding:24px;
+      box-shadow:var(--card-shadow);backdrop-filter:blur(12px)}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+.grid{display:grid;gap:12px}
+code{font-family:ui-monospace,'SF Mono',Menlo,monospace;font-size:12.5px;
+     background:var(--accent-soft);color:var(--accent);padding:2px 6px;border-radius:6px}
+.muted{color:var(--text-secondary);font-size:13px}
+.tiny{font-size:12px;color:var(--text-tertiary)}
+
+/* 对 / 错 对照 */
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:720px){.vs{grid-template-columns:1fr}}
+.vs>div{border-radius:14px;padding:20px;border:1px solid}
+.bad{border-color:var(--alert-line);background:var(--alert-soft)}
+.good{border-color:var(--bound-line);background:var(--bound-soft)}
+.tag{font-size:12px;font-weight:650;display:inline-flex;align-items:center;gap:6px;margin-bottom:14px}
+.bad .tag{color:var(--alert)} .good .tag{color:var(--bound)}
+
+/* 色板 */
+.sw{display:grid;grid-template-columns:repeat(auto-fill,minmax(168px,1fr));gap:10px}
+.sw div{border:1px solid var(--card-border);border-radius:10px;overflow:hidden}
+/* 半透明和接近白色的 Token 在纯色底上看不出来，所以垫一层棋盘格 */
+.sw i{display:block;height:44px;
+      background-image:linear-gradient(45deg,var(--divider) 25%,transparent 25%,transparent 75%,var(--divider) 75%),
+                       linear-gradient(45deg,var(--divider) 25%,transparent 25%,transparent 75%,var(--divider) 75%);
+      background-size:14px 14px;background-position:0 0,7px 7px}
+.sw i span{display:block;height:100%}
+.sw b{display:block;padding:7px 10px 9px;font:500 12px ui-monospace,'SF Mono',Menlo,monospace}
+.sw b em{display:block;font:400 11px/1.4 -apple-system,sans-serif;color:var(--text-secondary);font-style:normal}
+
+/* 图标墙 */
+.icons{display:grid;grid-template-columns:repeat(auto-fill,minmax(92px,1fr));gap:8px}
+.icons figure{margin:0;padding:14px 6px 10px;border-radius:10px;text-align:center;
+              border:1px solid transparent;transition:.16s}
+.icons figure:hover{border-color:var(--card-border);background:var(--accent-soft)}
+.icons figcaption{font:400 10.5px ui-monospace,Menlo,monospace;color:var(--text-secondary);
+                  margin-top:8px;word-break:break-all}
+
+/* 刻度可视化 */
+.scale{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap}
+.scale div{text-align:center}
+.scale i{display:block;background:var(--accent);border-radius:3px;margin:0 auto 6px}
+.radii{display:flex;gap:14px;flex-wrap:wrap}
+.radii div{text-align:center}
+.radii i{display:block;width:68px;height:68px;background:var(--accent-soft);
+         border:1.5px solid var(--accent);margin-bottom:6px}
+
+/* 命中区可视化 */
+.hit .btn-icon::after{background:var(--alert-soft);outline:1px dashed var(--alert-line)}
+/* 对照区：把「看不见的差距」——实际能点的范围——画出来 */
+.vs .bad button{outline:1.5px dashed var(--alert);outline-offset:1px}
+.vs .good .btn-icon::after{outline:1.5px dashed var(--bound)}
+
+/* §4.5 单层页面框架：Host Title Bar 固定，只有 main-body 滚动 */
+.frame-demo{height:360px;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--card-border);
+            border-radius:14px;background:var(--bg);box-shadow:var(--card-shadow)}
+.frame-titlebar{height:44px;flex:none;display:grid;grid-template-columns:minmax(0,1fr) minmax(80px,1.3fr) auto;
+                align-items:center;padding:0 12px;background:var(--card-bg)}
+.frame-crumb{display:flex;align-items:center;gap:6px;min-width:0;font-size:12px;color:var(--text-tertiary)}
+.frame-crumb button{height:32px;display:inline-flex;align-items:center;gap:5px;border-radius:8px;color:var(--text-secondary)}
+.frame-crumb button:hover{color:var(--text-primary);background:var(--accent-soft)}
+.frame-back{width:32px;justify-content:center}
+.frame-current{color:var(--text-primary);font-weight:600}
+.frame-drag{align-self:stretch;cursor:default}
+.frame-actions{display:flex;align-items:center;gap:4px}
+.frame-actions .btn-icon::after{display:none}
+.frame-demo[data-route="settings"] #frame-settings{color:var(--accent);background:var(--accent-soft)}
+.frame-main-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:24px}
+.frame-main-body h3{margin:0 0 4px;font-size:18px}
+.frame-main-body p{margin:0;color:var(--text-secondary);font-size:13px}
+.frame-blocks{display:grid;gap:12px;margin-top:20px}
+.frame-block{min-height:78px;padding:16px;border:1px solid var(--card-border);border-radius:12px;background:var(--card-bg)}
+.frame-demo[data-route="voice"] .frame-sub-only{display:none}
+.frame-demo[data-route="settings"] .frame-root-only{display:none}
+.frame-boundary-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+.frame-boundary-demo{overflow:hidden;border:1px solid var(--card-border);border-radius:12px}
+.frame-boundary-titlebar{height:44px;display:flex;align-items:center;padding:0 14px;background:var(--card-bg);
+                         color:var(--text-primary);font-size:12px;font-weight:600}
+.frame-boundary-body{min-height:88px;padding:16px;background:var(--card-bg);font-size:12px;color:var(--text-secondary)}
+.frame-boundary-inset{min-height:88px;padding:16px;background:var(--card-bg)}
+.frame-boundary-surface{min-height:56px;padding:14px;border:1px solid var(--card-border);border-radius:10px;
+                        background:var(--accent-soft);font-size:12px;color:var(--text-secondary)}
+@media(max-width:720px){.frame-boundary-grid{grid-template-columns:1fr}}
+
+/* §5 抽屉 */
+.stage{position:relative;height:340px;border-radius:14px;overflow:hidden;
+       border:1px solid var(--card-border);background:var(--card-bg)}
+.stage-body{padding:24px}
+.scrim{position:absolute;inset:0;z-index:30;background:rgba(20,18,40,.3);backdrop-filter:blur(5px);
+       opacity:0;pointer-events:none;transition:opacity .12s ease-out}
+.stage[data-open="1"] .scrim{opacity:1;pointer-events:auto}
+/* 用 visibility 而不是 hidden/display:none —— display 一变，过渡就不播了（§5 那条坑）。
+   visibility 不脱离渲染树，transform 能正常过渡；关闭时把 visibility 的切换延后到
+   动画结束，元素才不会在滑出去之前就消失。visibility:hidden 同样不可聚焦、不进无障碍树。 */
+.drawer{position:absolute;z-index:31;inset:0 0 0 auto;width:min(360px,calc(100% - 24px));
+        padding:24px;background:var(--panel-bg);border-left:1px solid var(--panel-border);
+        box-shadow:var(--panel-shadow);backdrop-filter:blur(20px);
+        visibility:hidden;transform:translateX(100%);
+        transition:transform .12s ease-out,visibility 0s linear .12s}
+.stage[data-open="1"] .drawer{visibility:visible;transform:none;
+        transition:transform .12s ease-out,visibility 0s}
+.drawer-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:6px}
+.eyebrow{font:650 11px/1 -apple-system,sans-serif;letter-spacing:.12em;color:var(--text-secondary);margin:0 0 6px}
+/* 特异性要够：打开态那条是 .stage[data-open="1"] .drawer（0,3,0），媒体查询本身不加特异性，
+   只写 .drawer 会被它压过去——抽屉照样滑入，白关一场。 */
+@media(prefers-reduced-motion:reduce){
+  .stage .drawer,.stage[data-open="1"] .drawer,.stage .scrim{transition:none}
+}
+
+/* 状态 */
+.states{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px}
+.state{border:1px solid var(--card-border);border-radius:12px;padding:18px;text-align:center}
+.skel{height:9px;border-radius:999px;background:var(--divider);margin:7px auto;animation:p 1.4s infinite}
+@keyframes p{50%{opacity:.42}}
+@media(prefers-reduced-motion:reduce){.skel{animation:none}}
+
+ul.check{list-style:none;padding:0;margin:0;display:grid;gap:9px}
+ul.check li{display:flex;gap:10px;align-items:flex-start;font-size:14px}
+ul.check svg{color:var(--bound);margin-top:4px}
+/* §6.1 https://ai-board.reai.com/docs/plugin-design-system-v1#settings-content-layout */
+.ps-eyebrow{font-size:12px;color:var(--text-secondary)}
+.ps-review-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:24px 0 16px;padding:12px 16px;border:1px solid var(--divider);border-radius:10px;background:var(--panel-bg)}
+.ps-review-controls label{font-size:12px;color:var(--text-secondary)}
+.ps-stage{border:1px solid var(--divider);border-radius:16px;overflow:hidden;background:var(--panel-bg)}
+.ps-body{padding:24px 20px}
+.ps-section-label{font-size:12px;color:var(--text-secondary);margin-bottom:8px}
+.ps-section-label.ps-spaced{margin-top:24px}
+.ps-card{border:1px solid var(--divider);border-radius:12px;background:var(--card-bg);overflow:hidden}
+.ps-setting{padding:16px;display:flex;align-items:center;gap:12px}
+.ps-copy{flex:1;min-width:0}
+.ps-title{font-size:14px;line-height:20px;font-weight:600;color:var(--text-primary)}
+.ps-desc{font-size:12px;line-height:20px;color:var(--text-secondary);margin-top:4px}
+.ps-value{font-size:13px;color:var(--text-secondary);white-space:nowrap}
+.ps-value svg{width:14px;height:14px;vertical-align:-2px;margin-left:8px}
+.ps-item+.ps-item{border-top:1px solid var(--divider);margin:0 16px}
+.ps-item+.ps-item .ps-setting{padding-left:0;padding-right:0}
+.ps-polish{padding:16px}
+.ps-setting-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ps-seg{display:flex;gap:2px;border:0;padding:3px;border-radius:8px;background:var(--accent-soft);margin:0;min-width:max-content}
+.ps-seg label{position:relative;cursor:pointer}
+.ps-seg input{position:absolute;opacity:0;width:1px;height:1px}
+.ps-seg span{display:block;padding:5px 13px;border-radius:6px;font-size:12px;font-weight:500;line-height:20px;color:var(--text-secondary)}
+.ps-seg input:checked+span{background:var(--panel-bg);color:var(--text-primary);box-shadow:0 1px 3px var(--divider);font-weight:600}
+.ps-seg label:hover span{color:var(--text-primary)}
+.ps-feedback{margin-top:12px;border-top:1px solid var(--divider);padding-top:12px;font-size:12px;line-height:20px;color:var(--text-secondary)}
+.ps-policy{margin-top:12px;max-width:64ch}
+.ps-policy strong{display:block;font-size:12px;color:var(--text-primary);font-weight:600;margin-bottom:4px}
+.ps-error{padding:12px;margin-top:12px;border-radius:8px;background:var(--alert-soft);color:var(--alert);border:1px solid var(--alert-line)}
+.ps-error strong{display:block}
+.ps-error button{margin-top:8px;border:1px solid var(--alert-line);background:var(--panel-bg);padding:5px 10px;border-radius:6px;font:inherit;color:var(--alert);cursor:pointer}
+.ps-error button:hover{background:var(--alert-soft)}
+.ps-seg input:focus-visible+span{outline:2px solid var(--accent);outline-offset:3px}
+.ps-feedback p{margin:0}.ps-policy strong{margin-bottom:4px}
+.ps-review-controls select{font:inherit;padding:6px 10px;border:1px solid var(--card-border);border-radius:6px;background:var(--panel-bg);color:var(--text-primary)}
+.ps-feedback [hidden]{display:none!important}
+@media(max-width:560px){.ps-setting-head{align-items:flex-start;flex-direction:column;gap:12px}.ps-setting{flex-wrap:wrap}.ps-copy{flex-basis:100%}.ps-review-controls{align-items:flex-start;flex-direction:column}}
+
+</style>
+</head>
+<body class="aura light">
+
+<div style="position:sticky;top:0;z-index:9999;background:#b45309;color:#fff;padding:10px 16px;font:600 14px/1.5 system-ui;">本页是手工维护的交互快照，内容可能落后于同名 .md——设计规范一律以 Markdown 版为准（横幅添加于 2026-09-29，当时已知本页未演示 §3.5 按钮留白、§6.0 最低信息量、§3.6 操作反馈等 2026-09 下旬新增条款）。</div>
+
+<!-- §2.1 图标精灵图：当前做法是插件自带这一段，从 Host 的 icons.ts 摘用得到的图标 -->
+<svg class="icon-sprite" aria-hidden="true"><defs>
+  <symbol id="reai-icon-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+  <symbol id="reai-icon-bell" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+  <symbol id="reai-icon-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+  <symbol id="reai-icon-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+  <symbol id="reai-icon-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+  <symbol id="reai-icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="reai-icon-folder" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+  <symbol id="reai-icon-code" viewBox="0 0 24 24"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></symbol>
+  <symbol id="reai-icon-mic" viewBox="0 0 24 24"><rect x="9" y="1" width="6" height="13" rx="3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="23" x2="12" y2="19"/></symbol>
+  <symbol id="reai-icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+  <symbol id="reai-icon-alert-circle" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
+  <symbol id="reai-icon-chevron-right" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
+  <symbol id="reai-icon-more-vertical" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="19" r="1.6"/></symbol>
+  <symbol id="reai-icon-list-todo" viewBox="0 0 24 24"><line x1="9" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/><circle cx="4" cy="6" r="1.4"/><circle cx="4" cy="12" r="1.4"/><circle cx="4" cy="18" r="1.4"/></symbol>
+</defs></svg>
+
+<header class="top">
+  <div class="wrap">
+    <h1>插件设计规范 v1 · 示例页</h1>
+    <div style="margin-left:auto" class="row">
+      <span class="tiny">明暗都要能看</span>
+      <button class="btn-2" id="theme" aria-label="切换明暗主题">切到深色</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<p class="lead">这一页是规范的<strong>验收基准</strong>：文字规定的每一档在这里都真实画了出来。
+做插件时对着看，比读数字准得多。所有取值来自 Host 的 <code>design-base.css</code>，
+不是另起炉灶的第二套系统。</p>
+
+<div class="card" style="border-color:var(--warn-line);background:var(--warn-soft);margin-bottom:8px">
+  <p style="margin:0;font-size:13.5px"><strong>看数值，别抄写法。</strong>
+  这一页为了单文件能直接打开，用了大量内联 <code>style="…"</code> 和内联 <code>&lt;script&gt;</code>。
+  真插件<strong>不能这么写</strong>——插件页面的 CSP 只放行带 nonce 的样式和脚本，
+  没有 <code>unsafe-inline</code>，内联样式属性会被直接拦掉。
+  样式一律写进插件自己的 <code>.css</code>，脚本走打包后的 ESM 模块。</p>
+</div>
+
+<!-- ─────────── 0. 页面框架 ─────────── -->
+<section class="sec">
+  <h2>0 · 页面框架：一条 Host Title Bar，一个 main-body</h2>
+  <p class="lead">顶部 44px 由 Host 渲染返回、面包屑、拖拽区、App 动作与通知；插件 DOM
+  只从下方可滚动 <code>main-body</code> 开始。设置页中设置按钮保持按下，再点同一按钮返回 Voice；
+  也可点返回或 Voice 验证路径切换；
+  在正文里滚动，顶部不会出现第二层页头。</p>
+  <p class="tiny" style="margin:0 0 14px">生产 Host 注入 <code>--reai-plugin-titlebar-safe-top</code>：
+  macOS 为 <code>44px</code>，其他平台为 <code>0px</code>；插件根框架只消费一次，浏览器预览使用
+  <code>44px</code> fallback。</p>
+  <div class="frame-demo" id="frame-demo" data-route="settings">
+    <div class="frame-titlebar">
+      <nav class="frame-crumb" aria-label="示例页面路径">
+        <button class="frame-back frame-sub-only" id="frame-back" aria-label="返回 Voice">
+          <svg class="icon icon--sm" style="transform:rotate(180deg)" aria-hidden="true"><use href="#reai-icon-chevron-right"></use></svg>
+        </button>
+        <button class="frame-sub-only" id="frame-voice">Voice</button>
+        <span class="frame-sub-only" aria-hidden="true">/</span>
+        <span class="frame-current frame-sub-only" aria-current="page">设置</span>
+        <span class="frame-current frame-root-only" aria-current="page">Voice</span>
+      </nav>
+      <div class="frame-drag" title="Host 窗口拖拽区域"></div>
+      <div class="frame-actions">
+        <button class="btn-icon" id="frame-settings" aria-label="返回插件首页" aria-pressed="true">
+          <svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-settings"></use></svg>
+        </button>
+        <button class="btn-icon" aria-label="通知">
+          <svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-bell"></use></svg>
+        </button>
+      </div>
+    </div>
+    <main class="frame-main-body">
+      <div class="frame-sub-only"><h3>Voice 设置</h3><p>标题与说明属于正文，不在顶部再造 main-title。</p></div>
+      <div class="frame-root-only"><h3>Voice</h3><p>根页面路径直接从 Voice 开始，不显示 Apps / Voice。</p></div>
+      <div class="frame-blocks">
+        <div class="frame-block"><strong>输入与润色</strong><p>正文卡片从 44px 以下开始。</p></div>
+        <div class="frame-block"><strong>语言与模型</strong><p>继续向下滚动，Host Title Bar 保持不动。</p></div>
+        <div class="frame-block"><strong>隐私与记录</strong><p>页面级动作进入右侧 Host 图标堆栈。</p></div>
+        <div class="frame-block"><strong>高级选项</strong><p>main-body 是唯一纵向滚动容器。</p></div>
+      </div>
+    </main>
+  </div>
+  <div class="frame-boundary-grid" role="group" aria-label="标题栏与正文顶部边界对照">
+    <div class="frame-boundary-demo">
+      <div class="frame-boundary-titlebar">同色 · 连续铺开</div>
+      <div class="frame-boundary-body">Title Bar 与正文使用同一主题背景，不加装饰性间距或分割线。</div>
+    </div>
+    <div class="frame-boundary-demo">
+      <div class="frame-boundary-titlebar">异色 · 必须内缩</div>
+      <div class="frame-boundary-inset"><div class="frame-boundary-surface">异色 Surface 放进正文留白内；桌面默认 16px，紧凑布局最低 12px。</div></div>
+    </div>
+  </div>
+  <p class="tiny" style="margin:12px 0 0">这是基础视觉规则：禁止两个不同颜色的全宽大色块零距离硬切；
+  1px 分割线不算留白。实现只能位于插件自己的 <code>main-body</code>，不能改 Host 或全局样式。</p>
+</section>
+
+<!-- ─────────── 1. 颜色 ─────────── -->
+<section class="sec">
+  <h2>1 · 颜色：只用 Token，不写死</h2>
+  <p class="lead">插件跑在隔离的 WebView 里，读不到 Host 的任何样式——这些变量是 Host
+  <strong>主动注入</strong>进插件页面的 <code>:root</code>，切主题时再由 Host 逐个改写。
+  对你来说就一句话：<code>var(--accent)</code> 直接用，不用订阅任何事件。
+  整页的颜色都是这么来的，点右上角按钮试试。</p>
+  <div class="card">
+    <div class="sw">
+      <div><i><span style="background:var(--bg)"></span></i><b>--bg<em>页面底色</em></b></div>
+      <div><i><span style="background:var(--card-bg)"></span></i><b>--card-bg<em>卡片 / 面板底</em></b></div>
+      <div><i><span style="background:var(--card-border)"></span></i><b>--card-border<em>卡片描边</em></b></div>
+      <div><i><span style="background:var(--divider)"></span></i><b>--divider<em>分隔线</em></b></div>
+      <div><i><span style="background:var(--text-primary)"></span></i><b>--text-primary<em>主文字</em></b></div>
+      <div><i><span style="background:var(--text-secondary)"></span></i><b>--text-secondary<em>次要文字</em></b></div>
+      <div><i><span style="background:var(--text-tertiary)"></span></i><b>--text-tertiary<em>占位 / 禁用</em></b></div>
+      <div><i><span style="background:var(--accent)"></span></i><b>--accent<em>品牌强调色</em></b></div>
+      <div><i><span style="background:var(--accent-soft)"></span></i><b>--accent-soft<em>强调浅底</em></b></div>
+      <div><i><span style="background:var(--accent-glow)"></span></i><b>--accent-glow<em>光晕 / 焦点</em></b></div>
+      <div><i><span style="background:var(--alert)"></span></i><b>--alert<em>错误 / 危险</em></b></div>
+      <div><i><span style="background:var(--warn)"></span></i><b>--warn<em>警告</em></b></div>
+      <div><i><span style="background:var(--bound)"></span></i><b>--bound<em>成功 / 完成</em></b></div>
+      <div><i><span style="background:var(--panel-bg)"></span></i><b>--panel-bg<em>浮层面板</em></b></div>
+    </div>
+    <p class="tiny" style="margin:18px 0 0">三色组用法固定：<strong>主色画图标和文字，<code>-soft</code> 画背景，
+    <code>-line</code> 画描边</strong>。别拿主色当背景，一块提示会盖过页面主体。</p>
+  </div>
+</section>
+
+<!-- ─────────── 2. 图标 ─────────── -->
+<section class="sec">
+  <h2>2 · 图标：用图标库，别用字符凑</h2>
+  <p class="lead">这是本次 Skills 抽屉暴露的直接问题。左边是用键盘上的乘号当关闭按钮，
+  右边是同一位置的正确做法。<strong>虚线框是实际能点到的范围</strong>——静态看两颗差不多，
+  真正的差距在这里。</p>
+
+  <div class="vs" style="margin-bottom:20px">
+    <div class="bad">
+      <span class="tag"><svg class="icon icon--sm"><use href="#reai-icon-x"></use></svg>错：文字字符</span>
+      <div class="row" style="justify-content:space-between">
+        <div><p class="eyebrow">TOOLS</p><strong style="font-size:18px">Skills</strong></div>
+        <button style="color:var(--text-secondary);font-size:18px" aria-label="关闭">×</button>
+      </div>
+      <p class="tiny" style="margin:16px 0 0">粗细随系统字体变、对不齐光学重心、点击区只有一个字那么大、
+      鼠标移上去毫无反应。这颗还算好的——它至少写了 <code>aria-label</code>；
+      漏写时读屏会直接念出「乘号」。</p>
+    </div>
+    <div class="good">
+      <span class="tag"><svg class="icon icon--sm"><use href="#reai-icon-check"></use></svg>对：图标库 + 图标按钮档</span>
+      <div class="row" style="justify-content:space-between">
+        <div><p class="eyebrow">TOOLS</p><strong style="font-size:18px">Skills</strong></div>
+        <button class="btn-icon" aria-label="关闭 Skills">
+          <svg class="icon" aria-hidden="true"><use href="#reai-icon-x"></use></svg>
+        </button>
+      </div>
+      <p class="tiny" style="margin:16px 0 0">线宽统一、跟标题基线对齐、44px 可点、有悬停反馈、
+      读屏念的是「关闭 Skills」。颜色靠 <code>currentColor</code> 自动跟随。</p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <h3 style="margin:0 0 4px;font-size:15px">尺寸只有三档</h3>
+    <p class="muted" style="margin:0 0 18px">标准档的 <strong>2</strong> 是对齐 Host 的：它的图标默认就是这个线宽，
+    标题栏那颗通知铃铛是 15px / 线宽 2。偏离它，插件图标跟 Host 图标并排就会显细。
+    小尺寸<strong>必须</strong>加粗——2 的线在 14px 下会糊成一团，这是渲染事实不是审美偏好。</p>
+    <div class="row" style="gap:36px">
+      <div style="text-align:center">
+        <svg class="icon icon--sm" style="color:var(--accent)"><use href="#reai-icon-settings"></use></svg>
+        <p class="tiny" style="margin:8px 0 0">小 · 14px<br>线宽 2.4</p></div>
+      <div style="text-align:center">
+        <svg class="icon" style="color:var(--accent)"><use href="#reai-icon-settings"></use></svg>
+        <p class="tiny" style="margin:8px 0 0"><strong>标准 · 16px</strong><br>线宽 2</p></div>
+      <div style="text-align:center">
+        <svg class="icon icon--lg" style="color:var(--accent)"><use href="#reai-icon-settings"></use></svg>
+        <p class="tiny" style="margin:8px 0 0">大 · 20px<br>线宽 2</p></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 4px;font-size:15px">可直接引用的图标</h3>
+    <p class="muted" style="margin:0 0 16px">把用得到的图标从 Host 的 <code>icons.ts</code> 摘进页面里的
+    一段 <code>&lt;defs&gt;</code>，之后处处写 <code>&lt;use href="#reai-icon-名字"&gt;</code> 引用。
+    名字写错只是空白，不会出乱码，也引不到外部资源。</p>
+    <div class="icons">
+      <figure><svg class="icon"><use href="#reai-icon-x"></use></svg><figcaption>x</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-bell"></use></svg><figcaption>bell</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-check"></use></svg><figcaption>check</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-plus"></use></svg><figcaption>plus</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-search"></use></svg><figcaption>search</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-settings"></use></svg><figcaption>settings</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-folder"></use></svg><figcaption>folder</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-code"></use></svg><figcaption>code</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-mic"></use></svg><figcaption>mic</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-clock"></use></svg><figcaption>clock</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-alert-circle"></use></svg><figcaption>alert-circle</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-chevron-right"></use></svg><figcaption>chevron-right</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-more-vertical"></use></svg><figcaption>more-vertical</figcaption></figure>
+      <figure><svg class="icon"><use href="#reai-icon-list-todo"></use></svg><figcaption>list-todo</figcaption></figure>
+    </div>
+    <p class="tiny" style="margin:16px 0 0">完整图标表见 Host 的 <code>icons.ts</code>（当前 49 个，lucide 描边风格）。
+    这里只列常用的。</p>
+  </div>
+</section>
+
+<!-- ─────────── 3. 按钮 ─────────── -->
+<section class="sec">
+  <h2>3 · 按钮：三档，认得出属于哪档</h2>
+  <p class="lead">判据很直白：<strong>遮住页面其余部分，单看这颗按钮，说得出它属于哪一档吗？</strong>
+  说不出就是造型跑了。</p>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="row" style="gap:20px">
+      <div><button class="btn">开始任务</button>
+        <p class="tiny" style="margin:8px 0 0">主 · 一屏最多 1 颗<br>36px 高 / 圆角 10</p></div>
+      <div><button class="btn-2">取消</button>
+        <p class="tiny" style="margin:8px 0 0">次 · 数量不限<br>36px 高 / 圆角 10</p></div>
+      <div><button class="btn-icon" aria-label="更多">
+          <svg class="icon" aria-hidden="true"><use href="#reai-icon-more-vertical"></use></svg></button>
+        <p class="tiny" style="margin:8px 0 0">图标 · 工具条 / 关闭<br>32px 见方 / 圆角 8</p></div>
+      <div><button class="btn" disabled>发送中…</button>
+        <p class="tiny" style="margin:8px 0 0">进行中 · 禁用 + 改文案<br>别让人连点三次</p></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin:0 0 4px;font-size:15px">可视 32px，可点必须 44px</h3>
+    <p class="muted" style="margin:0 0 18px">虚线是实际点击范围——用透明外扩撑开，<strong>不要靠缩小点击区来让按钮显瘦</strong>。
+    触控板和键盘用户点不准一颗 18px 的字符，点不准就等于"这按钮坏了"。</p>
+    <div class="row hit" style="gap:34px;padding:10px 0">
+      <button class="btn-icon" aria-label="搜索"><svg class="icon" aria-hidden="true"><use href="#reai-icon-search"></use></svg></button>
+      <button class="btn-icon" aria-label="新建"><svg class="icon" aria-hidden="true"><use href="#reai-icon-plus"></use></svg></button>
+      <button class="btn-icon" aria-label="设置"><svg class="icon" aria-hidden="true"><use href="#reai-icon-settings"></use></svg></button>
+      <span class="tiny">← 鼠标移上去看悬停反馈，Tab 键过来看焦点环</span>
+    </div>
+  </div>
+</section>
+
+<!-- ─────────── 4. 刻度 ─────────── -->
+<section class="sec">
+  <h2>4 · 刻度：间距与圆角</h2>
+  <p class="lead">一个人随手写 9px、13px 没问题；十个插件各自随手写，并排就是碎的。</p>
+  <div class="card" style="margin-bottom:16px">
+    <h3 style="margin:0 0 14px;font-size:15px">间距：4 的倍数</h3>
+    <div class="scale">
+      <div><i style="width:4px;height:4px"></i><span class="tiny">4</span></div>
+      <div><i style="width:8px;height:8px"></i><span class="tiny">8</span></div>
+      <div><i style="width:12px;height:12px"></i><span class="tiny">12</span></div>
+      <div><i style="width:16px;height:16px"></i><span class="tiny">16</span></div>
+      <div><i style="width:20px;height:20px"></i><span class="tiny">20</span></div>
+      <div><i style="width:24px;height:24px"></i><span class="tiny">24</span></div>
+      <div><i style="width:32px;height:32px"></i><span class="tiny">32</span></div>
+      <div><i style="width:48px;height:48px"></i><span class="tiny">48</span></div>
+    </div>
+    <p class="tiny" style="margin:18px 0 0">分组规则：回答不同问题的两块之间，留白要<strong>明显大于</strong>组内间距。
+    组内 8，组间就用 20 或 24——用 10 等于没分组。</p>
+  </div>
+  <div class="card">
+    <h3 style="margin:0 0 14px;font-size:15px">圆角：四档</h3>
+    <div class="radii">
+      <div><i style="border-radius:6px"></i><span class="tiny">6 · 徽标标签</span></div>
+      <div><i style="border-radius:10px"></i><span class="tiny">10 · 按钮输入</span></div>
+      <div><i style="border-radius:14px"></i><span class="tiny">14 · 卡片面板</span></div>
+      <div><i style="border-radius:999px"></i><span class="tiny">999 · 胶囊头像</span></div>
+    </div>
+    <p class="tiny" style="margin:18px 0 0">一个界面里不超过三档；嵌套时<strong>外层圆角必须大于内层</strong>，
+    否则内层的角会顶出去。</p>
+  </div>
+</section>
+
+<!-- ─────────── 5. 抽屉 ─────────── -->
+<section class="sec">
+  <h2>5 · 抽屉：三种关法，一种都不能少</h2>
+  <p class="lead">点开下面这个抽屉，然后分别试：点关闭按钮、按 <strong>Esc</strong>、点左侧灰色遮罩——
+  三种都能关。再用键盘试一遍：打开后焦点直接进抽屉，<strong>Tab 只在抽屉内循环</strong>、不会跑到后面的页面上，
+  关掉之后焦点回到原来那颗按钮，不用从头 Tab 一遍。</p>
+  <div class="stage" id="stage" data-open="0">
+    <div class="stage-body">
+      <p class="muted" style="margin:0 0 16px">这里是插件的主内容区。</p>
+      <button class="btn" id="open-drawer" aria-controls="demo-drawer" aria-expanded="false">
+        <svg class="icon" aria-hidden="true"><use href="#reai-icon-list-todo"></use></svg>打开 Skills 抽屉</button>
+    </div>
+    <div class="scrim" id="scrim"></div>
+    <!-- tabindex="-1"：抽屉里没有可聚焦元素时，焦点得有个地方落 -->
+    <aside class="drawer" id="demo-drawer" role="dialog" aria-modal="true" aria-labelledby="dt" tabindex="-1">
+      <div class="drawer-head">
+        <div><p class="eyebrow">TOOLS</p><h3 id="dt" style="margin:0;font-size:19px">Skills</h3></div>
+        <button class="btn-icon" id="close-drawer" aria-label="关闭 Skills">
+          <svg class="icon" aria-hidden="true"><use href="#reai-icon-x"></use></svg></button>
+      </div>
+      <p class="muted" style="margin:0 0 20px;font-size:13px">关闭按钮跟标题<strong>基线对齐</strong>，
+      不是靠上贴边——跟着标题走它才像标题的一部分，而不是漂在角落的孤儿。</p>
+      <div class="grid">
+        <div class="row" style="justify-content:space-between;padding:10px 12px;border-radius:10px;border:1px solid var(--card-border)">
+          <span style="font-size:14px">ask-project</span><button class="btn-2" style="height:30px;padding:0 12px;font-size:13px">运行</button></div>
+        <div class="row" style="justify-content:space-between;padding:10px 12px;border-radius:10px;border:1px solid var(--card-border)">
+          <span style="font-size:14px">auto-dev</span><button class="btn-2" style="height:30px;padding:0 12px;font-size:13px">运行</button></div>
+      </div>
+    </aside>
+  </div>
+  <p class="tiny" style="margin-top:14px">宽度 <code>min(360px, 100% - 24px)</code>，内边距 24，
+  遮罩 <code>rgba(20,18,40,.3)</code> + 5px 模糊，滑入 120ms。
+  系统开了「减少动态效果」时直接显示，不做动画。<br>
+  ⚠️ 这里是<strong>页内演示</strong>：遮罩只盖住上面这块演示区，不像真插件那样铺满整个界面。
+  所以用鼠标点到演示区外面，焦点就出去了，之后 Tab 不再受约束。真插件里遮罩铺满整屏，
+  同时还应该给页面其余部分加 <code>inert</code>，读屏用户才不会读到抽屉背后的内容。</p>
+</section>
+
+<!-- ─────────── 6. 状态 ─────────── -->
+<section class="sec">
+  <h2>6 · 四种状态，一种都不能白屏</h2>
+  <p class="lead">缺一种，用户就会遇到"一片空白，不知道是在加载还是坏了"。</p>
+  <div class="states">
+    <div class="state">
+      <div class="skel" style="width:74%"></div><div class="skel" style="width:52%"></div>
+      <p class="tiny" style="margin:14px 0 0"><strong>加载中</strong><br>超过 400ms 才显示，
+      否则一闪而过更晃眼</p></div>
+    <div class="state">
+      <svg class="icon icon--lg" style="color:var(--text-tertiary)"><use href="#reai-icon-folder"></use></svg>
+      <p style="margin:10px 0 12px;font-size:13px;color:var(--text-secondary)">还没有打开过项目</p>
+      <button class="btn-2" style="height:30px;padding:0 12px;font-size:13px">选择文件夹</button>
+      <p class="tiny" style="margin:12px 0 0"><strong>空</strong><br>说清为什么空 + 怎么让它不空</p></div>
+    <div class="state">
+      <svg class="icon icon--lg" style="color:var(--alert)"><use href="#reai-icon-alert-circle"></use></svg>
+      <p style="margin:10px 0 12px;font-size:13px;color:var(--text-secondary)">连不上 Codex，可能没在运行</p>
+      <button class="btn-2" style="height:30px;padding:0 12px;font-size:13px">重试</button>
+      <p class="tiny" style="margin:12px 0 0"><strong>失败</strong><br>说人话 + 给重试，别甩错误码</p></div>
+    <div class="state">
+      <svg class="icon icon--lg" style="color:var(--warn)"><use href="#reai-icon-settings"></use></svg>
+      <p style="margin:10px 0 12px;font-size:13px;color:var(--text-secondary)">需要「读取项目列表」权限</p>
+      <button class="btn-2" style="height:30px;padding:0 12px;font-size:13px">去授权</button>
+      <p class="tiny" style="margin:12px 0 0"><strong>无权限</strong><br>指到「已安装 → 权限」，别自己弹系统框</p></div>
+  </div>
+</section>
+
+<section class="sec" id="settings-content-layout">
+<h2>6.1 · 设置项：说明、反馈与分隔</h2>
+<p class="lead">标题＋说明使用两行层级；标题＋动态反馈使用内缩分隔。<a href="https://ai-board.reai.com/docs/plugin-design-system-v1#settings-content-layout">完整规范与验收要求</a>。本例只演示布局，不连接 App、不保存真实设置。</p>
+<div class="ps-review-controls">
+    <label for="ps-scenario">示例状态（不属于产品设置）</label>
+    <select id="ps-scenario"><option value="normal">正常切换档位</option><option value="save-error">模拟下次保存失败</option><option value="blocked">文字注入权限被关闭</option></select>
+    <span class="ps-eyebrow" id="ps-demo-hint">点击三档，查看说明和失败策略如何变化。</span>
+  </div>
+<section class="ps-stage" aria-label="产品布局预览">
+
+    <div class="ps-body">
+      <div class="ps-section-label">录音与识别</div>
+      <div class="ps-card">
+        <div class="ps-item"><div class="ps-setting"><div class="ps-copy"><div class="ps-title">录音来源</div><div class="ps-desc">默认使用键盘麦克风；改用电脑麦克风时才请求系统麦克风权限</div></div><span class="ps-value">键盘 · USB</span></div></div>
+        <div class="ps-item"><div class="ps-setting"><div class="ps-copy"><div class="ps-title">识别语言</div><div class="ps-desc">用于语音识别与标点习惯</div></div><span class="ps-value">自动检测</span></div></div>
+      </div>
+      <div class="ps-section-label ps-spaced">润色</div>
+      <div class="ps-card ps-polish">
+        <div class="ps-setting-head">
+          <div class="ps-title" id="ps-polish-title">注入前的处理</div>
+          <fieldset class="ps-seg" aria-labelledby="ps-polish-title" aria-describedby="ps-mode-desc">
+            <label><input type="radio" name="ps-polish" value="raw"><span>原样</span></label>
+            <label><input type="radio" name="ps-polish" value="light" checked><span>轻度</span></label>
+            <label><input type="radio" name="ps-polish" value="formal"><span>规整</span></label>
+          </fieldset>
+        </div>
+        <div class="ps-feedback">
+          <p id="ps-mode-desc" aria-live="polite">去口头禅、理顺语序，不动原意。</p>
+          <div class="ps-policy" id="ps-failure-policy"><strong>失败时的处理</strong><p>润色需要使用云端 AI。失败或超时，会按原话注入，不会中断输入。</p></div>
+          <div class="ps-error" id="ps-save-error" role="alert" hidden><strong>设置未保存</strong><p id="ps-save-error-copy"></p><button id="ps-retry" type="button">重试保存</button></div>
+          <div class="ps-error" id="ps-blocked" role="status" hidden><strong>润色暂不可用</strong><p>文字注入权限已关闭。请到「已安装 → Voice → 权限」开启文字注入；新的录音会在开始前被拦截。</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+<p class="muted">内边距 16px；标题与说明间隔 4px；反馈 divider 与文字左右对齐、线上下各 12px；策略间隔 12px，策略标题与正文间隔 4px。真实错误独立呈现。</p>
+</section>
+
+<!-- ─────────── 7. 自检 ─────────── -->
+<section class="sec">
+  <h2>7 · 交付前自检</h2>
+  <p class="lead">每条都能答「是」才算合格。完整清单见规范正文第 7 节。</p>
+  <div class="card">
+    <ul class="check">
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        样式表里搜不到写死的十六进制颜色，切深色主题后全部内容仍清晰可读</li>
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        没有用文字字符当图标；尺寸只出现 14 / 16 / 20 三档</li>
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        每个纯图标按钮都有 <code>aria-label</code>；每颗按钮都有悬停反馈</li>
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        独立图标按钮命中区 44×44px（密集成组按钮见规范 §3.3 例外）；一屏只有一颗主按钮</li>
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        间距都是 4 的倍数；圆角不超过三档，嵌套时外大于内</li>
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        页面只有一条 Host Title Bar；根框架只消费一次 <code>--reai-plugin-titlebar-safe-top</code>，
+        main-body 填满剩余空间并独立滚动</li>
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        顶部交界已采用“同色连续”或“异色内缩”；不存在两个不同颜色的全宽大色块零距离硬切</li>
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        根路径直接显示 App 名；子页有返回按钮，祖先面包屑可点，且没有 Apps / 前缀</li>
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        设置页的 Host 设置动作保持按下并暴露 <code>aria-pressed</code>；再次点击真实返回根页</li>
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        抽屉能用按钮 / Esc / 点遮罩三种方式关闭；Tab 在抽屉内循环，关闭后焦点归位</li>
+      <li><svg class="icon icon--sm" aria-hidden="true"><use href="#reai-icon-check"></use></svg>
+        加载 / 空 / 失败 / 无权限四种状态都有明确呈现</li>
+    </ul>
+  </div>
+</section>
+
+</div>
+
+<script>
+// §6.1 纯演示状态，不改变插件业务逻辑。
+{
+const modes={raw:{label:'原样',desc:'按识别结果直接注入，不做润色。'},light:{label:'轻度',desc:'去口头禅、理顺语序，不动原意。'},formal:{label:'规整',desc:'整理句式与段落，让表达更规整，保持原意。'}};
+const radios=[...document.querySelectorAll('input[name="ps-polish"]')];
+const scenario=document.getElementById('ps-scenario');
+let saved='light',attempted=null;
+function render(){
+  radios.forEach(r=>r.checked=r.value===saved);
+  document.getElementById('ps-mode-desc').textContent=modes[saved].desc;
+  document.getElementById('ps-failure-policy').hidden=saved==='raw';
+  document.getElementById('ps-blocked').hidden=scenario.value!=='blocked'||saved==='raw';
+  document.getElementById('ps-save-error').hidden=attempted===null;
+  document.getElementById('ps-save-error-copy').textContent=attempted?`未能保存为「${modes[attempted].label}」，当前仍为「${modes[saved].label}」。`:'';
+}
+radios.forEach(r=>r.addEventListener('change',()=>{if(scenario.value==='save-error'){attempted=r.value;}else{saved=r.value;attempted=null;}render();}));
+scenario.addEventListener('change',()=>{attempted=null;document.getElementById('ps-demo-hint').textContent=scenario.value==='save-error'?'选择另一档，查看保存失败后仍保留原选项。':scenario.value==='blocked'?'展示当前权限异常；这不是云端失败回退提示。':'点击三档，查看说明和失败策略如何变化。';render();});
+document.getElementById('ps-retry').addEventListener('click',()=>{if(attempted)saved=attempted;attempted=null;scenario.value='normal';document.getElementById('ps-demo-hint').textContent='演示：重试成功，已应用新档位。';render();});
+}
+
+// 主题切换：真实验证「插件不用监听主题事件」——整页只改 body 的 class，颜色自己跟着走
+const themeBtn = document.getElementById("theme");
+themeBtn.addEventListener("click", () => {
+  const dark = document.body.classList.toggle("dark");
+  document.body.classList.toggle("light", !dark);
+  themeBtn.textContent = dark ? "切到浅色" : "切到深色";
+});
+
+// 单层页面框架：路径与返回属于 Host；这里只模拟 Host 的路由结果，不向插件 DOM 注入标题栏。
+const frameDemo = document.getElementById("frame-demo");
+const frameSettings = document.getElementById("frame-settings");
+const setFrameRoute = (route) => {
+  frameDemo.setAttribute("data-route", route);
+  const pressed = route === "settings";
+  frameSettings.setAttribute("aria-pressed", String(pressed));
+  frameSettings.setAttribute("aria-label", pressed ? "返回插件首页" : "打开 Voice 设置");
+};
+document.getElementById("frame-back").addEventListener("click", () => setFrameRoute("voice"));
+document.getElementById("frame-voice").addEventListener("click", () => setFrameRoute("voice"));
+frameSettings.addEventListener("click", () => setFrameRoute(
+  frameDemo.getAttribute("data-route") === "settings" ? "voice" : "settings",
+));
+
+// 抽屉：三种关法 + 焦点进出 + Tab 陷阱（§5）
+const stage = document.getElementById("stage");
+const drawer = document.getElementById("demo-drawer");
+const openBtn = document.getElementById("open-drawer");
+const isOpen = () => stage.dataset.open === "1";
+
+// 禁用态要逐个排除：只写 button:not([disabled]) 会把禁用的输入框也算进来，
+// Tab 循环就会停在一个根本聚不上焦的元素上。
+const FOCUSABLE = [
+  "button:not([disabled])", "a[href]", "input:not([disabled])",
+  "select:not([disabled])", "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])',
+].join(",");
+const focusableIn = (el) => [...el.querySelectorAll(FOCUSABLE)];
+
+// restoreFocus 由「怎么关的」决定，不能靠读 document.activeElement 猜：
+// 鼠标按下时浏览器会先把焦点打到 body（点遮罩必然如此，Safari/WKWebView 点按钮也一样），
+// 等处理函数跑起来，焦点早就不在抽屉里了，一判断就误判成「不该归位」。
+const setOpen = (open, restoreFocus = true) => {
+  stage.dataset.open = open ? "1" : "0";
+  openBtn.setAttribute("aria-expanded", String(open));
+  // 显隐交给 CSS 的 visibility，JS 不碰 hidden —— 碰了动画就不播
+  if (open) {
+    // 等下一帧再聚焦：visibility 刚从 hidden 翻过来，同一帧里元素还不可聚焦，
+    // 这时候调 focus() 会静默失败（不报错，焦点就是不进去）。
+    // 守卫 isOpen()：同一帧内开了又关时，别去聚焦一个已经藏起来的元素。
+    requestAnimationFrame(() => {
+      if (!isOpen()) return;
+      (focusableIn(drawer)[0] || drawer).focus();
+    });
+  } else if (restoreFocus) {
+    openBtn.focus();   // 焦点还给触发它的按钮，键盘用户不用从头 Tab
+  }
+};
+
+openBtn.addEventListener("click", () => setOpen(true));
+document.getElementById("close-drawer").addEventListener("click", () => setOpen(false));
+document.getElementById("scrim").addEventListener("click", () => setOpen(false));
+
+document.addEventListener("keydown", (e) => {
+  if (!isOpen()) return;
+  if (e.key === "Escape") {
+    // 唯一一处不无条件归位的路径：用户正看着页面别处随手按 Esc 时，
+    // 把焦点拽回抽屉按钮会让长页面猛地滚回去。键盘没动过焦点才归位。
+    setOpen(false, drawer.contains(document.activeElement));
+    return;
+  }
+  if (e.key !== "Tab") return;
+
+  // 焦点陷阱：aria-modal="true" 就是承诺了 Tab 不会跑到抽屉后面去。
+  // 少了这段，键盘用户会 Tab 着 Tab 着操作到一个自己看不见的控件。
+  const focusable = focusableIn(drawer);
+  if (!focusable.length) {
+    // 一个可聚焦元素都没有（比如纯文字抽屉）时，把焦点钉在容器上，
+    // 否则 Tab 会直接跑出抽屉——陷阱形同虚设。
+    e.preventDefault();
+    drawer.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+});
+</script>
+</body>
+</html>

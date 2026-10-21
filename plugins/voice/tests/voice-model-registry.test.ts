@@ -22,7 +22,7 @@ beforeEach(() => setVoiceLocale("zh"));
 const CUSTOM_MODEL_NAMES = [
   "alice-private-asr",
   "Users/alice/models/private.onnx",
-  "/workspace/Models/私人模型.onnx",
+  "/Users/alice/Models/私人模型.onnx",
   "C:\\Users\\alice\\models\\asr.onnx",
   "constructor",
   "__proto__",

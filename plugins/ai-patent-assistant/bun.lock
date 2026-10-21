@@ -6,10 +6,10 @@
       "name": "reai-ai-patent-assistant",
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.0.0",
-        "@reai/app-cli": "file:../../packages/cli",
-        "@reai/app-contract": "file:../../packages/contract",
-        "@reai/app-sdk": "file:../../packages/sdk",
-        "@reai/app-test": "file:../../packages/test-kit",
+        "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
+        "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+        "@reai/app-sdk": "file:../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz",
+        "@reai/app-test": "file:../../vendor/platform/4ed2325a750e/packs/app-test.tgz",
         "@types/bun": "^1.3.14",
         "typescript": "~5.6.0",
         "vite": "^6.0.0",
@@ -17,10 +17,10 @@
     },
   },
   "overrides": {
-    "@reai/app-cli": "file:../../packages/cli",
-    "@reai/app-contract": "file:../../packages/contract",
-    "@reai/app-sdk": "file:../../packages/sdk",
-    "@reai/app-test": "file:../../packages/test-kit",
+    "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
+    "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+    "@reai/app-sdk": "file:../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz",
+    "@reai/app-test": "file:../../vendor/platform/4ed2325a750e/packs/app-test.tgz",
   },
   "packages": {
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.25.12", "https://registry.npmmirror.com/@esbuild/aix-ppc64/-/aix-ppc64-0.25.12.tgz", { "os": "aix", "cpu": "ppc64" }, "sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA=="],
@@ -79,13 +79,13 @@
 
     "@napi-rs/lzma-linux-x64-gnu": ["@napi-rs/lzma-linux-x64-gnu@1.5.1", "https://registry.npmmirror.com/@napi-rs/lzma-linux-x64-gnu/-/lzma-linux-x64-gnu-1.5.1.tgz", { "os": "linux", "cpu": "x64" }, "sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ=="],
 
-    "@reai/app-cli": ["@reai/app-cli@file:../../packages/cli", { "dependencies": { "@happy-dom/global-registrator": "^20.0.0", "@reai/app-contract": "1.24.0", "@reai/app-sdk": "1.24.0", "@reai/app-test": "1.2.0" }, "devDependencies": { "typescript": "~5.6.0" }, "bin": { "reai-app": "./src/cli.ts" } }],
+    "@reai/app-cli": ["@reai/app-cli@../../vendor/platform/4ed2325a750e/packs/app-cli.tgz", { "dependencies": { "@happy-dom/global-registrator": "^20.0.0", "@reai/app-contract": "1.26.0-v106.2", "@reai/app-sdk": "1.27.0-v106.2", "@reai/app-test": "1.5.0-v106.2" }, "bin": { "reai-app": "./src/cli.ts" } }, "sha512-lxd9rkyzdpyaFUvg3gGqbFuLfyw4k1j0xIXuRDBtvsw7rbVv6qJRqguioPW2PL/zHeYNtHdOo6+PWw/OaHBXzQ=="],
 
-    "@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
+    "@reai/app-contract": ["@reai/app-contract@../../vendor/platform/4ed2325a750e/packs/app-contract.tgz", {}, "sha512-MeF0dCH4YSAb7zGU2kym9CQ+wHdTPdJLqvoEaxegM7Ek7GMpRjFuBzuPwS03J0wFbqTjM8wrsrx1P3RAje1nuA=="],
 
-    "@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.24.0", "typescript": "~5.6.0" } }],
+    "@reai/app-sdk": ["@reai/app-sdk@../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz", { "dependencies": { "@reai/app-contract": "1.26.0-v106.2" } }, "sha512-vrdHdEJisj2Kb/e94pkw079NxJHEPBBvosUak5erfn7XYFNCUEK7zO/x0m3V+w+ppVql1Pkg+uJ7MGmPRo6McQ=="],
 
-    "@reai/app-test": ["@reai/app-test@file:../../packages/test-kit", { "dependencies": { "@reai/app-contract": "1.24.0", "@reai/app-sdk": "1.24.0" }, "devDependencies": { "@reai/app-sdk": "1.24.0", "typescript": "~5.6.0" } }],
+    "@reai/app-test": ["@reai/app-test@../../vendor/platform/4ed2325a750e/packs/app-test.tgz", { "dependencies": { "@reai/app-contract": "1.26.0-v106.2", "@reai/app-sdk": "1.27.0-v106.2" } }, "sha512-uuyebeGbOfr+hY88P+hePbjxOK0ZKgd5Mh/Isf8aUJi2rO0EbaLreuHY2lojHkQrV1ppBILFRItENKXNzJfpug=="],
 
     "@rollup/rollup-android-arm-eabi": ["@rollup/rollup-android-arm-eabi@4.64.2", "https://registry.npmmirror.com/@rollup/rollup-android-arm-eabi/-/rollup-android-arm-eabi-4.64.2.tgz", { "os": "android", "cpu": "arm" }, "sha512-gjNDUwMswogkw3fNqV00u54uZlgmInuw5EU/1TeqQ6K0bEagoGvqjPdKzy112lKyhe7PkGudZ/kSQHsc9qroIg=="],
 
@@ -184,17 +184,5 @@
     "whatwg-mimetype": ["whatwg-mimetype@3.0.0", "https://registry.npmmirror.com/whatwg-mimetype/-/whatwg-mimetype-3.0.0.tgz", {}, "sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q=="],
 
     "ws": ["ws@8.22.0", "https://registry.npmmirror.com/ws/-/ws-8.22.0.tgz", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-Ydggc987+RO0AnWtZ/7Wq9FtNvcrL1b/RO0ud9mWjUPgDrsAAwQSF51sm2hm1XofbU/4jkpGEsLFsZZxU+1DOg=="],
-
-    "@reai/app-cli/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-cli/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", {}],
-
-    "@reai/app-cli/@reai/app-test": ["@reai/app-test@file:../../packages/test-kit", {}],
-
-    "@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-test/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-test/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", {}],
   }
 }

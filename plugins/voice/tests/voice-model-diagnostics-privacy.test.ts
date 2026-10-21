@@ -16,7 +16,7 @@ afterAll(() => { if (ownsDom) GlobalRegistrator.unregister(); });
 beforeEach(() => { document.body.replaceChildren(); setVoiceLocale("zh"); });
 
 const CUSTOM_ID = "alice-private-asr";
-const CUSTOM_NAME = "/workspace/Models/私人模型.onnx";
+const CUSTOM_NAME = "/Users/alice/Models/私人模型.onnx";
 /** 复制全文里一个都不许出现的片段（名字、路径、用户名）。 */
 const PRIVATE = [CUSTOM_ID, CUSTOM_NAME, "alice", "/Users", "私人模型", ".onnx"];
 

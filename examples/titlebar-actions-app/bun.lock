@@ -8,20 +8,20 @@
         "@intlify/core-base": "11.4.10",
       },
       "devDependencies": {
-        "@reai/app-cli": "file:../../packages/cli",
-        "@reai/app-contract": "file:../../packages/contract",
-        "@reai/app-sdk": "file:../../packages/sdk",
-        "@reai/app-test": "file:../../packages/test-kit",
+        "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
+        "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+        "@reai/app-sdk": "file:../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz",
+        "@reai/app-test": "file:../../vendor/platform/4ed2325a750e/packs/app-test.tgz",
         "@types/bun": "^1.3.14",
         "typescript": "~5.6.0",
       },
     },
   },
   "overrides": {
-    "@reai/app-cli": "file:../../packages/cli",
-    "@reai/app-contract": "file:../../packages/contract",
-    "@reai/app-sdk": "file:../../packages/sdk",
-    "@reai/app-test": "file:../../packages/test-kit",
+    "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
+    "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+    "@reai/app-sdk": "file:../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz",
+    "@reai/app-test": "file:../../vendor/platform/4ed2325a750e/packs/app-test.tgz",
   },
   "packages": {
     "@happy-dom/global-registrator": ["@happy-dom/global-registrator@20.12.0", "https://registry.npmmirror.com/@happy-dom/global-registrator/-/global-registrator-20.12.0.tgz", { "dependencies": { "@types/node": ">=20.0.0", "happy-dom": "^20.12.0" } }, "sha512-BUE55Rew3oMwBzwCwmUnV+Oxk51V3xolM39Ts6kGiBXNELjujiESwk9qc99JRr6cVrj3OTd9MJ5zQ2fpn+jy6g=="],
@@ -34,13 +34,13 @@
 
     "@intlify/shared": ["@intlify/shared@11.4.10", "https://registry.npmmirror.com/@intlify/shared/-/shared-11.4.10.tgz", {}, "sha512-FeImVdPeoSHTm3NBFFZHv0eRP9gQ3F4lj2puDBX5Kw7iiM1uJW6JTf39ian0K/17pbXCI3ef5i9RVsRrALqI6Q=="],
 
-    "@reai/app-cli": ["@reai/app-cli@file:../../packages/cli", { "dependencies": { "@happy-dom/global-registrator": "^20.0.0", "@reai/app-contract": "1.16.0", "@reai/app-sdk": "1.16.0", "@reai/app-test": "1.2.0" }, "devDependencies": { "typescript": "~5.6.0" }, "bin": { "reai-app": "./src/cli.ts" } }],
+    "@reai/app-cli": ["@reai/app-cli@../../vendor/platform/4ed2325a750e/packs/app-cli.tgz", { "dependencies": { "@happy-dom/global-registrator": "^20.0.0", "@reai/app-contract": "1.26.0-v106.2", "@reai/app-sdk": "1.27.0-v106.2", "@reai/app-test": "1.5.0-v106.2" }, "bin": { "reai-app": "./src/cli.ts" } }, "sha512-lxd9rkyzdpyaFUvg3gGqbFuLfyw4k1j0xIXuRDBtvsw7rbVv6qJRqguioPW2PL/zHeYNtHdOo6+PWw/OaHBXzQ=="],
 
-    "@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
+    "@reai/app-contract": ["@reai/app-contract@../../vendor/platform/4ed2325a750e/packs/app-contract.tgz", {}, "sha512-MeF0dCH4YSAb7zGU2kym9CQ+wHdTPdJLqvoEaxegM7Ek7GMpRjFuBzuPwS03J0wFbqTjM8wrsrx1P3RAje1nuA=="],
 
-    "@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.16.0", "typescript": "~5.6.0" } }],
+    "@reai/app-sdk": ["@reai/app-sdk@../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz", { "dependencies": { "@reai/app-contract": "1.26.0-v106.2" } }, "sha512-vrdHdEJisj2Kb/e94pkw079NxJHEPBBvosUak5erfn7XYFNCUEK7zO/x0m3V+w+ppVql1Pkg+uJ7MGmPRo6McQ=="],
 
-    "@reai/app-test": ["@reai/app-test@file:../../packages/test-kit", { "dependencies": { "@reai/app-sdk": "1.16.0" }, "devDependencies": { "typescript": "~5.6.0" } }],
+    "@reai/app-test": ["@reai/app-test@../../vendor/platform/4ed2325a750e/packs/app-test.tgz", { "dependencies": { "@reai/app-contract": "1.26.0-v106.2", "@reai/app-sdk": "1.27.0-v106.2" } }, "sha512-uuyebeGbOfr+hY88P+hePbjxOK0ZKgd5Mh/Isf8aUJi2rO0EbaLreuHY2lojHkQrV1ppBILFRItENKXNzJfpug=="],
 
     "@types/bun": ["@types/bun@1.4.0", "https://registry.npmmirror.com/@types/bun/-/bun-1.4.0.tgz", { "dependencies": { "bun-types": "1.4.0" } }, "sha512-K+lZULY23vRgK/CfTjFIV+tyifaNdSMlPh9j+6mQ/cLfpOznLyAuzgV/JQysyECpkBQLVMSyvjlr2fBUSA9wFQ=="],
 
@@ -67,23 +67,5 @@
     "whatwg-mimetype": ["whatwg-mimetype@3.0.0", "https://registry.npmmirror.com/whatwg-mimetype/-/whatwg-mimetype-3.0.0.tgz", {}, "sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q=="],
 
     "ws": ["ws@8.21.3", "https://registry.npmmirror.com/ws/-/ws-8.21.3.tgz", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw=="],
-
-    "@reai/app-cli/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-cli/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.16.0", "typescript": "~5.6.0" } }],
-
-    "@reai/app-cli/@reai/app-test": ["@reai/app-test@file:../../packages/test-kit", { "dependencies": { "@reai/app-sdk": "1.16.0" }, "devDependencies": { "typescript": "~5.6.0" } }],
-
-    "@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-test/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.16.0", "typescript": "~5.6.0" } }],
-
-    "@reai/app-cli/@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-cli/@reai/app-test/@reai/app-sdk": ["@reai/app-sdk@file:../../packages/sdk", { "devDependencies": { "@reai/app-contract": "1.16.0", "typescript": "~5.6.0" } }],
-
-    "@reai/app-test/@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
-
-    "@reai/app-cli/@reai/app-test/@reai/app-sdk/@reai/app-contract": ["@reai/app-contract@file:../../packages/contract", {}],
   }
 }

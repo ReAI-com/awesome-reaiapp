@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "storeId 是 KV 键的第二段，带分隔符就能跨出自己的命名空间"
-}

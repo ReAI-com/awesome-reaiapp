@@ -1,5 +1,0 @@
-[install]
-# Workspace overrides supply the current SDK/contract while the approved CLI
-# retains its published dependency pins. Bun's isolated linker can omit the
-# overridden contract edge; hoisting keeps fresh worktree installs usable.
-linker = "hoisted"

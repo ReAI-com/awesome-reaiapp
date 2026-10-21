@@ -1,5 +1,12 @@
 # ReAI App 平台规范更新日志
 
+## 2026-10-21 · 平台包改由主项目发布（迁移阶段 A 插件仓侧）
+
+- 删除 `packages/` 源码拷贝，插件、样例与两个 AI 员工 demo 改为依赖 `vendor/platform/4ed2325a750e/` 中主项目发布的 v106.2 平台包 tarball：合同 `1.26.0-v106.2`、SDK `1.27.0-v106.2`、test-kit `1.5.0-v106.2`、CLI `1.4.2-v106.2`、语言工具 `1.2.0-v106.2`、共享 UI `0.1.1-v106.2`。`vendor/platform/pins.json` 按摘要钉住 lock，lock 钉住来源回执与每个 tarball；插件仓不修改 tarball，升级只能整体替换为主项目新发布的批次。
+- 删除 `scripts/` 下四个主项目工具拷贝。送审预检改用语言工具自带的 `reai-app-i18n submission check|pack`，插件的 `check:submission` / `pack:submission` 命令名不变。
+- 官方插件按主项目导出（总摘要 `021d8c09…b9aa`）同步；样例、AI 员工 demo、插件仓独有说明与 Voice 诊断测试保留插件仓版本。新增 [`platform-docs/`](../platform-docs/README.md) 作为主项目平台规范的只读快照，本目录文档暂不改写，文中 `packages/…` 路径指平台包 tarball 内的对应文件。
+- CI 改测 vendor tarball 并在 `vendor/**` 变化时触发，Bun 升到 `1.3.14`；新增对所有改动生效的公开泄露闸门，导出自带豁免与插件仓自有豁免分文件登记、按文件摘要绑定。
+
 ## 2026-10-19 · 同步插件与共享工具至 v1.0.5 平台包
 
 - 共享工具同步到 SDK `1.26.0-v105.1`、合同 `1.25.3-v105.1`、CLI `1.4.1-v105.1`、语言工具 `1.1.1-v105.1` 与 test-kit `1.4.0-v105.1`，新增 Surface 导航与布局、平台服务合同、`resources.files@1`、共享音频片段和通知场景及对应 Mock。

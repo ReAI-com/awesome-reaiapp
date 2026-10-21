@@ -1,7 +1,0 @@
-{
-  "codes": [
-    "APP_CAPABILITY_NOT_GRANTED",
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "5462 个汉字 = 16386 UTF-8 字节 > 16384，但只有 5462 个码元——长度按字节两侧同码（Host 与 CLI），schema 的码元 maxLength 只是更宽松的结构层。附带 NOT_GRANTED：样例 appId 未获 agent.session@2 授予（两侧口径一致）"
-}
