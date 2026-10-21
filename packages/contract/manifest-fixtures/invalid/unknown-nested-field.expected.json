@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "嵌套未知字段同样被拒，否则 component 声明可以夹带私货"
-}

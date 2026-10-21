@@ -100,7 +100,7 @@ describe("Voice 插件私有数据归一化", () => {
     const repository = new VoiceStateRepository(storeWith({}));
     await repository.appendCommandHistory({ id: "a", conversationId: "conversation-a", agentSessionId: "pi-a", transcript: "first", reply: "answer", status: "completed", createdAt: "2026-09-20T09:00:00.000Z" });
     await repository.appendCommandHistory({ id: "b", conversationId: "conversation-a", agentSessionId: "agent2-b", transcript: "next", reply: "second", status: "completed", createdAt: "2026-09-20T09:00:01.000Z" });
-    await repository.saveConversationOptions("conversation-a", { backend: "dsh", workspace: { kind: "direct", path: "/workspace/project" }, sessionId: "agent2-b", workspaceRoot: "/workspace/project", continuationPending: true });
+    await repository.saveConversationOptions("conversation-a", { backend: "dsh", workspace: { kind: "direct", path: "/Users/example/project" }, sessionId: "agent2-b", workspaceRoot: "/Users/example/project", continuationPending: true });
     const stored = await repository.load();
     expect(stored.commandHistory?.map((entry) => [entry.conversationId, entry.agentSessionId])).toEqual([["conversation-a", "agent2-b"], ["conversation-a", "pi-a"]]);
     expect(stored.conversationOptions["conversation-a"]).toMatchObject({ backend: "dsh", sessionId: "agent2-b", continuationPending: true });

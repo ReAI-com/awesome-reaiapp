@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "appId": "com.reai.agents-tasks",
+  "publisherId": "REPLACE_WITH_PUBLISHER_ID",
+  "oauthAppId": "REPLACE_WITH_OAUTH_CLIENT_ID",
+  "productId": "REPLACE_WITH_PRODUCT_ID",
+  "target": "universal",
+  "version": "1.0.1-dev.1"
+}

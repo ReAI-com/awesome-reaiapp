@@ -1,4 +1,3 @@
-// Synthetic credential bytes test diagnostic privacy.
 /**
  * §6.0（#waiting-failure-minimum）在真实 SDK → MockHost 线路上的端到端行为：
  * Voice 页可见时经 system.tasks@1 读 App（Host）版本；复制诊断真的写进剪贴板；

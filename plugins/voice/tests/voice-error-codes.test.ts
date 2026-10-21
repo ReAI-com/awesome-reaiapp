@@ -1,4 +1,3 @@
-// Synthetic credential bytes test diagnostic privacy.
 /**
  * 错误码登记表（§6.0 白名单）：导出的码只认登记过的值，不按长相判断；插件源码里抛出 / 识别的码都已登记。
  */
@@ -91,3 +90,4 @@ test("交给 Host 弹窗的 errorCode：只带登记过、且合 Host 码形状�
   expect(hostErrorCode("PRIVATE_ACCOUNT_DATA")).toEqual({});
   expect(hostErrorCode(undefined)).toEqual({});
 });
+

@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_REFERENCE_INVALID"
-  ],
-  "note": "eventSubscriptions 的 componentId 必须指向已声明的 runtime.components——订阅挂在不存在的 component 上永远收不到事件"
-}

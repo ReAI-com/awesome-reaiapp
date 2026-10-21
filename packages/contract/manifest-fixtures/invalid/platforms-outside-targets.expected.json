@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_REFERENCE_INVALID"
-  ],
-  "note": "platforms 必须是顶层 targets 的子集"
-}

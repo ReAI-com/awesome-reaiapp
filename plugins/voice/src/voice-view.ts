@@ -357,6 +357,7 @@ export interface VoiceViewActions {
   onRetryAgentRequest?(taskId: string): Promise<string>;
   /** 缺少浏览器插件时，从聊天能力卡安装依赖并以原问题续跑同一段对话。 */
   onInstallBrowserWebAccessAndRetry?(item: VoiceCommandHistoryItem): Promise<void>;
+  onOpenSourceLink?(url: string): Promise<void>;
   /**
    * R8：命令详情输入坞麦克风的定向听写。第一次调用起跑（返回 listening），第二次
    * 调用收工并返回转写；转写**只**通过返回值交给视图落进当前输入框——不走系统
@@ -844,6 +845,7 @@ export function mountVoiceView(
     isActive: () => page === "chat",
     render: () => render(),
     actions: {
+      onOpenSourceLink: actions.onOpenSourceLink,
       onPrepareAttachments: actions.onPrepareAttachments,
       onUploadAttachment: actions.onUploadAttachment,
       onReleaseAttachment: actions.onReleaseAttachment,

@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_REFERENCE_INVALID"
-  ],
-  "note": "opens 指向未声明的 surface"
-}

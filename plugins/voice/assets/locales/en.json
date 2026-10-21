@@ -981,7 +981,9 @@
         "VOICE_ATTACHMENT_MODEL_UNCONFIRMED": "Attachment input is unconfirmed. Enable command attachments and check the current model in settings."
       },
       "removeNamed": "Remove {name}"
-    }
+    },
+    "openSourceFailed": "Cannot open the source link. Copy the URL into your browser and try again.",
+    "openSourceUnavailable": "This App version cannot open source links. Update the App, or copy the URL into your browser."
   },
   "metadata": {
     "name": "Voice Input",

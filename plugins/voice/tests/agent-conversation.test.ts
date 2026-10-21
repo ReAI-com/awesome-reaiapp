@@ -68,7 +68,7 @@ describe("Voice 的当前对话工作范围与 Agent", () => {
   });
 
   test("明确选择的目录使用 direct，不偷偷改成镜像或改变全局默认", () => {
-    const options = { backend: "dsh" as const, workspace: { kind: "direct" as const, path: "/workspace/Project" }, scopedExecution: true };
+    const options = { backend: "dsh" as const, workspace: { kind: "direct" as const, path: "/Users/example/Project" }, scopedExecution: true };
     const config = createVoiceCommandSessionConfig(options);
     expect(config.runtime).toBe("dsh");
     expect(config.workspace).toEqual(options.workspace);

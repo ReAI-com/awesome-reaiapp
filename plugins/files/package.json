@@ -1,9 +1,11 @@
 {
   "name": "reai-files-candidate",
-  "version": "1.2.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "reaiApp": { "entry": "src/app.ts" },
+  "reaiApp": {
+    "entry": "src/app.ts"
+  },
   "scripts": {
     "test": "bun test tests",
     "typecheck": "tsc --noEmit",
@@ -14,22 +16,24 @@
     "pack": "reai-app-i18n pack . --out files-1.2.0.reaiapp",
     "preview": "bun scripts/preview.ts"
   },
-  "dependencies": { "@noble/hashes": "1.8.0" },
+  "dependencies": {
+    "@noble/hashes": "1.8.0"
+  },
   "devDependencies": {
-    "@reai/app-cli": "file:../../packages/cli",
-    "@reai/app-i18n-cli": "file:../../packages/i18n-cli",
-    "@reai/app-contract": "file:../../packages/contract",
-    "@reai/app-sdk": "file:../../packages/sdk",
-    "@reai/app-test": "file:../../packages/test-kit",
+    "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
+    "@reai/app-i18n-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-i18n-cli.tgz",
+    "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+    "@reai/app-sdk": "file:../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz",
+    "@reai/app-test": "file:../../vendor/platform/4ed2325a750e/packs/app-test.tgz",
     "@happy-dom/global-registrator": "20.12.0",
     "@types/bun": "1.4.0",
     "typescript": "5.6.3"
   },
   "overrides": {
-    "@reai/app-cli": "file:../../packages/cli",
-    "@reai/app-i18n-cli": "file:../../packages/i18n-cli",
-    "@reai/app-contract": "file:../../packages/contract",
-    "@reai/app-sdk": "file:../../packages/sdk",
-    "@reai/app-test": "file:../../packages/test-kit"
+    "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
+    "@reai/app-i18n-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-i18n-cli.tgz",
+    "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+    "@reai/app-sdk": "file:../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz",
+    "@reai/app-test": "file:../../vendor/platform/4ed2325a750e/packs/app-test.tgz"
   }
 }

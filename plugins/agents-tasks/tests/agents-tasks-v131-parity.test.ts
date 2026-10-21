@@ -84,7 +84,7 @@ describe("Agents · 任务 V1.3.1 UI-only 行为", () => {
     expect(title?.textContent).toBe("修复 Windows 拨杆注入");
     expect(title?.previousElementSibling?.classList.contains("task-conversation-title-icon")).toBeTrue();
     const meta = root.querySelector(".task-conversation-meta")?.textContent ?? "";
-    expect(meta.indexOf("~/Projects/example-app")).toBeLessThan(meta.indexOf("Claude Code"));
+    expect(meta.indexOf("~/Developer/ai-vibe-board")).toBeLessThan(meta.indexOf("Claude Code"));
     view.dispose();
   });
 
@@ -97,7 +97,7 @@ describe("Agents · 任务 V1.3.1 UI-only 行为", () => {
     expect(sortMenu?.querySelector('[role="menuitemradio"][aria-checked="true"]')).not.toBeNull();
     expect(sortMenu?.textContent).toContain("按最后活跃排");
 
-    click(root, '[data-project-dir="~/Projects/example-app"] .task-project-menu-button');
+    click(root, '[data-project-dir="~/Developer/ai-vibe-board"] .task-project-menu-button');
     expect(root.querySelector('.task-menu[data-menu-kind="sort"].is-open')).toBeNull();
     expect(root.querySelector('.task-menu[data-menu-kind="project"].is-open')).not.toBeNull();
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
@@ -121,7 +121,7 @@ describe("Agents · 任务 V1.3.1 UI-only 行为", () => {
 
   test("搜索重绘会关闭锚点菜单，Finder 不可用原因保持可感知", async () => {
     const { root, view } = await mountTasks();
-    click(root, '[data-project-dir="~/Projects/example-app"] .task-project-menu-button');
+    click(root, '[data-project-dir="~/Developer/ai-vibe-board"] .task-project-menu-button');
     const reveal = root.querySelector(".task-menu-item.is-disabled");
     expect(reveal?.getAttribute("aria-disabled")).toBe("true");
     expect(reveal?.getAttribute("aria-describedby")).toBe("tasks-finder-disabled-note");
@@ -139,23 +139,23 @@ describe("Agents · 任务 V1.3.1 UI-only 行为", () => {
     const { root, view } = await mountTasks();
     const before = root.querySelectorAll("[data-project-dir]").length;
     view.applyIntent({ type: "add-project" });
-    const choice = root.querySelector('[data-folder-choice="~/Projects/voice-app"]');
+    const choice = root.querySelector('[data-folder-choice="~/Developer/voice-app"]');
     expect(choice).not.toBeNull();
     (choice as HTMLButtonElement).click();
     expect(root.querySelectorAll("[data-project-dir]")).toHaveLength(before + 1);
-    expect(root.querySelector('[data-project-dir="~/Projects/voice-app"]')?.textContent).toContain("还没有任务");
+    expect(root.querySelector('[data-project-dir="~/Developer/voice-app"]')?.textContent).toContain("还没有任务");
 
     click(root, '[data-task-title="官网价格表改版审查"]');
-    click(root, '[data-project-dir="~/Projects/landing"] .task-project-menu-button');
+    click(root, '[data-project-dir="~/Developer/landing"] .task-project-menu-button');
     click(root, '[data-project-action="remove"]');
     expect(root.querySelector(".task-conversation-empty")).not.toBeNull();
-    expect(root.querySelector('[data-project-dir="~/Projects/landing"]')).toBeNull();
+    expect(root.querySelector('[data-project-dir="~/Developer/landing"]')).toBeNull();
 
     // V1.7.0（B6-16）：搜索不筛项目——项目已从列表移走才不复活，其余项目原位保留。
     const input = root.querySelector(".agent-search-input") as HTMLInputElement;
     input.value = "landing";
     input.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(root.querySelector('[data-project-dir="~/Projects/landing"]')).toBeNull();
+    expect(root.querySelector('[data-project-dir="~/Developer/landing"]')).toBeNull();
     root.querySelectorAll("[data-project-dir]").forEach((project) => {
       expect(project.querySelector(".task-project-empty")?.textContent).toBe("这个项目里没有匹配的任务");
     });
@@ -167,17 +167,17 @@ describe("Agents · 任务 V1.3.1 UI-only 行为", () => {
     const totalProjects = root.querySelectorAll("[data-project-dir]").length;
     expect(totalProjects).toBeGreaterThan(1);
 
-    // 先人为折叠有命中的项目（~/Projects/landing，查询词命中它的目录）。
-    const landingHeader = root.querySelector('[data-project-dir="~/Projects/landing"] .task-project-header') as HTMLButtonElement;
+    // 先人为折叠有命中的项目（~/Developer/landing，查询词命中它的目录）。
+    const landingHeader = root.querySelector('[data-project-dir="~/Developer/landing"] .task-project-header') as HTMLButtonElement;
     landingHeader.click();
-    expect(root.querySelector('[data-project-dir="~/Projects/landing"]')?.classList.contains("is-folded")).toBeTrue();
+    expect(root.querySelector('[data-project-dir="~/Developer/landing"]')?.classList.contains("is-folded")).toBeTrue();
 
     const input = root.querySelector(".agent-search-input") as HTMLInputElement;
     input.value = "landing";
     input.dispatchEvent(new Event("input", { bubbles: true }));
     // 项目一个都没少：无命中的项目留在原位，空态文案按稿分档。
     expect(root.querySelectorAll("[data-project-dir]")).toHaveLength(totalProjects);
-    const landing = root.querySelector('[data-project-dir="~/Projects/landing"]');
+    const landing = root.querySelector('[data-project-dir="~/Developer/landing"]');
     expect(landing?.querySelectorAll(".task-list-item").length).toBeGreaterThan(0);
     expect(landing?.classList.contains("is-folded")).toBeFalse();
     const emptyOthers = Array.from(root.querySelectorAll("[data-project-dir]")).filter(
@@ -198,7 +198,7 @@ describe("Agents · 任务 V1.3.1 UI-only 行为", () => {
     // 清空搜索：回到用户原折叠态（collapsedDirectories 没被搜索改写）。
     input.value = "";
     input.dispatchEvent(new Event("input", { bubbles: true }));
-    expect(root.querySelector('[data-project-dir="~/Projects/landing"]')?.classList.contains("is-folded")).toBeTrue();
+    expect(root.querySelector('[data-project-dir="~/Developer/landing"]')?.classList.contains("is-folded")).toBeTrue();
 
     // 全局兜底：查询谁都不命中时尾部追加「没有匹配的任务。」，项目仍在。
     input.value = "不存在的查询词";

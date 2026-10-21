@@ -3,62 +3,45 @@ name: Plugin toolchain
 on:
   pull_request:
     paths:
-      - 'packages/**'
+      - 'vendor/**'
       - 'plugins/**'
       - 'examples/**'
-      - 'scripts/plugin-*.ts'
-      - 'scripts/source-review-bytes.ts'
-      - 'scripts/verify-platform-packages.ts'
+      - 'scripts/**'
       - '.github/workflows/plugin-toolchain.yml'
   push:
     branches: [main]
     paths:
-      - 'packages/**'
+      - 'vendor/**'
       - 'plugins/**'
       - 'examples/**'
-      - 'scripts/plugin-*.ts'
-      - 'scripts/source-review-bytes.ts'
-      - 'scripts/verify-platform-packages.ts'
+      - 'scripts/**'
       - '.github/workflows/plugin-toolchain.yml'
 
 permissions:
   contents: read
 
 jobs:
-  shared-tools:
-    name: Verify shared tools
+  vendor-platform:
+    name: Verify vendored platform packages
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: '1.3.11'
-      - name: Reject Host-only contracts
-        run: |
-          # Host 专用合同（含 Host 登录标识）只保留在主项目，不进入公开包。
-          if [ -e packages/contract/official-host-dependencies.json ]; then
-            echo "packages/contract/official-host-dependencies.json is Host-only and must not be published." >&2
-            exit 1
-          fi
-      - name: Install shared dependencies
-        working-directory: packages
-        run: bun install --frozen-lockfile --ignore-scripts
-      - name: Test shared tools
-        working-directory: packages
-        run: bun run test
-      - name: Check shared types
-        working-directory: packages
-        run: bun run typecheck
-      - name: Verify packed tools outside the repository
-        working-directory: packages
-        run: bun run verify:pack
+          bun-version: '1.3.14'
+      - name: Test repository scripts
+        run: bun test scripts
+      - name: Verify vendored platform packages
+        # 平台包以主项目为正本：tarball、lock 与来源回执按摘要互相钉住，插件仓不得改动。
+        run: bun scripts/verify-vendor-platform.ts
 
   examples:
     name: Verify example ${{ matrix.example }}
-    needs: shared-tools
+    needs: vendor-platform
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -68,13 +51,11 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: '1.3.11'
-      - name: Install shared dependencies
-        working-directory: packages
-        run: bun install --frozen-lockfile --ignore-scripts
+          bun-version: '1.3.14'
       - name: Install example dependencies
         working-directory: examples/${{ matrix.example }}
         run: bun install --frozen-lockfile --ignore-scripts
@@ -99,7 +80,7 @@ jobs:
 
   plugins:
     name: Verify plugin ${{ matrix.plugin }}
-    needs: shared-tools
+    needs: vendor-platform
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -124,16 +105,17 @@ jobs:
           - text-editor
           - voice
           - wishing-wall
+    env:
+      # 受控插件的当前候选尚未通过源码审核：只要求按审批门被拒。审核通过、平台包带上批准记录后从这里移除。
+      AWAITING_REVIEW: ${{ contains(fromJSON('["voice"]'), matrix.plugin) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
-          bun-version: '1.3.11'
-      - name: Install shared dependencies
-        working-directory: packages
-        run: bun install --frozen-lockfile --ignore-scripts
+          bun-version: '1.3.14'
       - name: Install plugin dependencies
         working-directory: plugins/${{ matrix.plugin }}
         run: bun install --frozen-lockfile --ignore-scripts
@@ -144,23 +126,32 @@ jobs:
         working-directory: plugins/${{ matrix.plugin }}
         run: bun run typecheck
       - name: Validate the plugin
+        if: env.AWAITING_REVIEW != 'true'
         working-directory: plugins/${{ matrix.plugin }}
         run: bun run validate
       - name: Build the plugin
+        if: env.AWAITING_REVIEW != 'true'
         working-directory: plugins/${{ matrix.plugin }}
         run: bun run build
       - name: Test plugin contracts
+        if: env.AWAITING_REVIEW != 'true'
         working-directory: plugins/${{ matrix.plugin }}
         run: bun run test:contract
       - name: Pack the plugin
+        if: env.AWAITING_REVIEW != 'true'
         working-directory: plugins/${{ matrix.plugin }}
         run: bun run pack
       - name: Pack the plugin with Deflate
+        if: env.AWAITING_REVIEW != 'true'
         working-directory: plugins/${{ matrix.plugin }}
         run: |
           # 插件自己的锁文件必须带上语言工具的压缩依赖；只看共享工具的验证发现不了这类缺失。
           if jq -e '(.dependencies // {}) + (.devDependencies // {}) | has("@reai/app-i18n-cli")' package.json >/dev/null; then
-            bunx reai-app-i18n pack . --out "$RUNNER_TEMP/${{ strategy.job-index }}-deflate.reaiapp" --compression deflate
+            bunx --no-install reai-app-i18n pack . --out "$RUNNER_TEMP/${{ strategy.job-index }}-deflate.reaiapp" --compression deflate
           else
             echo "Plugin does not use the language toolchain; Deflate packing is not applicable."
           fi
+      - name: Expect the source-review rejection
+        if: env.AWAITING_REVIEW == 'true'
+        working-directory: plugins/${{ matrix.plugin }}
+        run: bash ../../scripts/expect-review-rejection.sh validate build pack

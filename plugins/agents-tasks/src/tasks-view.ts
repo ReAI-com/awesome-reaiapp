@@ -42,10 +42,10 @@ type OverlayState =
   | null;
 
 const FOLDER_CANDIDATES = [
-  "~/Projects/example-app",
-  "~/Projects/landing",
-  "~/Projects/voice-app",
-  "~/Projects/firmware",
+  "~/Developer/ai-vibe-board",
+  "~/Developer/landing",
+  "~/Developer/voice-app",
+  "~/Developer/firmware",
 ];
 
 const directoryName = (directory: string) => directory.split("/").pop() || directory;

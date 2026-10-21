@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "身份必须校验原件——appId 在拼 KV 键、生成 WebView 标签时用的都是未 trim 的原始字段，先 trim 再验就成了「验副本、用原件」"
-}

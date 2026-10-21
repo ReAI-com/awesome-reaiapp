@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_REFERENCE_INVALID"
-  ],
-  "note": "声明网络端点时必须同时声明 http.fetch@1 权限"
-}

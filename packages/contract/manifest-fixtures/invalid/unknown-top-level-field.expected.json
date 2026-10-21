@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "未知顶层字段必须报错，不能静默忽略——开发者会以为声明生效了"
-}

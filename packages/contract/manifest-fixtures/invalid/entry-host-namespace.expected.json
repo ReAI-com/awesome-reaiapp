@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "PACKAGE_PATH_UNSAFE"
-  ],
-  "note": "__host/ 是 Host 保留命名空间"
-}

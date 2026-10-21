@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "lifecycle hook 必须在支持集合内"
-}

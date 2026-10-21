@@ -157,6 +157,7 @@ export interface VoiceChatDetailDeps {
   isActive(): boolean;
   render(): void;
   actions: {
+    onOpenSourceLink?(url: string): Promise<void>;
     onPrepareAttachments?(conversation?: VoiceAgentConversationRef): Promise<VoiceAttachmentTarget>;
     onUploadAttachment?(file: File, target: VoiceAttachmentTarget, signal: AbortSignal): Promise<PreparedVoiceAttachment>;
     onReleaseAttachment?(file: PreparedVoiceAttachment): Promise<void>;
@@ -305,6 +306,8 @@ export function createVoiceChatDetail(deps: VoiceChatDetailDeps): VoiceChatDetai
     if(stillCurrent() && entries.some(entry=>draftFiles.includes(entry))) deps.render();
   };
   const cancellingTasks = new Set<string>();
+  let sourceOpenPending = false;
+  let lastSourceOpenedAt = 0;
   let inlineError: TextSource | undefined;
   let inlineErrorDetail: VoiceErrorDetail | undefined;
   /** 原地失败：主句 + 同一份 cause 的诊断（步骤、真实码、原文）。 */
@@ -450,6 +453,23 @@ export function createVoiceChatDetail(deps: VoiceChatDetailDeps): VoiceChatDetai
       const startedMs = Date.parse(entry.createdAt);
       for (const message of itemMessages(entry, state.developerMode)) {
         msgs.append(renderChatMessage(message, {
+          onOpenLink: (url) => {
+            if (sourceOpenPending || Date.now() - lastSourceOpenedAt < 750) return;
+            sourceOpenPending = true;
+            void Promise.resolve().then(() => deps.actions.onOpenSourceLink
+              ? deps.actions.onOpenSourceLink(url)
+              : Promise.reject({ code: "EXTERNAL_LINK_UNAVAILABLE", userMessage: t("chat.openSourceUnavailable") })).then(() => {
+                lastSourceOpenedAt = Date.now();
+                if (!deps.isActive() || deps.getSelectedId() !== item.id || inlineErrorDetail?.step !== "openSource") return;
+                inlineError = undefined;
+                inlineErrorDetail = undefined;
+                deps.render();
+              }).catch((cause: unknown) => {
+                if (!deps.isActive() || deps.getSelectedId() !== item.id) return;
+                setInlineFailure("openSource", cause, () => t("chat.openSourceFailed"));
+                deps.render();
+              }).finally(() => { sourceOpenPending = false; });
+          },
           developerMode: state.developerMode,
           toolGroupExpanded: expandedToolGroups.has(entry.id),
           // 运行中的过程折叠：右侧是每秒就地刷新的已用时间（与 §6.0 活动行同一计时节点）。

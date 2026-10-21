@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "storeListing 内夹带未知字段（如 secretPrice）必须被拒——否则价格/评分等商店运营数据会被插件包擅自声明"
-}

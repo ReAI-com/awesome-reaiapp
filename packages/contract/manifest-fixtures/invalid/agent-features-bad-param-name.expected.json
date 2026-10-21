@@ -1,7 +1,0 @@
-{
-  "codes": [
-    "APP_CAPABILITY_NOT_GRANTED",
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "参数名必须匹配 ^[A-Za-z][A-Za-z0-9_]*$——模板槽位只认英文标识符，登记中文名等于永远引用不上的死配置。附带 NOT_GRANTED：样例 appId 未获 agent.session@2 授予（两侧口径一致）"
-}

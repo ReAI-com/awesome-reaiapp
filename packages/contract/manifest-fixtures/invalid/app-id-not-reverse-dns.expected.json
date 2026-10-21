@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_SCHEMA_INVALID"
-  ],
-  "note": "appId 会被拼进 KV 键与 WebView 标签，必须是反向域名——否则两个 App 能拼出同一个键"
-}
