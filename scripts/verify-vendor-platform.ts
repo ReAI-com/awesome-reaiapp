@@ -14,7 +14,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const VENDOR = "vendor/platform";
 const HOST_ONLY = ["official-host-dependencies.json"];
@@ -26,7 +26,16 @@ interface LockPackage { name: string; version: string; file: string; bytes: numb
 interface Artifact { name: string; version: string; file: string; bytes: number; sha256: string }
 
 const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
-const readJson = (path: string) => JSON.parse(readFileSync(path, "utf8"));
+class VendorError extends Error {}
+/** 解析失败抛出带文件路径的 VendorError，由调用方记为一条校验失败。 */
+const parseJson = (bytes: Uint8Array | string, shown: string): any => {
+  try { return JSON.parse(typeof bytes === "string" ? bytes : Buffer.from(bytes).toString("utf8")); }
+  catch { throw new VendorError(`${shown}: 不是合法 JSON`); }
+};
+const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+const isEntry = (value: unknown): value is Artifact => isRecord(value)
+  && typeof value.name === "string" && typeof value.version === "string" && typeof value.file === "string"
+  && Number.isSafeInteger(value.bytes) && typeof value.sha256 === "string";
 const posix = (path: string) => path.split(sep).join("/");
 
 /** 返回 tarball 成员列表；失败返回 null。 */
@@ -45,19 +54,32 @@ function verifyPin(root: string, pin: Pin, errors: string[], listTarball: ListTa
   if (!existsSync(lockPath)) { errors.push(`${at}: 缺少 platform-packages.lock.json`); return files; }
   const lockBytes = readFileSync(lockPath);
   if (sha256(lockBytes) !== pin.lockSha256) { errors.push(`${at}: lock 摘要与 pins.json 不一致`); return files; }
-  const lock = JSON.parse(lockBytes.toString("utf8"));
+  const lock = parseJson(lockBytes, `${at}/platform-packages.lock.json`);
+  if (!isRecord(lock)) { errors.push(`${at}: lock 结构不合法`); return files; }
   if (lock.kind !== "reai-platform-packages" || lock.sourceHead !== pin.sourceHead) errors.push(`${at}: lock 类型或 sourceHead 不符`);
 
-  const receiptFile = lock.toolchainReceipt?.file;
+  const receiptRef = isRecord(lock.toolchainReceipt) ? lock.toolchainReceipt : {};
+  const receiptFile = receiptRef.file;
   const receiptPath = typeof receiptFile === "string" ? resolve(base, receiptFile) : "";
   if (!receiptPath || dirname(receiptPath) !== base || !existsSync(receiptPath)) { errors.push(`${at}: 缺少来源回执`); return files; }
   const receiptBytes = readFileSync(receiptPath);
-  if (sha256(receiptBytes) !== lock.toolchainReceipt.sha256) { errors.push(`${at}: 来源回执摘要与 lock 不一致`); return files; }
-  const receipt = JSON.parse(receiptBytes.toString("utf8"));
+  if (sha256(receiptBytes) !== receiptRef.sha256) { errors.push(`${at}: 来源回执摘要与 lock 不一致`); return files; }
+  const receipt = parseJson(receiptBytes, `${at}/${receiptFile}`);
+  if (!isRecord(receipt)) { errors.push(`${at}: 来源回执结构不合法`); return files; }
   if (receipt.sourceHead !== pin.sourceHead || receipt.sourceDirty !== false) errors.push(`${at}: 来源回执的提交不符或来源工作树不干净`);
-  const artifacts: Artifact[] = [...(receipt.artifacts ?? []), ...(receipt.companionArtifacts ?? [])];
-
-  const packages: LockPackage[] = lock.packages ?? [];
+  const rawArtifacts = [receipt.artifacts ?? [], receipt.companionArtifacts ?? []];
+  const rawPackages = lock.packages;
+  if (!rawArtifacts.every(Array.isArray) || !Array.isArray(rawPackages)) { errors.push(`${at}: lock 或来源回执的包列表不是数组`); return files; }
+  const artifacts = rawArtifacts.flat();
+  if (!artifacts.every(isEntry) || !rawPackages.every(isEntry)) { errors.push(`${at}: lock 或来源回执含结构不合法的包条目`); return files; }
+  // 同名条目只能出现一次，否则按顺序取首项会让冲突条目的结果取决于数组顺序。
+  for (const [list, label] of [[artifacts, "来源回执"], [rawPackages, "lock"]] as const) {
+    const names = list.map(item => item.name);
+    const duplicated = [...new Set(names.filter((name, index) => names.indexOf(name) !== index))];
+    if (duplicated.length) { errors.push(`${at}: ${label}中重复登记 ${duplicated.join(", ")}`); return files; }
+  }
+  const packages: LockPackage[] = rawPackages;
+  const overrides = isRecord(lock.overrides) ? lock.overrides : {};
   const listed = new Set<string>();
   for (const pkg of packages) {
     const file = posix(pkg.file ?? "");
@@ -71,7 +93,7 @@ function verifyPin(root: string, pin: Pin, errors: string[], listTarball: ListTa
     if (!artifact || artifact.version !== pkg.version || posix(artifact.file) !== file || artifact.bytes !== pkg.bytes || artifact.sha256 !== pkg.sha256) {
       errors.push(`${at}/${file}: 与来源回执不一致`);
     }
-    if (lock.overrides?.[pkg.name] !== file) errors.push(`${at}: lock overrides 未指向 ${file}`);
+    if (overrides[pkg.name] !== file) errors.push(`${at}: lock overrides 未指向 ${file}`);
     const members = listTarball(path);
     if (!members) errors.push(`${at}/${file}: 无法读取 tarball`);
     else if (members.some(member => HOST_ONLY.some(name => member === name || member.endsWith(`/${name}`)))) errors.push(`${at}/${file}: 含 Host 专用合同`);
@@ -94,6 +116,21 @@ function packageJsons(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+/** 同一插件 / 样例里可能嵌套多个 package.json；以最外层（离仓库根最近）的那个目录作为单元边界。 */
+function unitRoot(root: string, manifestPath: string): string {
+  let unit = dirname(manifestPath);
+  for (let dir = dirname(unit); relative(root, dir) && !relative(root, dir).startsWith(".."); dir = dirname(dir)) {
+    if (existsSync(join(dir, "package.json"))) unit = dir;
+  }
+  return unit;
+}
+
+/** 目标是否在目录内：只把独立的 `..` 路径段视为越界，`..cache` 之类的目录名不算。 */
+function inside(dir: string, target: string): boolean {
+  const rel = relative(dir, target);
+  return rel !== "" && !isAbsolute(rel) && rel.split(sep)[0] !== "..";
+}
+
 function collectDeps(manifest: Record<string, unknown>): [string, string][] {
   const deps: [string, string][] = [];
   for (const field of DEP_FIELDS) {
@@ -104,14 +141,31 @@ function collectDeps(manifest: Record<string, unknown>): [string, string][] {
   return deps;
 }
 
-export function verifyVendor(root: string, listTarball: ListTarball = listWithTar): string[] {
+export function verifyVendor(rootDir: string, listTarball: ListTarball = listWithTar): string[] {
+  const root = resolve(rootDir);
   const errors: string[] = [];
+  try {
+    verifyInto(root, errors, listTarball);
+  } catch (error) {
+    if (!(error instanceof VendorError)) throw error;
+    errors.push(error.message);
+  }
+  return errors;
+}
+
+function verifyInto(root: string, errors: string[], listTarball: ListTarball): void {
   for (const legacy of ["packages", "platform"]) {
     if (existsSync(join(root, legacy))) errors.push(`${legacy}/: 平台包源码拷贝不得放进插件仓，改用 ${VENDOR}`);
   }
   const pinsPath = join(root, VENDOR, "pins.json");
-  if (!existsSync(pinsPath)) return [...errors, `${VENDOR}/pins.json: 缺少`];
-  const pins: Pin[] = readJson(pinsPath).pins ?? [];
+  if (!existsSync(pinsPath)) { errors.push(`${VENDOR}/pins.json: 缺少`); return; }
+  const pinsJson = parseJson(readFileSync(pinsPath), `${VENDOR}/pins.json`);
+  const rawPins = isRecord(pinsJson) ? pinsJson.pins : undefined;
+  const validPin = (pin: unknown): pin is Pin => isRecord(pin) && typeof pin.dir === "string" && /^[0-9a-f]{12}$/.test(pin.dir)
+    && typeof pin.sourceHead === "string" && typeof pin.lockSha256 === "string";
+  if (!Array.isArray(rawPins) || !rawPins.every(validPin)) { errors.push(`${VENDOR}/pins.json: pins 必须是 { dir, sourceHead, lockSha256 } 数组`); return; }
+  const pins: Pin[] = rawPins;
+  if (new Set(pins.map(pin => pin.dir)).size !== pins.length) { errors.push(`${VENDOR}/pins.json: 重复登记同一目录`); return; }
   const pinned = new Set(pins.map(pin => pin.dir));
   for (const name of readdirSync(join(root, VENDOR))) {
     if (name !== "pins.json" && !pinned.has(name)) errors.push(`${VENDOR}/${name}: 未在 pins.json 登记`);
@@ -125,14 +179,15 @@ export function verifyVendor(root: string, listTarball: ListTarball = listWithTa
   for (const top of CONSUMER_ROOTS) {
     if (!existsSync(join(root, top))) continue;
     for (const manifestPath of packageJsons(join(root, top))) {
-      const unit = dirname(manifestPath);
+      const unit = unitRoot(join(root, top), manifestPath);
       const shown = posix(relative(root, manifestPath));
-      for (const [name, spec] of collectDeps(readJson(manifestPath))) {
+      const manifest = parseJson(readFileSync(manifestPath), shown);
+      if (!isRecord(manifest)) { errors.push(`${shown}: 不是 JSON 对象`); continue; }
+      for (const [name, spec] of collectDeps(manifest)) {
         const match = /^(?:file|link):(.+)$/.exec(spec);
         if (!match) continue;
-        const target = resolve(unit, match[1]!);
-        const inUnit = relative(unit, target);
-        if (!inUnit.startsWith("..") && !inUnit.startsWith(sep) && inUnit !== "") continue;
+        const target = resolve(dirname(manifestPath), match[1]!);
+        if (inside(unit, target)) continue;
         const fromRoot = posix(relative(root, target));
         const expected = vendorFiles.get(fromRoot);
         if (!expected) errors.push(`${shown}: ${name} 指向未钉住的本地路径 ${match[1]}`);
@@ -141,7 +196,6 @@ export function verifyVendor(root: string, listTarball: ListTarball = listWithTa
       }
     }
   }
-  return errors;
 }
 
 if (import.meta.main) {

@@ -18,7 +18,7 @@
 | Product ID | `submission.identity.json` 的 `productId`、提交时的产品关联 | 当前 Manifest Schema 没有 `productId`，禁止添加未知字段；它由提交入口关联产品 |
 | 提交版本 | `submission.identity.json`、Manifest、`package.json` 的 `version` 与提交表单版本 | 四者精确一致；不要沿用表单默认值，也不要为了匹配默认值擅自升级包版本 |
 
-配置放在插件根目录 `submission.identity.json`，只含公开标识，不保存 Secret、token、Cookie。文件结构与检查入口见 `scripts/plugin-submission.ts`（仓库路径 `scripts/plugin-submission.ts`）。它记录预期身份，Manifest 是实际包声明，两者必须一致。
+配置放在插件根目录 `submission.identity.json`，只含公开标识，不保存 Secret、token、Cookie。检查入口随平台包 `@reai/app-i18n-cli` 交付：在插件目录执行 `bunx reai-app-i18n submission check|pack …`，或使用插件自带的 `bun run check:submission` / `bun run pack:submission`。它记录预期身份，Manifest 是实际包声明，两者必须一致。
 
 **填表前先复制包版本。** 以最终包的提交记录为准，将 `version` 原样填入上架表单。表单默认值不要求插件升级为 `1.0.0`。明确发布新版本时，才同步修改源码版本、提交配置并重新打包；已审核版本或摘要不能静默替换。
 
@@ -33,7 +33,7 @@
 在仓库根目录运行：
 
 ```sh
-bun scripts/plugin-submission.ts pack plugins/code-worker --out /absolute/output/code-worker-0.2.0-submission.reaiapp --form-version 0.2.0
+cd plugins/code-worker && bunx reai-app-i18n submission pack . --out /absolute/output/code-worker-0.2.0-submission.reaiapp --form-version 0.2.0
 ```
 
 该命令在现有现代 CLI 外增加提交检查，不改冻结 CLI 或已经批准的插件锁：
@@ -48,7 +48,7 @@ bun scripts/plugin-submission.ts pack plugins/code-worker --out /absolute/output
 只检查现有源和包：
 
 ```sh
-bun scripts/plugin-submission.ts check plugins/code-worker --package /absolute/output/code-worker-0.2.0-submission.reaiapp --form-version 0.2.0
+cd plugins/code-worker && bunx reai-app-i18n submission check . --package /absolute/output/code-worker-0.2.0-submission.reaiapp --form-version 0.2.0
 ```
 
 `--form-version` 必须传入表单当前值，不是为了通过检查重复抄一个预期值；例如传 `1.0.0` 检查当前 `0.2.0` 包会立即失败。没有表单时可省略，但本地工具无法读取远程草稿，不能宣称表单已校验。
@@ -150,7 +150,7 @@ bun scripts/plugin-submission.ts check plugins/code-worker --package /absolute/o
 
 证据绑定 appId/publisherId/oauthAppId/version、完整插件输入文件清单与哈希、独立报告哈希及 `SOURCE_REVIEW_SCOPE`、期望最终包 SHA。输入/报告/身份/最终包变化必须重新审查。构建、两次打包与归档复验全程核同一证据，只消除已审范围的能力拒绝，Schema/未知能力/资源/Host API 等错误保留。
 
-正规例：`bun scripts/plugin-submission.ts pack plugins/voice --out <path>.reaiapp --form-version <version> --source-review <evidence.json>`。成功 `.submission.json` 标明本地证据摘要、runtimeGrant:false、platformApproval:false。上传须使用真实CASfileId、当前报价、冻结包，审核后的批准必须绑定精确摘要；不能据源码记录启动未批准候选。
+正规例：`cd plugins/voice && bunx reai-app-i18n submission pack . --out <path>.reaiapp --form-version <version> --source-review <evidence.json>`。成功 `.submission.json` 标明本地证据摘要、runtimeGrant:false、platformApproval:false。上传须使用真实CASfileId、当前报价、冻结包，审核后的批准必须绑定精确摘要；不能据源码记录启动未批准候选。
 
 
 ## 8. 可复现压缩与待审字节
@@ -186,7 +186,7 @@ check 自动识别格式。压缩固定 `fflate 0.8.3`、`{ level: 9, mem: 8 }`�
 `collectSourceReviewInputs`、`sourceReviewInputsDigest` 生成，必须覆盖全部插件输入。
 
 ```sh
-bun scripts/source-review-bytes.ts <plugin-root> --inputs <complete-input-pin.json> --out <new-directory> --expected-bun 1.3.11 --compression deflate
+bunx reai-app-i18n review-bytes <plugin-root> --inputs <complete-input-pin.json> --out <new-directory> --expected-bun 1.3.14 --compression deflate
 ```
 
 普通提交打包可显式增加 `--compression deflate`；`check` 自动识别归档格式，

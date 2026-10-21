@@ -11,8 +11,16 @@ output="$(mktemp)"
 trap 'rm -f "$output"' EXIT
 
 for script in "$@"; do
-  if bun run "$script" >"$output" 2>&1; then
+  bun run "$script" >"$output" 2>&1
+  status=$?
+  if [ "$status" -eq 0 ]; then
     echo "FAIL $script: 待审插件意外通过，源码审核门没有生效" >&2
+    exit 1
+  fi
+  # 审批拒绝是普通失败（退出码 1）；被信号终止、命令缺失等其他状态不能算作预期拒绝。
+  if [ "$status" -ne 1 ]; then
+    echo "FAIL $script: 异常退出（状态 $status），不是审批拒绝" >&2
+    cat "$output" >&2
     exit 1
   fi
   if ! grep -q '^\[APP_CAPABILITY_NOT_GRANTED\] .* requires an applicable source review approval$' "$output"; then

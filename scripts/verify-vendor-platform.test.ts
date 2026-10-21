@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { verifyVendor } from "./verify-vendor-platform";
 
 const HEAD = "abcdef1234567890abcdef1234567890abcdef12";
@@ -90,5 +90,54 @@ describe("verify-vendor-platform", () => {
     mkdirSync(join(root, "plugins/demo/packages/chat-ui"), { recursive: true });
     writeFileSync(join(root, "plugins/demo/package.json"), JSON.stringify({ dependencies: { "@reai/chat-ui": "file:./packages/chat-ui" } }));
     expect(verify()).toEqual([]);
+  });
+
+  test("插件内嵌套包之间的兄弟依赖放行", () => {
+    const { root, verify } = fixture();
+    mkdirSync(join(root, "plugins/demo/packages/a"), { recursive: true });
+    mkdirSync(join(root, "plugins/demo/packages/b"), { recursive: true });
+    writeFileSync(join(root, "plugins/demo/packages/a/package.json"), JSON.stringify({ dependencies: { b: "file:../b" } }));
+    expect(verify()).toEqual([]);
+  });
+
+  test("以 .. 开头的目录名不算越界", () => {
+    const { root, verify } = fixture();
+    writeFileSync(join(root, "plugins/demo/package.json"), JSON.stringify({ dependencies: { cache: "file:./..cache/a" } }));
+    expect(verify()).toEqual([]);
+  });
+
+  test("来源回执里同名条目重复时拒绝，与数组顺序无关", () => {
+    const { base, root } = fixture();
+    const receiptPath = join(base, "toolchain.json");
+    const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+    receipt.artifacts.push({ ...receipt.artifacts[0], bytes: 1 });
+    const receiptText = `${JSON.stringify(receipt)}\n`;
+    writeFileSync(receiptPath, receiptText);
+    const lockPath = join(base, "platform-packages.lock.json");
+    const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+    lock.toolchainReceipt.sha256 = sha256(receiptText);
+    const lockText = `${JSON.stringify(lock)}\n`;
+    writeFileSync(lockPath, lockText);
+    writeFileSync(join(root, "vendor/platform/pins.json"), JSON.stringify({ schemaVersion: 1, pins: [{ dir: DIR, sourceHead: HEAD, lockSha256: sha256(lockText) }] }));
+    expect(verifyVendor(root, () => ["package/package.json"]).join("\n")).toContain("来源回执中重复登记 @reai/app-sdk");
+  });
+
+  test("损坏的 JSON 给出文件诊断而不是抛异常", () => {
+    const { root, verify } = fixture();
+    writeFileSync(join(root, "vendor/platform/pins.json"), "{");
+    expect(verify()).toEqual(["vendor/platform/pins.json: 不是合法 JSON"]);
+    writeFileSync(join(root, "vendor/platform/pins.json"), "null");
+    expect(verify().join("\n")).toContain("pins 必须是");
+  });
+
+  test("相对根目录与绝对根目录结果一致", () => {
+    const { root } = fixture();
+    const relativeRoot = relative(process.cwd(), root);
+    expect(verifyVendor(relativeRoot, () => ["package/package.json"])).toEqual([]);
+  });
+
+  test("tar 读取失败时拒绝", () => {
+    const { root } = fixture();
+    expect(verifyVendor(root, () => null).join("\n")).toContain("无法读取 tarball");
   });
 });

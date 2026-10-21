@@ -25,8 +25,14 @@ jobs:
           probe="$RUNNER_TEMP/gate-probe"
           mkdir -p "$probe/plugins/demo"
           printf '{"productId":"synthetic"}\n' > "$probe/plugins/demo/submission.identity.json"
-          if bun scripts/public-gate.ts --root "$probe" >/dev/null 2>&1; then
-            echo "public gate did not block a synthetic submission identity" >&2
+          # 只接受「命中」（退出码 1）且命中预期规则；工具异常（2、127、被杀）不能冒充拦截成功。
+          set +e
+          bun scripts/public-gate.ts --root "$probe" >"$RUNNER_TEMP/gate-probe.log" 2>&1
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/gate-probe.log"
+          if [ "$status" -ne 1 ] || ! grep -q 'plugins/demo/submission.identity.json \[forbidden-identity-file\]' "$RUNNER_TEMP/gate-probe.log"; then
+            echo "public gate did not block a synthetic submission identity (exit $status)" >&2
             exit 1
           fi
       - name: Run the public gate
