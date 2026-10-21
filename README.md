@@ -42,7 +42,7 @@ bun run test:contract
 bun run pack
 ```
 
-平台包不在本仓修改：插件依赖 `vendor/platform/<来源提交>/packs/*.tgz`，新版本只能由主项目发布后整体替换。仓库根运行 `bun scripts/verify-vendor-platform.ts` 核对 tarball、lock 与来源回执的摘要，运行 `bun scripts/public-gate.ts --allow scripts/public-gate.allow.json --allow scripts/public-gate.local-allow.json` 做提交前泄露检查。送审预检使用平台包自带的 `reai-app-i18n submission check|pack`，各插件以 `bun run check:submission` / `bun run pack:submission` 调用。使用 `website/` 的 `build` 检查文档站。具体脚本及额外要求见各目录说明。受审核限制的能力必须提供当前版本的有效证据，不得跳过门禁。
+平台包不在本仓修改：插件依赖 `vendor/platform/<来源提交>/packs/*.tgz`，新版本只能由主项目发布后整体替换。仓库根运行 `bun scripts/verify-vendor-platform.ts` 核对 tarball、lock 与来源回执的摘要，运行 `bun scripts/public-gate-tracked.ts --allow scripts/public-gate.allow.json --allow scripts/public-gate.local-allow.json` 对全部 Git 跟踪文件做提交前泄露检查。送审预检使用平台包自带的 `reai-app-i18n submission check|pack`，各插件以 `bun run check:submission` / `bun run pack:submission` 调用。使用 `website/` 的 `build` 检查文档站。具体脚本及额外要求见各目录说明。受审核限制的能力必须提供当前版本的有效证据，不得跳过门禁。
 
 插件设置页、版本日志和关于入口遵循 [版本文档规范](docs/plugin-settings-and-release-notes-v1.md)。审核提交时根据实际改动和验证证据撰写版本介绍。
 

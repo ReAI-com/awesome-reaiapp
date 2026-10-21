@@ -136,9 +136,39 @@ function inside(dir: string, target: string): boolean {
   return rel !== "" && !isAbsolute(rel) && rel.split(sep)[0] !== "..";
 }
 
-/** bun.lock 是带尾逗号的 JSON；去掉对象 / 数组结尾前的逗号后按 JSON 解析。字符串内不会出现「逗号 + 右括号」以外的歧义。 */
+/** bun.lock 是 JSONC（允许注释与尾逗号）：在字符串之外去掉注释和收尾前的逗号，再按 JSON 解析。 */
+export function stripJsonc(text: string): string {
+  let out = "";
+  let pendingComma = "";
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index]!;
+    if (char === "\"") {
+      out += pendingComma; pendingComma = "";
+      let end = index + 1;
+      while (end < text.length && text[end] !== "\"") end += text[end] === "\\" ? 2 : 1;
+      out += text.slice(index, end + 1);
+      index = end;
+    } else if (char === "/" && text[index + 1] === "/") {
+      while (index < text.length && text[index] !== "\n") index++;
+      index--;
+    } else if (char === "/" && text[index + 1] === "*") {
+      const end = text.indexOf("*/", index + 2);
+      index = end < 0 ? text.length : end + 1;
+    } else if (char === ",") {
+      out += pendingComma; pendingComma = ",";
+    } else if (char === "}" || char === "]") {
+      pendingComma = ""; out += char;
+    } else if (/\s/.test(char)) {
+      if (pendingComma) pendingComma += char; else out += char;
+    } else {
+      out += pendingComma; pendingComma = ""; out += char;
+    }
+  }
+  return out + pendingComma;
+}
+
 function parseBunLock(text: string, shown: string): any {
-  return parseJson(text.replace(/,(\s*[}\]])/g, "$1"), shown);
+  return parseJson(stripJsonc(text), shown);
 }
 
 /** 核对 bun.lock 中每个平台包条目都解析到已钉住的 tarball，且完整性摘要与 tarball 字节一致。 */

@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
-import { verifyVendor } from "./verify-vendor-platform";
+import { stripJsonc, verifyVendor } from "./verify-vendor-platform";
 
 const HEAD = "abcdef1234567890abcdef1234567890abcdef12";
 const DIR = HEAD.slice(0, 12);
@@ -164,5 +164,10 @@ describe("verify-vendor-platform", () => {
     expect(verify().join("\n")).toContain("完整性摘要与 vendor tarball 不一致");
     writeFileSync(join(root, "plugins/demo/bun.lock"), lock("1.0.0-t.1", integrity));
     expect(verify().join("\n")).toContain("未解析到已钉住的 @reai/app-sdk tarball");
+  });
+
+  test("bun.lock 的 JSONC 注释与尾逗号都能解析，字符串内容保持原样", () => {
+    const text = '{\n  // 行注释\n  "a": "x // 不是注释, ]",\n  /* 块注释 */ "b": [1, 2,],\n  "c": "\\"q\\",",\n}\n';
+    expect(JSON.parse(stripJsonc(text))).toEqual({ a: "x // 不是注释, ]", b: [1, 2], c: '"q",' });
   });
 });

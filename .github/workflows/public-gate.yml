@@ -38,8 +38,6 @@ jobs:
             exit 1
           fi
       - name: Run the public gate
-        # 按 Git 跟踪清单扫描提交树全部文件（目录遍历会跳过 node_modules，被跟踪的依赖目录也必须扫描）。
+        # 按 Git 跟踪清单（NUL 分隔）扫描提交树全部文件，被跟踪的依赖目录与特殊文件名同样覆盖。
         # 导出物自带的豁免与插件仓自有豁免分两个文件，均按文件摘要绑定。
-        run: |
-          git ls-files > "$RUNNER_TEMP/tracked-files.txt"
-          bun scripts/public-gate.ts --files "$RUNNER_TEMP/tracked-files.txt" --allow scripts/public-gate.allow.json --allow scripts/public-gate.local-allow.json
+        run: bun scripts/public-gate-tracked.ts --allow scripts/public-gate.allow.json --allow scripts/public-gate.local-allow.json
