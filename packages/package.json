@@ -8,13 +8,14 @@
     "cli",
     "i18n-cli",
     "test-kit",
+    "agent-computer",
     "contract",
     "ui/*",
     "fixtures/apps/*"
   ],
   "scripts": {
-    "test": "bun test sdk cli i18n-cli test-kit ui/agent-ui fixtures/apps && bun cli/src/cli.ts validate fixtures/apps/install-probe && bun cli/src/cli.ts build fixtures/apps/install-probe && bun cli/src/cli.ts contract-test fixtures/apps/install-probe --host-api 1.1",
-    "typecheck": "tsc --noEmit -p sdk && tsc --noEmit -p cli && tsc --noEmit -p i18n-cli && tsc --noEmit -p test-kit && tsc --noEmit -p ui/agent-ui",
+    "test": "bun test sdk cli i18n-cli test-kit ui/agent-ui fixtures/apps && bun test agent-computer && bun cli/src/cli.ts validate fixtures/apps/install-probe && bun cli/src/cli.ts build fixtures/apps/install-probe && bun cli/src/cli.ts contract-test fixtures/apps/install-probe --host-api 1.1",
+    "typecheck": "tsc --noEmit -p sdk && tsc --noEmit -p cli && tsc --noEmit -p i18n-cli && tsc --noEmit -p test-kit && tsc --noEmit -p agent-computer && tsc --noEmit -p ui/agent-ui",
     "verify:pack": "bun ../scripts/verify-platform-packages.ts"
   },
   "overrides": {

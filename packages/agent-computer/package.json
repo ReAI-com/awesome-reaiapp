@@ -1,0 +1,17 @@
+{
+  "name": "@reai/agent-computer",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Agent 电脑原型：后台虚拟机 + 平台无关的 computer.* 本地服务",
+  "bin": {
+    "agent-computer": "./src/cli.ts"
+  },
+  "scripts": {
+    "test": "bun test tests",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "~5.6.0"
+  }
+}
