@@ -1,0 +1,245 @@
+{
+  "manifestVersion": "1.1",
+  "appId": "com.example.capability-probe",
+  "version": "0.1.0",
+  "publisherId": "example",
+  "name": "能力探针",
+  "description": "列出 Driver 插件平台的全部能力，并用按钮逐项实测本机真实结果",
+  "icon": "assets/icon.png",
+  "storeListing": {
+    "category": "Dev",
+    "tagline": "插件到底能做什么，点一下就知道。",
+    "longDescription": "能力探针把 Host 支持矩阵里的每一项能力讲成人话，并为本地开发包能用的能力提供测试按钮：存储、命令、服务调用、系统任务、账户状态、系统通知、网络请求，以及插件页面的脚本限制。需要外脑连接或平台批准的能力只做说明，不发请求。结果可导出为 JSON 报告。",
+    "capabilities": [
+      {
+        "label": "能力目录",
+        "detail": "免审、需同意、需批准、暂未开放四档"
+      },
+      {
+        "label": "一键实测",
+        "detail": "本地包可用的能力逐项真实调用"
+      },
+      {
+        "label": "需要的权限",
+        "detail": "账户状态、系统通知、网络（都可拒绝）"
+      }
+    ],
+    "screenshots": [
+      {
+        "gradient": "linear-gradient(135deg,#5c5ce0,#8b7cf6)",
+        "caption": "能力目录与测试结果",
+        "hasVideo": false
+      }
+    ]
+  },
+  "targets": [
+    {
+      "platform": "macos",
+      "architectures": [
+        "aarch64",
+        "x86_64"
+      ]
+    }
+  ],
+  "hostApi": {
+    "range": ">=1.20.0 <2.0.0"
+  },
+  "requires": {
+    "hostCapabilities": [
+      "surface.main@1",
+      "sidebar.item@1",
+      "storage.kv@1",
+      "commands@1",
+      "apps.service@1",
+      "system.tasks@1",
+      "titlebar.action@1"
+    ],
+    "hardwareServices": [],
+    "appIntents": [],
+    "services": [
+      {
+        "id": "com.reai.voice/request-text@1",
+        "version": "^1.0.0",
+        "required": false,
+        "purpose": "只查询 Voice 文字服务是否可调用，不开始录音"
+      }
+    ]
+  },
+  "runtime": {
+    "components": [
+      {
+        "id": "ui",
+        "kind": "web-surface",
+        "protocol": "web-surface@1",
+        "required": true,
+        "headless": false,
+        "activation": "on-demand",
+        "entry": "dist/app.js",
+        "dependsOn": [],
+        "lifecycle": {
+          "activate": "default.activate",
+          "deactivate": "default.deactivate"
+        }
+      }
+    ]
+  },
+  "permissions": [
+    {
+      "id": "account.status@1",
+      "purpose": "测试「读取是否已登录外脑」这项能力",
+      "required": false
+    },
+    {
+      "id": "os.notification.post@1",
+      "purpose": "测试「发送一条系统通知」这项能力，只在你点按钮时发送",
+      "required": false
+    },
+    {
+      "id": "http.fetch@1",
+      "purpose": "测试「经 Host 代发网络请求」这项能力，只访问外脑公开的健康检查地址",
+      "required": false
+    }
+  ],
+  "requirementsVersion": "1.1",
+  "requirements": [],
+  "network": {
+    "policyVersion": 1,
+    "endpoints": [
+      {
+        "id": "wainao-health",
+        "componentId": "ui",
+        "origins": [
+          "https://block2-api.wainao.chat"
+        ],
+        "pathPrefixes": [
+          "/health"
+        ],
+        "methods": [
+          "GET"
+        ],
+        "owner": "reai",
+        "purpose": [
+          "support"
+        ],
+        "dataCategories": [
+          "none"
+        ],
+        "retention": {
+          "mode": "none"
+        },
+        "required": false,
+        "providerMode": "vendor_only",
+        "auth": {
+          "mode": "none"
+        }
+      }
+    ]
+  },
+  "billing": {
+    "mode": "none"
+  },
+  "data": {
+    "privateStores": [
+      {
+        "id": "probe",
+        "schemaVersion": 1
+      }
+    ],
+    "imports": [],
+    "exports": []
+  },
+  "dataCompatibility": {
+    "rollbackFloor": "0.1.0"
+  },
+  "contributes": {
+    "surfaces": [
+      {
+        "id": "main",
+        "componentId": "ui",
+        "location": "app.main",
+        "title": "能力探针"
+      }
+    ],
+    "sidebarItems": [
+      {
+        "id": "capability-probe",
+        "label": "能力探针",
+        "icon": "assets/icon.png",
+        "opens": "surface:main"
+      }
+    ],
+    "titlebarActions": [
+      {
+        "id": "run-safe",
+        "label": "运行全部安全测试",
+        "icon": "rotate-cw",
+        "text": "全部测试",
+        "showOnTitlebarHover": false,
+        "intent": {
+          "type": "run-safe"
+        }
+      },
+      {
+        "id": "settings",
+        "label": "打开设置",
+        "icon": "settings",
+        "showOnTitlebarHover": false,
+        "intent": {
+          "type": "open-settings"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "id": "com.example.capability-probe.ping",
+        "componentId": "ui",
+        "title": "能力探针：测试按键",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "ok"
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": false
+        },
+        "timeoutMs": 5000,
+        "supportsCancellation": true,
+        "concurrency": "serial",
+        "idempotency": "not-idempotent",
+        "callers": [
+          "host",
+          "user"
+        ]
+      },
+      {
+        "id": "com.example.capability-probe.back-to-root",
+        "componentId": "ui",
+        "title": "返回能力探针首页",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "timeoutMs": 3000,
+        "supportsCancellation": false,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host"
+        ]
+      }
+    ],
+    "intents": []
+  }
+}
