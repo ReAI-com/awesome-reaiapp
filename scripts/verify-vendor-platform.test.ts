@@ -140,4 +140,29 @@ describe("verify-vendor-platform", () => {
     const { root } = fixture();
     expect(verifyVendor(root, () => null).join("\n")).toContain("无法读取 tarball");
   });
+
+  test("平台包在 package.json 中不能用 registry 版本或插件内路径", () => {
+    const { root, verify } = fixture();
+    mkdirSync(join(root, "plugins/demo/vendored"), { recursive: true });
+    writeFileSync(join(root, "plugins/demo/package.json"), JSON.stringify({
+      devDependencies: { "@reai/app-sdk": "1.0.0-t.1" },
+      overrides: { "@reai/app-sdk": "file:./vendored/app-sdk.tgz" },
+    }));
+    const errors = verify().join("\n");
+    expect(errors).toContain("平台包 @reai/app-sdk 必须指向 vendor tarball");
+    expect(errors).toContain("@reai/app-sdk 指向未钉住的本地路径 ./vendored/app-sdk.tgz");
+  });
+
+  test("bun.lock 中平台包的来源与完整性摘要必须对应 vendor tarball", () => {
+    const { root, base, verify } = fixture();
+    const integrity = `sha512-${createHash("sha512").update(readFileSync(join(base, "packs/app-sdk.tgz"))).digest("base64")}`;
+    const lock = (spec: string, digest: string) => `{\n  "lockfileVersion": 1,\n  "packages": {\n    "@reai/app-sdk": ["@reai/app-sdk@${spec}", {}, "${digest}"],\n  },\n}\n`;
+    const vendored = `../../vendor/platform/${DIR}/packs/app-sdk.tgz`;
+    writeFileSync(join(root, "plugins/demo/bun.lock"), lock(vendored, integrity));
+    expect(verify()).toEqual([]);
+    writeFileSync(join(root, "plugins/demo/bun.lock"), lock(vendored, "sha512-AAAA"));
+    expect(verify().join("\n")).toContain("完整性摘要与 vendor tarball 不一致");
+    writeFileSync(join(root, "plugins/demo/bun.lock"), lock("1.0.0-t.1", integrity));
+    expect(verify().join("\n")).toContain("未解析到已钉住的 @reai/app-sdk tarball");
+  });
 });

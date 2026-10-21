@@ -28,6 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -50,6 +51,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -109,6 +111,7 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          persist-credentials: false
           fetch-depth: 0
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
@@ -144,7 +147,7 @@ jobs:
         run: |
           # 插件自己的锁文件必须带上语言工具的压缩依赖；只看共享工具的验证发现不了这类缺失。
           if jq -e '(.dependencies // {}) + (.devDependencies // {}) | has("@reai/app-i18n-cli")' package.json >/dev/null; then
-            bunx reai-app-i18n pack . --out "$RUNNER_TEMP/${{ strategy.job-index }}-deflate.reaiapp" --compression deflate
+            bunx --no-install reai-app-i18n pack . --out "$RUNNER_TEMP/${{ strategy.job-index }}-deflate.reaiapp" --compression deflate
           else
             echo "Plugin does not use the language toolchain; Deflate packing is not applicable."
           fi

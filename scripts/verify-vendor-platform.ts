@@ -6,7 +6,9 @@
  * - `vendor/platform/pins.json` 按摘要钉住每个 lock；lock 再按摘要钉住来源回执 `toolchain.json`；
  * - 每个 tarball 的大小与 sha256 必须同时与 lock、来源回执一致，packs/ 下不允许多出或缺少文件；
  * - tarball 内不允许出现 Host 专用合同；
- * - 插件与样例的 `file:` / `link:` 依赖只能指向自身目录内，或已钉住的 vendor tarball，且包名一致。
+ * - 插件与样例的 `file:` / `link:` 依赖只能指向自身目录内，或已钉住的 vendor tarball，且包名一致；
+ * - 平台包（按 lock 中的包名）在 package.json 里必须指向 vendor tarball，在 bun.lock 里必须解析到同一 tarball
+ *   且完整性摘要与 tarball 实际字节一致。
  *
  * 只依赖 `node:` 内置模块与系统 tar。用法：bun scripts/verify-vendor-platform.ts [--root <dir>]
  * 退出码：0 通过，1 校验失败，2 用法错误。
@@ -26,6 +28,7 @@ interface LockPackage { name: string; version: string; file: string; bytes: numb
 interface Artifact { name: string; version: string; file: string; bytes: number; sha256: string }
 
 const sha256 = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+const sha512Integrity = (bytes: Uint8Array) => `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
 class VendorError extends Error {}
 /** 解析失败抛出带文件路径的 VendorError，由调用方记为一条校验失败。 */
 const parseJson = (bytes: Uint8Array | string, shown: string): any => {
@@ -45,8 +48,10 @@ const listWithTar: ListTarball = path => {
   return result.status === 0 ? result.stdout.split("\n").filter(Boolean) : null;
 };
 
-function verifyPin(root: string, pin: Pin, errors: string[], listTarball: ListTarball): Map<string, string> {
-  const files = new Map<string, string>(); // vendor 相对路径 → 包名
+interface VendorFile { name: string; integrity: string }
+
+function verifyPin(root: string, pin: Pin, errors: string[], listTarball: ListTarball): Map<string, VendorFile> {
+  const files = new Map<string, VendorFile>(); // vendor 相对路径 → 包名与 bun.lock 完整性摘要
   const base = join(root, VENDOR, pin.dir);
   const at = `${VENDOR}/${pin.dir}`;
   if (!pin.sourceHead?.startsWith(pin.dir)) errors.push(`${at}: 目录名必须是 sourceHead 前缀`);
@@ -97,7 +102,7 @@ function verifyPin(root: string, pin: Pin, errors: string[], listTarball: ListTa
     const members = listTarball(path);
     if (!members) errors.push(`${at}/${file}: 无法读取 tarball`);
     else if (members.some(member => HOST_ONLY.some(name => member === name || member.endsWith(`/${name}`)))) errors.push(`${at}/${file}: 含 Host 专用合同`);
-    files.set(`${at}/${file}`, pkg.name);
+    files.set(`${at}/${file}`, { name: pkg.name, integrity: sha512Integrity(bytes) });
   }
   const packsDir = join(base, "packs");
   for (const name of existsSync(packsDir) ? readdirSync(packsDir) : []) {
@@ -129,6 +134,31 @@ function unitRoot(root: string, manifestPath: string): string {
 function inside(dir: string, target: string): boolean {
   const rel = relative(dir, target);
   return rel !== "" && !isAbsolute(rel) && rel.split(sep)[0] !== "..";
+}
+
+/** bun.lock 是带尾逗号的 JSON；去掉对象 / 数组结尾前的逗号后按 JSON 解析。字符串内不会出现「逗号 + 右括号」以外的歧义。 */
+function parseBunLock(text: string, shown: string): any {
+  return parseJson(text.replace(/,(\s*[}\]])/g, "$1"), shown);
+}
+
+/** 核对 bun.lock 中每个平台包条目都解析到已钉住的 tarball，且完整性摘要与 tarball 字节一致。 */
+function verifyBunLock(root: string, lockPath: string, vendorFiles: Map<string, VendorFile>, platformNames: Set<string>, errors: string[]): void {
+  const shown = posix(relative(root, lockPath));
+  const lock = parseBunLock(readFileSync(lockPath, "utf8"), shown);
+  const packages = isRecord(lock) && isRecord(lock.packages) ? lock.packages : null;
+  if (!packages) { errors.push(`${shown}: 缺少 packages`); return; }
+  for (const [key, entry] of Object.entries(packages)) {
+    if (!Array.isArray(entry) || typeof entry[0] !== "string") continue;
+    const at = entry[0].lastIndexOf("@");
+    const name = at > 0 ? entry[0].slice(0, at) : entry[0];
+    if (!platformNames.has(name)) continue;
+    const spec = entry[0].slice(at + 1).replace(/^(?:file|link):/, "");
+    const fromRoot = posix(relative(root, resolve(dirname(lockPath), spec)));
+    const vendored = vendorFiles.get(fromRoot);
+    const integrity = entry.find((item: unknown) => typeof item === "string" && item.startsWith("sha512-"));
+    if (!vendored || vendored.name !== name) errors.push(`${shown}: ${key} 未解析到已钉住的 ${name} tarball`);
+    else if (integrity !== vendored.integrity) errors.push(`${shown}: ${key} 的完整性摘要与 vendor tarball 不一致`);
+  }
 }
 
 function collectDeps(manifest: Record<string, unknown>): [string, string][] {
@@ -170,12 +200,13 @@ function verifyInto(root: string, errors: string[], listTarball: ListTarball): v
   for (const name of readdirSync(join(root, VENDOR))) {
     if (name !== "pins.json" && !pinned.has(name)) errors.push(`${VENDOR}/${name}: 未在 pins.json 登记`);
   }
-  const vendorFiles = new Map<string, string>();
+  const vendorFiles = new Map<string, VendorFile>();
   for (const pin of pins) {
     if (!existsSync(join(root, VENDOR, pin.dir))) { errors.push(`${VENDOR}/${pin.dir}: 目录不存在`); continue; }
     for (const [path, name] of verifyPin(root, pin, errors, listTarball)) vendorFiles.set(path, name);
   }
 
+  const platformNames = new Set([...vendorFiles.values()].map(file => file.name));
   for (const top of CONSUMER_ROOTS) {
     if (!existsSync(join(root, top))) continue;
     for (const manifestPath of packageJsons(join(root, top))) {
@@ -185,15 +216,20 @@ function verifyInto(root: string, errors: string[], listTarball: ListTarball): v
       if (!isRecord(manifest)) { errors.push(`${shown}: 不是 JSON 对象`); continue; }
       for (const [name, spec] of collectDeps(manifest)) {
         const match = /^(?:file|link):(.+)$/.exec(spec);
-        if (!match) continue;
+        if (!match) {
+          if (platformNames.has(name)) errors.push(`${shown}: 平台包 ${name} 必须指向 vendor tarball，不能用 ${spec}`);
+          continue;
+        }
         const target = resolve(dirname(manifestPath), match[1]!);
-        if (inside(unit, target)) continue;
+        if (inside(unit, target) && !platformNames.has(name)) continue;
         const fromRoot = posix(relative(root, target));
         const expected = vendorFiles.get(fromRoot);
         if (!expected) errors.push(`${shown}: ${name} 指向未钉住的本地路径 ${match[1]}`);
-        else if (expected !== name) errors.push(`${shown}: ${name} 指向的是 ${expected} 的 tarball`);
+        else if (expected.name !== name) errors.push(`${shown}: ${name} 指向的是 ${expected.name} 的 tarball`);
         else if (!statSync(target).isFile()) errors.push(`${shown}: ${name} 指向的 tarball 不存在`);
       }
+      const lockPath = join(dirname(manifestPath), "bun.lock");
+      if (existsSync(lockPath)) verifyBunLock(root, lockPath, vendorFiles, platformNames, errors);
     }
   }
 }
