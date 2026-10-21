@@ -1,4 +1,4 @@
-/** 导出报告：只含版本、档位和每个探针的结果，不含令牌、绝对路径和用户数据正文。 */
+/** 导出报告：版本、档位和每个探针的结果；开发者模式下另含错误码与诊断正文（已去掉已知格式的令牌，可能仍有路径或个人信息）。 */
 import { CONTRACT_HOST_API, PLUGIN_APP_ID, PLUGIN_VERSION } from "./catalog";
 import { scrub } from "./errors";
 import type { ProbeResult } from "./probes";

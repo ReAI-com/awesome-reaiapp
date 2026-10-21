@@ -430,7 +430,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     nodes.push(h(doc, "div", { className: "cp-card" },
       h(doc, "h3", { text: "导出报告" }),
       h(doc, "p", { className: "cp-card-sub", text: developerMode
-        ? "报告含版本、档位、结果和错误码，不含令牌和用户数据。全选后复制即可。"
+        ? "报告含版本、档位、结果、错误码和诊断信息。会去掉已知格式的令牌，但诊断里可能有路径或个人信息，分享前请检查。全选后复制即可。"
         : "报告含版本、档位和结果，不含令牌和用户数据。打开 Driver 开发者模式后，报告里会多出错误码。全选后复制即可。" }),
       area,
       h(doc, "div", { className: "cp-card-actions" }, select),

@@ -107,6 +107,16 @@ function expectedRejection(error: unknown, expected: (code: string) => boolean, 
   return { outcome: "failed", summary: "被拒了，但原因不是预期的那一个", code, detail: scrub(message) };
 }
 
+/** 反例意外写入成功后清理测试数据；清理失败时如实说明，不能声称已删除。 */
+async function cleanupNote(remove: () => Promise<void>): Promise<string> {
+  try {
+    await remove();
+    return "已删除测试数据";
+  } catch {
+    return "测试数据没删掉，可能仍有残留";
+  }
+}
+
 function formatTime(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -271,8 +281,8 @@ export const PROBES: ProbeDefinition[] = [
       } catch (error) {
         return expectedRejection(error, (code) => code === "STORAGE_QUOTA_EXCEEDED", "单条超过 256 KB");
       }
-      await port.kv.delete(OVERSIZE_KEY).catch(() => undefined);
-      return { outcome: "unexpected", summary: "300 KB 的数据被接受了，和公开的 256 KB 上限不一致（已删除）" };
+      const cleanup = await cleanupNote(() => port.kv.delete(OVERSIZE_KEY));
+      return { outcome: "unexpected", summary: `300 KB 的数据被接受了，和公开的 256 KB 上限不一致（${cleanup}）` };
     },
   },
   {
@@ -281,7 +291,7 @@ export const PROBES: ProbeDefinition[] = [
     level: "P0",
     title: "没声明的存储空间（反例）",
     what: "往清单里没声明的存储空间写一条数据",
-    expect: "被拒绝（文档说未声明的存储空间会被拒）",
+    expect: "被拒绝（只能用清单 data.privateStores 里声明过的存储空间）",
     capability: "storage.kv@1",
     risk: "safe",
     async run({ port }) {
@@ -289,10 +299,10 @@ export const PROBES: ProbeDefinition[] = [
       try {
         await store.set("probe", 1);
       } catch (error) {
-        return expectedRejection(error, (code) => code.startsWith("STORAGE_") || code.includes("NOT_DECLARED"), "存储空间没有声明");
+        return expectedRejection(error, (code) => code === "STORAGE_NOT_DECLARED", "存储空间没有声明");
       }
-      await store.delete("probe").catch(() => undefined);
-      return { outcome: "unexpected", summary: "没被拒：Driver 目前不检查存储空间是否声明过（已删除测试数据）" };
+      const cleanup = await cleanupNote(() => store.delete("probe"));
+      return { outcome: "unexpected", summary: `没被拒：这个 Driver 版本还不检查存储空间是否声明过，请更新 Driver（${cleanup}）` };
     },
   },
   {
@@ -443,7 +453,7 @@ export const PROBES: ProbeDefinition[] = [
     level: "P0",
     title: "访问不加密的 http 地址（反例）",
     what: "用 http:// 而不是 https:// 请求外脑健康检查",
-    expect: "被 Driver 拦下（只允许 https）",
+    expect: "被 Driver 拦下。清单只能声明 https 地址（安装时检查），所以 http 地址会按「没声明」拦下",
     capability: "http.fetch@1",
     risk: "safe",
     async run({ port, signal }) {
@@ -451,7 +461,8 @@ export const PROBES: ProbeDefinition[] = [
         const response = await port.fetch(HEALTH_URL.replace("https://", "http://"), { method: "GET", signal });
         return { outcome: "unexpected", summary: `没被拦：返回了 HTTP ${response.status}。${LENIENT_NOTE}` };
       } catch (error) {
-        return expectedRejection(error, (code) => INSECURE_NETWORK.has(code), "只允许 https");
+        const reason = describeError(error).code === "NETWORK_SCHEME_DENIED" ? "只允许 https" : "http 地址不能写进清单，按没声明的地址拦下";
+        return expectedRejection(error, (code) => INSECURE_NETWORK.has(code), reason);
       }
     },
   },

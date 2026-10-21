@@ -1,6 +1,6 @@
 {
   "name": "reai-capability-probe-example",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "type": "module",
   "reaiApp": {
@@ -13,7 +13,7 @@
     "build": "reai-app build .",
     "validate": "reai-app validate .",
     "test:contract": "reai-app contract-test . --host-api 1.20",
-    "pack": "reai-app pack . --out capability-probe-0.1.0.reaiapp",
+    "pack": "reai-app pack . --out capability-probe-0.1.1.reaiapp",
     "snapshot": "bun scripts/snapshot-official-plugins.ts",
     "release-notes": "bun scripts/sync-release-notes.ts"
   },

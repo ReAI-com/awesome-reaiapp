@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.example.capability-probe",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisherId": "example",
   "name": "能力探针",
   "description": "列出 Driver 插件平台的全部能力，并用按钮逐项实测本机真实结果",

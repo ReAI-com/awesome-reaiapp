@@ -79,7 +79,39 @@ describe("探针结果（假 Host）", () => {
 
   test("未声明的存储空间：没被拒时如实标「与预期不同」，被拒时标「被拦下」", async () => {
     expect((await run("kv-undeclared")).outcome).toBe("unexpected");
-    expect((await run("kv-undeclared", { rejectUndeclaredStore: true })).outcome).toBe("blocked");
+    const blocked = await run("kv-undeclared", { rejectUndeclaredStore: true });
+    expect(blocked.outcome).toBe("blocked");
+    expect(blocked.code).toBe("STORAGE_NOT_DECLARED");
+    expect(blocked.summary).toContain("按预期");
+  });
+
+  test("未声明的存储空间：别的存储错误码不能冒充「按预期被拦下」", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    port.kvStore = () => ({
+      ...port.kv,
+      set: async () => { throw Object.assign(new Error("存储暂时不可用"), { code: "STORAGE_UNAVAILABLE" }); },
+    });
+    const result = await runProbe(probeById("kv-undeclared")!, { port, document, signal: new AbortController().signal });
+    expect(result.outcome).toBe("failed");
+    expect(result.code).toBe("STORAGE_UNAVAILABLE");
+  });
+
+  test("反例意外写入后清理失败，不能声称已删除", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    const store = port.kvStore("undeclared-probe");
+    port.kvStore = () => ({ ...store, delete: async () => { throw Object.assign(new Error("存储暂时不可用"), { code: "STORAGE_UNAVAILABLE" }); } });
+    const result = await runProbe(probeById("kv-undeclared")!, { port, document, signal: new AbortController().signal });
+    expect(result.outcome).toBe("unexpected");
+    expect(result.summary).toContain("没删掉");
+    expect(result.summary).not.toContain("已删除");
+  });
+
+  test("http 反例：Driver 返回协议拒绝码时，说明写「只允许 https」", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    port.fetch = async () => { throw Object.assign(new Error("只允许 HTTP(S) URL"), { code: "NETWORK_SCHEME_DENIED" }); };
+    const result = await runProbe(probeById("http-insecure")!, { port, document, signal: new AbortController().signal });
+    expect(result.outcome).toBe("blocked");
+    expect(result.summary).toBe("按预期被拦下：只允许 https");
   });
 
   test("按键命令：没触发过时等你操作，触发后显示次数", async () => {
@@ -109,7 +141,11 @@ describe("探针结果（假 Host）", () => {
     const undeclared = await run("http-undeclared");
     expect(undeclared.outcome).toBe("blocked");
     expect(undeclared.summary).toContain("按预期");
-    expect((await run("http-insecure")).code).toBe("NETWORK_SCHEME_DENIED");
+    // 与 Driver 一致：清单只收 https，http 地址按「没声明」拦下，说明里不能说成是 https 检查。
+    const insecure = await run("http-insecure");
+    expect(insecure.outcome).toBe("blocked");
+    expect(insecure.code).toBe("NETWORK_ENDPOINT_NOT_DECLARED");
+    expect(insecure.summary).toContain("按没声明的地址拦下");
     // 没同意网络权限时，反例其实没测到，不能冒充「按预期被拦下」。
     const notConsented = await run("http-undeclared", { deniedPermissions: new Set(["http.fetch@1"]) });
     expect(notConsented.outcome).toBe("blocked");
@@ -203,7 +239,7 @@ describe("错误与报告", () => {
     expect(withDiagnostics).not.toContain("wno-secret-token");
     expect(withDiagnostics).toContain("X_FAILED");
     const parsed = JSON.parse(withDiagnostics) as { plugin: { version: string }; results: unknown[] };
-    expect(parsed.plugin.version).toBe("0.1.0");
+    expect(parsed.plugin.version).toBe("0.1.1");
     expect(parsed.results).toHaveLength(1);
     const plain = buildReport({ mode: "preview", hostVersion: "1.0.5", developerMode: false, results });
     expect(plain).not.toContain("X_FAILED");

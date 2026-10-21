@@ -34,7 +34,7 @@
 
 ## 装进 Driver（仅 macOS）
 
-1. 在本目录打包（见下方「本地构建」），得到 `capability-probe-0.1.0.reaiapp`。
+1. 在本目录打包（见下方「本地构建」），得到 `capability-probe-0.1.1.reaiapp`。
 2. Driver「设置 → 开发者」打开「开发者模式」。
 3. 「App Store → 已安装 → 从本地安装」，选这个文件，确认「未经审核」提示。
 4. 安装时会列出三项权限（账户状态、系统通知、网络），都可以先拒绝，看看「被拦下」的结果，再去「已安装 → 能力探针 → 权限」里允许后重测。
@@ -77,7 +77,7 @@ bun run typecheck
 bun run validate
 bun run build
 bun run test:contract
-bun run pack          # 得到 capability-probe-0.1.0.reaiapp
+bun run pack          # 得到 capability-probe-0.1.1.reaiapp
 bun run dev           # 浏览器预览：http://127.0.0.1:4179/preview.html
 ```
 

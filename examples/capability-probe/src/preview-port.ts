@@ -38,7 +38,7 @@ export function createPreviewPort(options: PreviewOptions = {}): ProbePort & { s
     const data = stores.get(storeId) ?? new Map<string, unknown>();
     stores.set(storeId, data);
     const guard = () => {
-      if (!declared && options.rejectUndeclaredStore) throw bridgeError("STORAGE_STORE_NOT_DECLARED", "未声明的存储空间");
+      if (!declared && options.rejectUndeclaredStore) throw bridgeError("STORAGE_NOT_DECLARED", "存储空间没有在清单里声明");
     };
     return {
       async get(key) { await delay(); guard(); return structuredClone(data.get(key)); },
@@ -98,9 +98,9 @@ export function createPreviewPort(options: PreviewOptions = {}): ProbePort & { s
       if (denied("http.fetch@1")) throw bridgeError("PLUGIN_PERMISSION_REQUIRED", "需要用户允许 http.fetch@1");
       const parsed = new URL(url);
       if (options.lenientNetwork) return { status: 200, text: "预览假数据：宽松网络档放行了这个请求" };
-      if (parsed.protocol !== "https:") throw bridgeError("NETWORK_SCHEME_DENIED", "严格模式只允许 HTTPS URL");
+      // 与 Driver 一致：先按清单匹配地址。清单只收 https，所以 http 地址在这一步就按「没声明」拦下。
       if (parsed.origin !== "https://block2-api.wainao.chat" || !parsed.pathname.startsWith("/health")) {
-        throw bridgeError("NETWORK_ENDPOINT_NOT_DECLARED", "请求不在已声明的 endpoint 范围内");
+        throw bridgeError("NETWORK_ENDPOINT_NOT_DECLARED", "URL origin 未在 Manifest 中申报");
       }
       return { status: 200, text: "{\"status\":\"ok\",\"note\":\"预览假数据，没有真的访问网络\"}" };
     },
