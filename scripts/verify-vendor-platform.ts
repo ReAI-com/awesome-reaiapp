@@ -6,7 +6,7 @@
  * - `vendor/platform/pins.json` 按摘要钉住每个 lock；lock 再按摘要钉住来源回执 `toolchain.json`；
  * - 每个 tarball 的大小与 sha256 必须同时与 lock、来源回执一致，packs/ 下不允许多出或缺少文件；
  * - tarball 内不允许出现 Host 专用合同；
- * - 插件与样例的 `file:` / `link:` 依赖只能指向自身目录内，或已钉住的 vendor tarball，且包名一致；
+ * - 插件、样例与仓库测试包的 `file:` / `link:` 依赖只能指向自身目录内，或已钉住的 vendor tarball，且包名一致；
  * - 平台包（按 lock 中的包名）在 package.json 里必须指向 vendor tarball，在 bun.lock 里必须解析到同一 tarball
  *   且完整性摘要与 tarball 实际字节一致。
  *
@@ -20,7 +20,7 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 const VENDOR = "vendor/platform";
 const HOST_ONLY = ["official-host-dependencies.json"];
-const CONSUMER_ROOTS = ["plugins", "examples"];
+const CONSUMER_ROOTS = ["plugins", "examples", "tests"];
 const DEP_FIELDS = ["dependencies", "devDependencies", "optionalDependencies", "peerDependencies", "overrides"];
 
 interface Pin { dir: string; sourceHead: string; lockSha256: string }

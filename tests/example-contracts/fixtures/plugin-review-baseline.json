@@ -1,0 +1,10 @@
+{
+  "$comment": "镜像主项目审核候选目录中样例候选的 appId 与源码根（examples/<slug>）；主项目 Host 半守同一登记。只保留 examples 部分。",
+  "pluginCandidates": [
+    {
+      "appId": "com.example.todo",
+      "root": "examples",
+      "slug": "todo-app"
+    }
+  ]
+}

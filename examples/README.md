@@ -25,4 +25,6 @@ bun run pack
 
 样例通过 `file:` 安装主项目发布的平台包 tarball。本仓库没有自动执行真实 Host 安装生命周期的入口；上述命令通过不能作为这项验收的证据。真实 Host 安装、启用、卸载、重装和交互仍须单独验证。
 
+样例的跨边界合同（独立性、皮肤 token、单层 Title Bar、标题栏动作等）在仓库根 `tests/example-contracts/` 中，`bun install --frozen-lockfile --ignore-scripts && bun run test` 即可运行。
+
 这些目录是开发样例，不是已审核的商店插件。不得把样例当作 Driver 内置批准包或 Tauri 发布资源。官方插件同样必须经过正常申请、自动测试、权限检查和人工审核，`publisherId: "reai"` 不会绕过流程。
