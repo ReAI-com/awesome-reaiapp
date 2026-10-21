@@ -6,11 +6,10 @@
  * 官方插件部分在官方插件迁入本仓前仍由主项目守。
  */
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync } from "node:fs";
 
 import hostCommitments from "@reai/app-contract/host-commitments-v1.json";
-import { exampleJson, examplePluginsRoot, readExample } from "./support/paths";
+import { discoverExamples, exampleFile, exampleJson, readExample } from "./support/paths";
 
 const safeArea = { token: hostCommitments.titlebarSafeArea.cssVariable, fallback: hostCommitments.titlebarSafeArea.macos };
 const SAFE_TOKEN = safeArea.token;
@@ -66,10 +65,7 @@ function topPaddingsOf(style: string, selector: string): number[] {
   });
 }
 
-const contractApps = readdirSync(examplePluginsRoot, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory() && existsSync(join(examplePluginsRoot, entry.name, "tests", "contract.suite.ts")))
-  .map((entry) => entry.name)
-  .sort();
+const contractApps = discoverExamples().filter((slug) => existsSync(exampleFile(slug, "tests/contract.suite.ts")));
 
 describe("插件单层 Host Title Bar 合同（样例）", () => {
   for (const { name, slug, view: viewPath, style: stylePath } of pluginSurfaces) {

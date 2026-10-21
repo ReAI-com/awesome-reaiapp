@@ -30,6 +30,9 @@ function schemaViolations(value: unknown, schema: Schema, pointer = ""): string[
   const out: string[] = [];
   const at = pointer || "<root>";
   const type = schema.type;
+  if (type !== undefined && !["object", "array", "string", "integer"].includes(type)) {
+    throw new Error(`schema 类型未被插件半校验器支持：${JSON.stringify(type)}`);
+  }
   if (type === "object") {
     if (typeof value !== "object" || value === null || Array.isArray(value)) return [`${at}: 应为 object`];
     const record = value as Record<string, unknown>;

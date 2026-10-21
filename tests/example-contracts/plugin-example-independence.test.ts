@@ -6,22 +6,14 @@
  * 同时保留原合同点名的四个样例，防止它们被误删。
  */
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
-import { exampleFile, exampleJson, examplePluginsRoot, exampleRoot } from "./support/paths";
+import { discoverExamples, exampleFile, exampleJson, exampleRoot } from "./support/paths";
 
 const required = ["todo-app", "titlebar-actions-app", "skins/codex", "skins/claude"];
 
-function discover(dir: string, prefix = ""): string[] {
-  return readdirSync(dir, { withFileTypes: true })
-    .filter(entry => entry.isDirectory() && entry.name !== "node_modules" && !entry.name.startsWith("."))
-    .flatMap(entry => {
-      const slug = prefix ? `${prefix}/${entry.name}` : entry.name;
-      return existsSync(join(dir, entry.name, "app.manifest.json")) ? [slug] : discover(join(dir, entry.name), slug);
-    });
-}
-const examples = discover(examplePluginsRoot).sort();
+const examples = discoverExamples();
 
 describe("插件样例独立于 Driver", () => {
   test("原合同点名的样例都在", () => {
@@ -39,6 +31,14 @@ describe("插件样例独立于 Driver", () => {
         expect(pkg.scripts?.[script], `${slug} ${script}`).toBeString();
       }
     }
+  });
+
+  test("每个样例都登记在插件工具链 CI 的样例矩阵里", () => {
+    const workflow = readFileSync(resolve(import.meta.dir, "../../.github/workflows/plugin-toolchain.yml"), "utf8");
+    const matrix = workflow.match(/^\s*example:\s*\[([^\]]*)\]/m)?.[1];
+    expect(matrix).toBeDefined();
+    const listed = matrix!.split(",").map(item => item.trim()).filter(Boolean).sort();
+    expect(listed).toEqual(examples);
   });
 
   test("Todo 的插件本地测试跟着插件走", () => {

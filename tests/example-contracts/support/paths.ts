@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /**
@@ -12,3 +12,14 @@ export const exampleFile = (slug: string, path: string) => join(exampleRoot(slug
 export const readExample = (slug: string, path: string) => readFileSync(exampleFile(slug, path), "utf8");
 export const exampleJson = <T = any>(slug: string, path: string): T => JSON.parse(readExample(slug, path)) as T;
 export const exampleManifest = <T = any>(slug: string): T => exampleJson<T>(slug, "app.manifest.json");
+
+/** examples/ 下带 app.manifest.json 的目录（递归，跳过 node_modules 与点目录），返回相对 slug，如 `skins/codex`。 */
+export function discoverExamples(dir = examplePluginsRoot, prefix = ""): string[] {
+  return readdirSync(dir, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && entry.name !== "node_modules" && !entry.name.startsWith("."))
+    .flatMap(entry => {
+      const slug = prefix ? `${prefix}/${entry.name}` : entry.name;
+      return existsSync(join(dir, entry.name, "app.manifest.json")) ? [slug] : discoverExamples(join(dir, entry.name), slug);
+    })
+    .sort();
+}
