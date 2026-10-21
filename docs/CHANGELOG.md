@@ -1,5 +1,12 @@
 # ReAI App 平台规范更新日志
 
+## 2026-10-21 · 补迁 project-data-app 与 workflow-app 样例
+
+- 两个样例由插件仓接管：来源为主项目导出提交 `4ed2325a750e` 的同名样例，依赖改为 `vendor/platform/` 中的平台包。预览改读随附的主题色快照 `tests/fixtures/theme-tokens.json`，输出写到仓库根 `.artifacts/`。
+- 不随附内部计划、验证记录与后端合同证据（`docs/plan.md`、`docs/verification.md`、`tests/backend-contract.json`），fixture 注释改为中性描述。`workflow-app` 在继续或取消的结果未知时禁止再次继续，读取确认成功后才恢复，并补了回归测试。
+- 主项目 `tests/plugin-contracts/` 中与样例相关的插件侧检查迁入 `tests/example-contracts/` 并纳入 CI：样例独立性（按目录自动发现全部样例）、皮肤只用合同包公开 token、Todo 与标题栏动作样例的单层 Title Bar 合同、所有样例 `test:contract` 的 Host API 与合同套件一致，以及审核基线、TBC 挂点和安全区缓冲中的 Todo 部分。官方插件部分在迁入本仓前仍由主项目守。
+- 两个样例加入插件工具链 CI 矩阵；本地 test、typecheck、validate、build、test:contract、pack、Deflate 打包与预览启动均已通过。
+
 ## 2026-10-21 · 平台包改由主项目发布（迁移阶段 A 插件仓侧）
 
 - 删除 `packages/` 源码拷贝，插件、样例与两个 AI 员工 demo 改为依赖 `vendor/platform/4ed2325a750e/` 中主项目发布的 v106.2 平台包 tarball：合同 `1.26.0-v106.2`、SDK `1.27.0-v106.2`、test-kit `1.5.0-v106.2`、CLI `1.4.2-v106.2`、语言工具 `1.2.0-v106.2`、共享 UI `0.1.1-v106.2`。`vendor/platform/pins.json` 按摘要钉住 lock，lock 钉住来源回执与每个 tarball；插件仓不修改 tarball，升级只能整体替换为主项目新发布的批次。

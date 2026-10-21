@@ -1,0 +1,21 @@
+{
+  "$comment": "镜像主项目 Host 承诺（Driver 前端临时 TBC 注册表）中需要样例自己挂出的 id，以及 Host 标题栏动作 → TBC id 映射；主项目 Host 半守同值。只保留 examples 部分。",
+  "inlineMounts": [
+    {
+      "id": "tbc.todo-agent-flow",
+      "appId": "com.example.todo",
+      "kind": "example",
+      "slug": "todo-app",
+      "file": "src/todo-view.ts"
+    }
+  ],
+  "titlebarActionMounts": [
+    {
+      "id": "tbc.todo-agent-flow",
+      "appId": "com.example.todo",
+      "actionId": "assistant",
+      "kind": "example",
+      "slug": "todo-app"
+    }
+  ]
+}
