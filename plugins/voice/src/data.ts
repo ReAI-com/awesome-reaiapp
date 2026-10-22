@@ -492,6 +492,11 @@ export interface VoiceViewState {
   statusLoad: "loading" | "loaded" | "failed";
   statusLoadError?: string;
   statusLoadErrorDetail?: VoiceErrorDetail;
+  /**
+   * Host 回带的单次录音上限（秒）。缺席 = 旧 Host（固定 120 秒）：设置页「单次录音最长时间」
+   * 置灰并提示更新。
+   */
+  captureLimitSeconds?: number;
   phase: "idle" | "listening" | "recognizing";
   sessionId?: string;
   settings: VoiceInputSettings;
@@ -627,12 +632,17 @@ export interface VoiceContextProbe {
   screenRecording: "granted" | "denied";
 }
 
+/** Host 回带的单次上限（秒）；缺席或非法 = 旧 Host，不支持调整。 */
+export function validCaptureLimitSeconds(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
 export function voiceSourceStatusPatch(
   status: VoiceInputStatus,
 ): Pick<
   VoiceViewState,
   "sourceReady" | "sourceIssue" | "boardFirmwareVersion" | "minimumBoardFirmwareVersion"
-  | "timeline"
+  | "timeline" | "captureLimitSeconds"
 > {
   return {
     sourceReady: status.sourceReady,
@@ -640,6 +650,7 @@ export function voiceSourceStatusPatch(
     boardFirmwareVersion: status.boardFirmwareVersion,
     minimumBoardFirmwareVersion: status.minimumBoardFirmwareVersion,
     timeline: status.timeline,
+    captureLimitSeconds: validCaptureLimitSeconds(status.captureLimitSeconds),
   };
 }
 
@@ -703,11 +714,23 @@ export function reconcileAuthoritativeVoiceStatus(
 export const CONTEXT_RANGE_MINUTES = [1, 5, 10] as const;
 export const DEFAULT_CONTEXT_RANGE_MINUTES = 5;
 
+/** 单次录音最长时间（分钟）。Host 1.0.6 起可调，旧 Host 固定 120 秒。 */
+export const MIN_RECORDING_MINUTES = 1;
+export const MAX_RECORDING_MINUTES = 10;
+/** 旧 Host 不回 `captureLimitSeconds` 时的固定上限（秒）。 */
+export const LEGACY_CAPTURE_LIMIT_SECONDS = 120;
+
+export function sanitizeMaxRecordingMinutes(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return MAX_RECORDING_MINUTES;
+  return Math.max(MIN_RECORDING_MINUTES, Math.min(MAX_RECORDING_MINUTES, Math.round(value)));
+}
+
 export const DEFAULT_SETTINGS: VoiceInputSettings = {
   source: "board",
   modelId: DEFAULT_MODEL_ID,
   language: "auto",
   vadEnabled: true,
+  maxRecordingMinutes: MAX_RECORDING_MINUTES,
   punctEnabled: true,
   engine: "local",
   // 2026-09-27 Voice 链路解耦定稿（取代 DEV-16 的「默认原样」）：润色默认开启轻度，
@@ -1716,6 +1739,7 @@ function sanitizeSettings(value: VoiceInputSettings | undefined): VoiceInputSett
     modelId: value.modelId === DEFAULT_MODEL_ID ? value.modelId : DEFAULT_MODEL_ID,
     language: ["auto", "zh-CN", "en-US"].includes(value.language) ? value.language : "auto",
     vadEnabled: value.vadEnabled !== false,
+    maxRecordingMinutes: sanitizeMaxRecordingMinutes(value.maxRecordingMinutes),
     punctEnabled: value.punctEnabled !== false,
     engine: value.engine === "cloud" ? "cloud" : "local",
     polish: sanitizePolish(value.polish),
@@ -1816,7 +1840,7 @@ function sanitizeHistory(value: VoiceHistoryItem[] | undefined): VoiceHistoryIte
       inserted: item.inserted === true,
       durationMs:
         typeof item.durationMs === "number" && Number.isFinite(item.durationMs)
-          ? Math.max(0, Math.min(item.durationMs, 120_000))
+          ? Math.max(0, Math.min(item.durationMs, MAX_RECORDING_MINUTES * 60_000))
           : 0,
       createdAt: normalizeCreatedAt(item.createdAt),
       ...(typeof item.warningCode === "string"

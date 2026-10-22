@@ -63,6 +63,7 @@ import {
   shouldPollVoiceStatus,
   voiceAvailabilityChanged,
   voiceSourceStatusPatch,
+  validCaptureLimitSeconds,
   type VoiceContextProbe,
   type VoiceHistoryItem,
   type VoiceStageFailure,
@@ -529,6 +530,11 @@ export default defineApp({
       };
       statusArchiveRevision.set(reconciled, revision);
       return reconciled;
+    };
+    /** 开录回执回带的单次上限：与已知值不同才发布（旧 Host 不回，保留状态读数的结论）。 */
+    const noteCaptureLimit = (result: VoiceInputResult) => {
+      const seconds = validCaptureLimitSeconds(result.captureLimitSeconds);
+      if (seconds !== undefined && seconds !== state.captureLimitSeconds) publish({ captureLimitSeconds: seconds });
     };
     /** 读 Host 语音状态：返回时先核一次存档代次；发布处用 `withConfirmedArchive` 再核一次。 */
     const readVoiceStatus = async (sessionId?: string): Promise<VoiceInputStatus> => {
@@ -1632,6 +1638,8 @@ export default defineApp({
             : { ...permissions, audioSources: state.permissions.audioSources },
           recordings: recordings.items,
           recordingsTotal: recordings.total,
+          // 单次上限不随录音来源变化，不进来源版本域。
+          captureLimitSeconds: validCaptureLimitSeconds(status.captureLimitSeconds),
           // 用户刚切换窗口上下文时，设置保存路径会发布一次针对新设置的真实探测；
           // 旧刷新只落其他字段，不能用发起时的 undefined / 旧权限把它覆盖掉。
           ...(windowContextSettingsRevision === expectedWindowContextRevision
@@ -2094,6 +2102,7 @@ export default defineApp({
           ...(useCloud ? { retainAudio: true } : {}),
         });
         if (result.phase === "listening") {
+          noteCaptureLimit(result);
           if (dictationCancelRequested) {
             dictationCancelRequested = false;
             await ctx.voiceInput.cancel(result.sessionId).catch(() => undefined);
@@ -2206,6 +2215,7 @@ export default defineApp({
           captureLimitAction: "finish",
         });
         if (result.phase === "listening" && result.sessionId) {
+          noteCaptureLimit(result);
           serviceContext = serviceSettings.polish === "raw" ? Promise.resolve(undefined) : assembleContext(result.sessionId).catch(() => undefined);
           publish({ phase: "listening", activeMode: "input", sessionId: result.sessionId, error: undefined });
         }
@@ -2366,6 +2376,7 @@ export default defineApp({
           throwIfAborted(signal);
         }
         if (result.phase === "listening") {
+          noteCaptureLimit(result);
           if (result.sessionId && pendingInputSelection) {
             // Failure leaves an honest unknown snapshot on recovery; it must not cancel audio.
             void inputSelections.remember(result.sessionId, pendingInputSelection).catch(() => undefined);
@@ -4341,6 +4352,7 @@ export default defineApp({
           throwIfAborted(signal);
         }
         if (result.phase === "listening") {
+          noteCaptureLimit(result);
           // 交付目标只在这一帧给出：它是「录音开始时前台是谁」的凭据，
           // 跑完再问已经晚了（用户早就切走了）。
           activeDeliveryTarget = result.deliveryTarget;

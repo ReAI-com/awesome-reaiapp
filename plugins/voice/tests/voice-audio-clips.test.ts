@@ -42,7 +42,7 @@ test("range plan: lead, 0–2s tail, 10-minute cap and invalid input", () => {
   expect(planVoiceClipRange({ pressedAtMs: 5_000, releasedAtMs: 6_000 })).toEqual({ startMs: 5_000, fallbackStartMs: 5_000, endMs: 7_500 });
   expect(planVoiceClipRange({ pressedAtMs: 5_000, releasedAtMs: 6_000, leadMs: 2_000, tailMs: 9_000 })).toEqual({ startMs: 3_000, fallbackStartMs: 5_000, endMs: 8_000 });
   expect(planVoiceClipRange({ pressedAtMs: 5_000, releasedAtMs: 6_000, tailMs: 0 })?.endMs).toBe(6_000);
-  expect(planVoiceClipRange({ pressedAtMs: 0, releasedAtMs: 700_000 })?.endMs).toBe(600_000);
+  expect(planVoiceClipRange({ pressedAtMs: 0, releasedAtMs: 700_000 })).toBeNull();
   expect(planVoiceClipRange({ pressedAtMs: 6_000, releasedAtMs: 6_000 })).toBeNull();
   expect(planVoiceClipRange({ pressedAtMs: 1.5, releasedAtMs: 6_000 })).toBeNull();
 });
