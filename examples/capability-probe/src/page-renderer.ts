@@ -5,7 +5,7 @@ import { h } from "./dom";
 import { describeError } from "./errors";
 import type { Binding, PageAction, PageComponent, PageSpec } from "./page-spec";
 import type { KvPort } from "./port";
-import { OUTCOME_LABELS, type ProbeResult } from "./probes";
+import { VERDICT_LABELS, verdictOf, type ProbeResult } from "./probes";
 
 /** 页面动作自己的、可以直接给用户看的失败原因。 */
 export class PageActionError extends Error {}
@@ -45,7 +45,7 @@ export function renderPage(container: HTMLElement, spec: PageSpec, env: PageEnv)
       return { text: `${keys.length} 个`, items: keys.length > 0 ? keys : ["（还没有）"] };
     }
     const result = env.lastResult(binding.probeId);
-    const text = result ? `${OUTCOME_LABELS[result.outcome]}：${result.summary}` : "（还没测过）";
+    const text = result ? `${VERDICT_LABELS[verdictOf(result)]}：${result.summary}` : "（还没测过）";
     return { text, items: [text] };
   };
 
@@ -66,7 +66,7 @@ export function renderPage(container: HTMLElement, spec: PageSpec, env: PageEnv)
         return "已清空";
       case "probe.run": {
         const result = await env.runProbe(action.probeId);
-        return `${OUTCOME_LABELS[result.outcome]}：${result.summary}`;
+        return `${VERDICT_LABELS[verdictOf(result)]}：${result.summary}`;
       }
       case "notify.post":
         await env.notify(action.title, action.body);
@@ -167,7 +167,7 @@ export function renderPage(container: HTMLElement, spec: PageSpec, env: PageEnv)
   for (const component of spec.components) page.append(componentNode(component));
   container.replaceChildren(page);
 
-  async function refresh(): Promise<void> {
+  async function refreshOnce(): Promise<void> {
     for (const refresher of refreshers) {
       if (disposed) return;
       try {
@@ -176,6 +176,30 @@ export function renderPage(container: HTMLElement, spec: PageSpec, env: PageEnv)
         // 单个绑定读失败不影响其他组件；下一次刷新再试。
       }
     }
+  }
+
+  /**
+   * 同一时间只跑一轮刷新：跑的过程中又被要求刷新，就在这一轮结束后再补跑一轮。
+   * 这样多次连续的刷新请求合并成最多两轮，也不会有旧的读取结果晚到、盖掉新显示。
+   */
+  let inflight: Promise<void> | null = null;
+  let again = false;
+  function refresh(): Promise<void> {
+    if (inflight) {
+      again = true;
+      return inflight;
+    }
+    inflight = (async () => {
+      try {
+        do {
+          again = false;
+          await refreshOnce();
+        } while (again && !disposed);
+      } finally {
+        inflight = null;
+      }
+    })();
+    return inflight;
   }
   void refresh();
 

@@ -30,7 +30,8 @@ export interface ProbePort {
   /** 按 storeId 取存储；用来验证「未声明的 storeId 会不会被拒」。 */
   kvStore(storeId: string): KvPort;
   versionStatus(): Promise<SystemTaskVersionStatus>;
-  openSystemTask(target: SystemTaskTarget): Promise<{ taskId: string }>;
+  /** returnIntent 会在用户从系统页点「返回」时原样带回（system-task.return 的 payload）。 */
+  openSystemTask(target: SystemTaskTarget, returnIntent?: unknown): Promise<{ taskId: string }>;
   accountStatus(): Promise<{ enabled: boolean; loggedIn: boolean }>;
   notify(title: string, body: string): Promise<{ queued: true }>;
   fetch(url: string, init: { endpointId?: string; method: string; signal?: AbortSignal }): Promise<HttpResult>;
@@ -59,8 +60,8 @@ export function createHostPort(ctx: AppContext): ProbePort {
     kv: kvFrom(ctx, PROBE_STORE_ID),
     kvStore: (storeId) => kvFrom(ctx, storeId),
     versionStatus: () => ctx.systemTasks.getVersionStatus(),
-    openSystemTask: async (target) => {
-      const result = await ctx.systemTasks.open({ target });
+    openSystemTask: async (target, returnIntent) => {
+      const result = await ctx.systemTasks.open({ target, ...(returnIntent === undefined ? {} : { returnIntent }) });
       return { taskId: result.taskId };
     },
     accountStatus: () => ctx.account.status(),

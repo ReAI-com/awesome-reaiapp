@@ -133,11 +133,12 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 
 /* 记录 */
 .cp-log { display: flex; flex-direction: column; border: 1px solid var(--card-border); border-radius: 14px; background: var(--card-bg); overflow: hidden; }
-.cp-log-row { display: grid; grid-template-columns: 72px 96px minmax(120px, 200px) minmax(0, 1fr); gap: 12px; align-items: center; padding: 8px 16px; font-size: 13px; }
+.cp-log-row { display: grid; grid-template-columns: 64px auto minmax(0, 1fr); gap: 4px 12px; align-items: center; padding: 8px 16px; font-size: 13px; }
 .cp-log-row + .cp-log-row { border-top: 1px solid var(--divider); }
 .cp-log-time { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .cp-log-row .cp-badge { justify-self: start; }
-.cp-log-summary { overflow-wrap: anywhere; }
+.cp-log-title { font-weight: 500; }
+.cp-log-summary { grid-column: 2 / -1; color: var(--text-secondary); overflow-wrap: anywhere; }
 .cp-empty { align-items: flex-start; }
 
 /* 代码框与表单 */
@@ -188,7 +189,18 @@ button:disabled { cursor: not-allowed; opacity: .45; }
   .cp-nav-item { flex: none; }
   .cp-content { padding: 12px 12px 48px; }
   .cp-spec-grid { grid-template-columns: minmax(0, 1fr); }
-  .cp-log-row { grid-template-columns: 96px minmax(0, 1fr); }
+  .cp-log-row { grid-template-columns: auto minmax(0, 1fr); }
   .cp-log-summary { grid-column: 1 / -1; }
   .cp-log-time { display: none; }
 }
+
+/* 验收卡与「按预期拦下」：通过的结果统一用绿色系 */
+.cp-badge--expected { background: var(--bound-soft); color: var(--bound); border-color: var(--bound-line); }
+.cp-result--expected { background: var(--bound-soft); border-color: var(--bound-line); }
+.cp-result--expected .cp-result-head { color: var(--bound); }
+.cp-accept { display: flex; flex-direction: column; gap: 10px; }
+.cp-accept-head { display: flex; align-items: center; gap: 8px; color: var(--text-primary); }
+.cp-accept-head h3 { margin: 0; }
+.cp-accept--done .cp-accept-head { color: var(--bound); }
+.cp-accept-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.cp-accept-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }

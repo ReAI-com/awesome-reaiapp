@@ -8,9 +8,10 @@ import { OFFICIAL_PLUGINS_SNAPSHOT } from "./generated/official-plugins";
 import { BAD_SPECS, DEMO_SPEC, parsePageSpec } from "./page-spec";
 import { PageActionError, renderPage, type RenderedPage } from "./page-renderer";
 import type { ProbePort } from "./port";
-import { OUTCOME_LABELS, PROBES, runProbe, safeProbes, SECTION_LABELS, type Outcome, type ProbeDefinition, type ProbeResult, type ProbeSection } from "./probes";
+import { acceptanceOrder, passed, systemTaskReturnResult, PROBES, runnableProbes, runProbe, safeProbes, SECTION_LABELS, VERDICT_LABELS, VERDICT_ORDER, verdictOf, type ProbeDefinition, type ProbeResult, type ProbeSection, type Verdict } from "./probes";
 import { CHANGELOG_TEXT } from "./release-notes";
 import { buildReport } from "./report";
+import { clearSavedResults, loadSavedResults, saveResult } from "./saved-results";
 
 export type PageId = "overview" | ProbeSection | "capabilities" | "official" | "records" | "settings" | "changelog" | "about";
 
@@ -30,6 +31,10 @@ export interface ProbeView {
   /** Host 面包屑点祖先时调用（back-to-root 命令）。 */
   backToRoot(): void;
   runSafe(): Promise<void>;
+  /** 按验收顺序跑完全部能运行的测试（含弹通知、启动 Voice、跳到设置页）。 */
+  runEverything(): Promise<void>;
+  /** Driver 从系统页返回时投递的意图；是本探针发起的跳转就记下结果，返回是否认得。 */
+  handleIntent(intent: unknown): boolean;
   readonly currentPage: PageId;
   dispose(): void;
 }
@@ -54,7 +59,7 @@ function clock(iso: string): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-const OUTCOME_ICON: Record<Outcome, IconName> = { ok: "check", blocked: "shield", unexpected: "alert", failed: "x", waiting: "clock" };
+const VERDICT_ICON: Record<Verdict, IconName> = { ok: "check", expected: "shield", blocked: "shield", unexpected: "alert", failed: "x", waiting: "clock" };
 
 export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): ProbeView {
   const doc = root.ownerDocument;
@@ -64,6 +69,13 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   /** 正在跑的探针 → 开始时间与进行中的 Promise；同一个探针不会并发跑两次。 */
   const running = new Map<string, { startedAt: number; promise: Promise<ProbeResult> }>();
   const log: ProbeResult[] = [];
+  /** 来自上次保存（同一 Driver、同一插件版本）、本次还没重测的探针。 */
+  const restoredIds = new Set<string>();
+  /** 本次界面里点过「清空」的时间；比它早的保存结果不再恢复。 */
+  let clearedAt: number | null = null;
+  let clearError = false;
+  /** 记录结果时用的 Driver 版本；读不到时为 null：这次的结果不保存，也不恢复任何历史结果。 */
+  const hostVersionKey: Promise<string | null> = options.hostVersion.then((value) => (value.ok ? value.version : null));
   let page: PageId = "overview";
   let rootPage: PageId = "overview";
   let developerMode = false;
@@ -92,6 +104,75 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   });
   void port.environment().then((value) => { developerMode = value.developerMode; render(); }).catch(() => undefined);
   void options.hostVersion.then((value) => { hostVersionState = value; render(); });
+  void restore();
+
+  /**
+   * 读回上次保存的结果：只认同一 Driver 版本、同一插件版本的；按探针合并，本次已经测过的以本次为准。
+   */
+  async function restore(): Promise<void> {
+    const host = await hostVersionKey;
+    if (disposed) return;
+    const saved = await loadSavedResults(port.kv);
+    if (disposed) return;
+    for (const record of saved.results) {
+      if (host === null || record.host !== host || record.plugin !== PLUGIN_VERSION) continue;
+      if (clearedAt !== null && Date.parse(record.startedAt) < clearedAt) continue;
+      const current = results.get(record.probeId);
+      if (running.has(record.probeId) || (current && Date.parse(current.startedAt) >= Date.parse(record.startedAt))) continue;
+      const { host: _host, plugin: _plugin, ...result } = record;
+      results.set(record.probeId, result);
+      restoredIds.add(record.probeId);
+    }
+    for (const record of saved.log) {
+      if (host === null || record.host !== host || record.plugin !== PLUGIN_VERSION) continue;
+      if (clearedAt !== null && Date.parse(record.startedAt) < clearedAt) continue;
+      if (log.some((item) => item.probeId === record.probeId && item.startedAt === record.startedAt)) continue;
+      const { host: _host, plugin: _plugin, ...result } = record;
+      log.push(result);
+    }
+    log.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+    if (log.length > 200) log.length = 200;
+    render();
+  }
+
+  /** 只在当前界面显示、不保存的过渡结果（跳转请求已被接受、还在等 Driver 的回执）。 */
+  const transientIds = new Set<string>();
+
+  /**
+   * 记下一条结果并保存。界面已卸载时只保存，不再改界面状态。
+   * 「跳到 Driver 设置页」被接受但还没回执的结果是过渡状态：只显示、不保存、不进记录，回执一到就被替换。
+   */
+  function recordResult(result: ProbeResult): void {
+    // 清空之前开始的测试，晚到的结果不再收：界面、记录和存储都保持清空后的样子。
+    if (clearedAt !== null && Date.parse(result.startedAt) < clearedAt) return;
+    if (result.probeId === "system-task-open" && result.outcome === "waiting") {
+      if (disposed) return;
+      const current = results.get(result.probeId);
+      // 已经有同次或更晚的结果（例如回执先到）就不显示过渡状态。
+      if (current && !transientIds.has(result.probeId) && Date.parse(current.startedAt) >= Date.parse(result.startedAt)) return;
+      results.set(result.probeId, result);
+      transientIds.add(result.probeId);
+      restoredIds.delete(result.probeId);
+      return;
+    }
+    void hostVersionKey.then((host) => (host === null ? undefined : saveResult(port.kv, { ...result, host, plugin: PLUGIN_VERSION })));
+    if (disposed) return;
+    const current = results.get(result.probeId);
+    // 同一探针只留开始时间更晚的；时间相同时保留先到的，但同一次的正式结果优先于过渡状态。
+    // 更早一次的回执（例如连点两次跳转，第一次的回执晚到）不会盖掉新一次的等待状态。
+    const currentAt = current ? Date.parse(current.startedAt) : Number.NEGATIVE_INFINITY;
+    const resultAt = Date.parse(result.startedAt);
+    if (!current || currentAt < resultAt || (transientIds.has(result.probeId) && currentAt === resultAt)) {
+      results.set(result.probeId, result);
+      transientIds.delete(result.probeId);
+      restoredIds.delete(result.probeId);
+    }
+    if (!log.some((item) => item.probeId === result.probeId && item.startedAt === result.startedAt)) {
+      log.unshift(result);
+      log.sort((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt));
+      if (log.length > 200) log.length = 200;
+    }
+  }
 
   function hostVersionText(): string {
     if (!hostVersionState) return "读取中…";
@@ -136,11 +217,10 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     const promise = (async () => {
       const result = await runProbe(probe, { port, document: doc, signal: abort.signal });
       running.delete(probe.id);
+      // 界面卸载后结果也要保存下来。
+      recordResult(result);
       if (disposed) return result;
-      results.set(probe.id, result);
-      log.unshift(result);
-      if (log.length > 200) log.length = 200;
-      live.textContent = `「${probe.title}」测试完成：${OUTCOME_LABELS[result.outcome]}`;
+      live.textContent = `「${probe.title}」测试完成：${VERDICT_LABELS[verdictOf(result)]}`;
       render();
       return result;
     })();
@@ -180,9 +260,16 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     if (progress && runAll) progress.textContent = runAllText();
   }
 
-  async function runSafe(): Promise<void> {
+  function runSafe(): Promise<void> {
+    return runList(safeProbes());
+  }
+
+  function runEverything(): Promise<void> {
+    return runList(acceptanceOrder());
+  }
+
+  async function runList(list: ProbeDefinition[]): Promise<void> {
     if (runAll) return;
-    const list = safeProbes();
     runAll = { index: 0, total: list.length, startedAt: Date.now(), current: list[0]?.title ?? "" };
     ensureTicker();
     try {
@@ -194,7 +281,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     } finally {
       runAll = null;
       if (!disposed) {
-        live.textContent = "全部安全测试已完成";
+        live.textContent = "这一轮测试已完成";
         render();
       }
     }
@@ -203,8 +290,9 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   function resultBlock(probe: ProbeDefinition): HTMLElement | null {
     const result = results.get(probe.id);
     if (!result) return null;
-    const block = h(doc, "div", { className: `cp-result cp-result--${result.outcome}` });
-    const head = h(doc, "div", { className: "cp-result-head" }, icon(doc, OUTCOME_ICON[result.outcome]), h(doc, "strong", { text: OUTCOME_LABELS[result.outcome] }), h(doc, "span", { text: result.summary }));
+    const verdict = verdictOf(result);
+    const block = h(doc, "div", { className: `cp-result cp-result--${verdict}` });
+    const head = h(doc, "div", { className: "cp-result-head" }, icon(doc, VERDICT_ICON[verdict]), h(doc, "strong", { text: VERDICT_LABELS[verdict] }), h(doc, "span", { text: result.summary }));
     block.append(head);
     const meta = `${clock(result.startedAt)} · 用时 ${result.durationMs} 毫秒`;
     block.append(h(doc, "span", { className: "cp-result-meta", text: meta }));
@@ -258,18 +346,54 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   }
 
   function outcomeSummary(probes: ProbeDefinition[]): HTMLElement | null {
-    const counts = new Map<Outcome, number>();
+    const counts = new Map<Verdict, number>();
     for (const probe of probes) {
       const result = results.get(probe.id);
-      if (result) counts.set(result.outcome, (counts.get(result.outcome) ?? 0) + 1);
+      if (result) counts.set(verdictOf(result), (counts.get(verdictOf(result)) ?? 0) + 1);
     }
     if (counts.size === 0) return null;
     const row = h(doc, "div", { className: "cp-chips" });
-    for (const outcome of ["ok", "blocked", "unexpected", "failed", "waiting"] as Outcome[]) {
-      const count = counts.get(outcome);
-      if (count) row.append(badge(`${OUTCOME_LABELS[outcome]} ${count}`, outcome));
+    for (const verdict of VERDICT_ORDER) {
+      const count = counts.get(verdict);
+      if (count) row.append(badge(`${VERDICT_LABELS[verdict]} ${count}`, verdict));
     }
     return row;
+  }
+
+  /** 总览的验收卡：通过几项、没通过的是哪几项、下一步做什么。 */
+  function acceptanceCard(): HTMLElement {
+    const all = runnableProbes();
+    const tested = all.filter((probe) => results.has(probe.id));
+    const ok = tested.filter((probe) => passed(results.get(probe.id)!));
+    const failing = tested.filter((probe) => !passed(results.get(probe.id)!));
+    const untested = all.filter((probe) => !results.has(probe.id) && !running.has(probe.id));
+    const done = ok.length === all.length;
+    const card = h(doc, "section", { className: `cp-card cp-accept${done ? " cp-accept--done" : ""}`, attrs: { "data-acceptance": done ? "passed" : "pending" } });
+    const headline = done
+      ? `全部 ${all.length} 项通过`
+      : `通过 ${ok.length} / ${all.length} 项`;
+    card.append(h(doc, "div", { className: "cp-accept-head" }, icon(doc, done ? "check" : "clock"), h(doc, "h3", { text: headline })));
+    card.append(h(doc, "p", { className: "cp-card-sub", text: "「通过」= 成功，或者反例按预期被拦下。没同意权限、等你操作、出错、与预期不同都算没通过。" }));
+    const restored = all.filter((probe) => restoredIds.has(probe.id)).length;
+    if (restored > 0) card.append(h(doc, "p", { className: "cp-hint", text: `其中 ${restored} 项是上次保存的结果（同一 Driver、同一插件版本），重新测会覆盖。` }));
+    if (failing.length > 0) {
+      const list = h(doc, "ul", { className: "cp-accept-list" });
+      for (const probe of failing) {
+        const result = results.get(probe.id)!;
+        const verdict = verdictOf(result);
+        const link = h(doc, "button", { className: "cp-btn cp-btn--link", text: probe.title, attrs: { type: "button" } });
+        link.addEventListener("click", () => show(probe.section));
+        list.append(h(doc, "li", {}, badge(VERDICT_LABELS[verdict], verdict), link, h(doc, "span", { text: result.summary })));
+      }
+      card.append(list);
+    }
+    if (untested.length > 0 && !runAll) card.append(h(doc, "p", { className: "cp-hint", text: `还没测：${untested.map((probe) => probe.title).join("、")}` }));
+    const actions = h(doc, "div", { className: "cp-runall" });
+    actions.append(button(runAll ? "测试中…" : `跑完全部 ${all.length} 项`, () => void runEverything(), { tier: "primary", disabled: runAll !== null, icon: "play" }));
+    if (runAll) actions.append(h(doc, "span", { className: "cp-progress", text: runAllText() }));
+    else actions.append(h(doc, "span", { className: "cp-hint", text: `含 ${all.length - safeProbes().length} 项会弹通知、启动 Voice、最后跳到本插件权限页的测试。只想跑不打扰的，用下面的「运行全部安全测试」。` }));
+    card.append(actions);
+    return card;
   }
 
   function renderOverview(): HTMLElement[] {
@@ -292,14 +416,14 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       h(doc, "p", { text: "把 Driver 给插件开放的每一项能力讲成人话，能测的点一下就真实调用一次，结果当场显示。外脑云端和需要平台批准的能力，本版只说明「会调什么、预期什么」，不发请求。" }),
       h(doc, "p", { className: "cp-card-sub", text: `能力清单来自插件开发包里的支持矩阵（Host API ${CONTRACT_HOST_API}），是打包那一刻的合同；能不能用，以下面按钮的真实结果为准。` }),
     );
-    return [intro("能力探针", ""), explain, tiles, runAllControl(), outcomeSummary(p0) ?? h(doc, "p", { className: "cp-hint", text: `本版有 ${p0.length} 个能实际运行的测试，还没有结果。其中 ${p0.length - safeProbes().length} 个会跳页面、弹通知或启动别的插件，不在「全部测试」里，要到对应页面单独点。` })];
+    return [intro("能力探针", ""), acceptanceCard(), explain, tiles, runAllControl(), outcomeSummary(p0) ?? h(doc, "p", { className: "cp-hint", text: `本版有 ${p0.length} 个能实际运行的测试，还没有结果。其中 ${p0.length - safeProbes().length} 个会跳页面、弹通知或启动别的插件，不在「全部测试」里。` })];
   }
 
   function renderSection(section: ProbeSection): HTMLElement[] {
     const probes = PROBES.filter((probe) => probe.section === section);
     const descriptions: Record<ProbeSection, string> = {
       basic: "不需要任何人批准，插件声明了就能用。",
-      permission: "插件能声明，但每一项都要用户在「App Store → 已安装 → 能力探针 → 权限」里点允许。没同意时测试会显示「被拦下」，这本身就是正确结果。",
+      permission: "插件能声明，但每一项都要用户同意：安装时的权限弹窗里勾选，或者事后到「已安装」点开能力探针，在「权限」里点允许。没同意时测试会显示「被拦下」，这本身就是正确结果。",
       page: "插件页面不允许运行「运行时生成的代码」。下面四项在 Driver 里都应该被拦下；再往下是替代做法：用一份 JSON 描述页面，由插件预置的渲染器画出来。",
       cloud: "这些是外脑对插件开放的接口。要用插件自己的 OAuth 应用身份去调，本版还没连上，所以按钮是关的。「反例」是外脑没开放的接口，连上后预期会被拒。",
       gated: "这些能力需要平台审核批准。本地开发包只要在清单里声明了其中任何一项，安装时就会整包失败，所以本版只做说明。",
@@ -407,7 +531,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   }
 
   function renderRecords(): HTMLElement[] {
-    const nodes: HTMLElement[] = [intro("记录与报告", "本次打开以来的测试记录。关掉插件后会清空，需要留存请导出报告。")];
+    const nodes: HTMLElement[] = [intro("记录与报告", "测试记录和最近一次结果保存在本插件自己的存储里，跳走再回来、重新打开插件都还在；点「清空测试结果」删掉。")];
     if (log.length === 0) {
       nodes.push(h(doc, "div", { className: "cp-card cp-empty" }, h(doc, "p", { text: "还没有测试记录。" }), button("运行全部安全测试", () => void runSafe(), { tier: "primary", icon: "play", disabled: runAll !== null })));
     } else {
@@ -416,24 +540,36 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
         const probe = PROBES.find((item) => item.id === entry.probeId);
         table.append(h(doc, "div", { className: "cp-log-row" },
           h(doc, "span", { className: "cp-log-time", text: clock(entry.startedAt) }),
-          badge(OUTCOME_LABELS[entry.outcome], entry.outcome),
+          badge(VERDICT_LABELS[verdictOf(entry)], verdictOf(entry)),
           h(doc, "span", { className: "cp-log-title", text: probe?.title ?? entry.probeId }),
           h(doc, "span", { className: "cp-log-summary", text: developerMode && entry.code ? `${entry.summary}（${entry.code}）` : entry.summary }),
         ));
       }
       nodes.push(table);
     }
-    const report = buildReport({ mode: port.mode, hostVersion: hostVersionText(), developerMode, results });
+    const report = buildReport({ mode: port.mode, hostVersion: hostVersionText(), developerMode, results, restored: restoredIds });
     const area = h(doc, "textarea", { className: "cp-code", attrs: { readonly: "", rows: "12", "aria-label": "测试报告 JSON" } });
     area.value = report;
     const select = button("全选报告文字", () => { area.focus(); area.select(); }, { tier: "secondary" });
+    const clear = button("清空测试结果", () => {
+      const at = Date.now();
+      clearedAt = at;
+      clearError = false;
+      results.clear();
+      log.length = 0;
+      restoredIds.clear();
+      transientIds.clear();
+      clearSavedResults(port.kv, new Date(at).toISOString()).catch(() => { clearError = true; }).finally(() => render());
+      render();
+    }, { tier: "secondary", disabled: runAll !== null || running.size > 0 });
     nodes.push(h(doc, "div", { className: "cp-card" },
       h(doc, "h3", { text: "导出报告" }),
       h(doc, "p", { className: "cp-card-sub", text: developerMode
         ? "报告含版本、档位、结果、错误码和诊断信息。会去掉已知格式的令牌，但诊断里可能有路径或个人信息，分享前请检查。全选后复制即可。"
         : "报告含版本、档位和结果，不含令牌和用户数据。打开 Driver 开发者模式后，报告里会多出错误码。全选后复制即可。" }),
       area,
-      h(doc, "div", { className: "cp-card-actions" }, select),
+      h(doc, "div", { className: "cp-card-actions" }, select, clear),
+      clearError ? h(doc, "p", { className: "cp-hint", text: "存储里的旧结果没删掉，重新打开插件后可能还会出现，请再点一次「清空测试结果」。" }) : null,
     ));
     return nodes;
   }
@@ -523,6 +659,15 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       show(rootPage);
     },
     runSafe,
+    runEverything,
+    handleIntent(intent) {
+      const result = systemTaskReturnResult(intent);
+      if (!result) return false;
+      recordResult(result);
+      live.textContent = `「跳到 Driver 设置页」测试完成：${VERDICT_LABELS[verdictOf(result)]}`;
+      render();
+      return true;
+    },
     get currentPage() { return page; },
     dispose() {
       disposed = true;

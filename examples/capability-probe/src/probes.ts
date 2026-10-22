@@ -24,6 +24,8 @@ export type Outcome = "ok" | "blocked" | "unexpected" | "failed" | "waiting";
 export interface ProbeRun {
   outcome: Outcome;
   summary: string;
+  /** 「被拦下」是不是这个测试想看到的结果（反例按预期被拒）。没同意权限的被拦下不算。 */
+  expected?: boolean;
   code?: string;
   detail?: string;
 }
@@ -76,6 +78,8 @@ export const SECTION_LABELS: Record<ProbeSection, string> = {
 export const VOICE_SERVICE_ID = "com.reai.voice/request-text@1";
 export const HEALTH_URL = "https://block2-api.wainao.chat/health";
 export const PING_KEY = "probe.lastPing";
+/** 「跳到 Driver 设置页」交给 Driver 的返回信息：用户点「返回」时 Driver 原样带回，探针据此确认跳转发生过。 */
+export const NAVIGATE_RETURN_TAG = "capability-probe/system-task-open";
 const OVERSIZE_KEY = "probe.oversize";
 const KV_VALUE_LIMIT = 256 * 1024;
 
@@ -102,7 +106,7 @@ function failure(error: unknown): ProbeRun {
  */
 function expectedRejection(error: unknown, expected: (code: string) => boolean, reason: string): ProbeRun {
   const { code, message } = describeError(error);
-  if (expected(code)) return { outcome: "blocked", summary: `按预期被拦下：${reason}`, code, detail: scrub(message) };
+  if (expected(code)) return { outcome: "blocked", expected: true, summary: `按预期被拦下：${reason}`, code, detail: scrub(message) };
   if (isGateCode(code)) return { outcome: "blocked", summary: `没测到：${gateHint(code)}`, code, detail: scrub(message) };
   return { outcome: "failed", summary: "被拒了，但原因不是预期的那一个", code, detail: scrub(message) };
 }
@@ -159,7 +163,11 @@ function cspProbe(id: string, title: string, what: string, check: (doc: Document
       const result = await check(document, signal);
       const rules = result.violations.length > 0 ? `浏览器报告违反的规则：${result.violations.join("、")}` : "浏览器没有报告违规事件";
       const detail = [rules, result.error ? `错误：${result.error}` : ""].filter(Boolean).join("；");
-      if (!result.executed) return { outcome: "blocked", summary: "被拦下，代码没有运行", detail };
+      // 等加载时超时或被取消：代码没跑，但也说明不了是被 Driver 拦下的，不能算通过。
+      if (!result.executed && result.settled !== "done") {
+        return { outcome: "waiting", summary: result.settled === "abort" ? "没测完：界面关掉了，请再测一次" : "没测完：等了 1.5 秒还没有结果，请再测一次", detail };
+      }
+      if (!result.executed) return { outcome: "blocked", expected: true, summary: "被拦下，代码没有运行", detail };
       if (port.mode === "preview") {
         return { outcome: "unexpected", summary: "没被拦：现在是浏览器预览，没有 Driver 的页面限制", detail };
       }
@@ -181,7 +189,7 @@ function gatedProbe(id: string, title: string, what: string, capability: string,
 
 const UNDECLARED_NETWORK = new Set(["NETWORK_ENDPOINT_NOT_DECLARED", "NETWORK_PATH_DENIED", "NETWORK_METHOD_DENIED"]);
 const INSECURE_NETWORK = new Set(["NETWORK_SCHEME_DENIED", "NETWORK_ENDPOINT_NOT_DECLARED"]);
-const LENIENT_NOTE = "如果你用的是较旧的 Driver，开发者模式下本地包可能走宽松网络档，没声明的请求也会放行；打开「设置 → 开发者 → 严格网络预览」后再测。";
+const LENIENT_NOTE = "当前 Driver 对本地包一律按严格网络规则检查，没被拦说明这个 Driver 版本较旧（旧版开发者模式会放宽网络检查），请更新 Driver 后再测。";
 
 export const PROBES: ProbeDefinition[] = [
   {
@@ -318,7 +326,7 @@ export const PROBES: ProbeDefinition[] = [
       try {
         const last = (await port.kv.get(PING_KEY)) as { at?: string; count?: number } | undefined;
         if (!last?.at) {
-          return { outcome: "waiting", summary: "还没被触发过：到 Driver「设备 → 键位」把一个键绑到「能力探针：测试按键」，按一下，再回来点这里" };
+          return { outcome: "waiting", summary: "还没被触发过：到 Driver「设备 → 键位映射」点一个键，在「插件动作」里选「能力探针：测试按键」，按一下这个键（或点绑定抽屉里的「测试」），再回来点这里" };
         }
         return { outcome: "ok", summary: `最近一次在 ${formatTime(last.at)} 被触发，累计 ${last.count ?? 1} 次` };
       } catch (error) {
@@ -342,7 +350,9 @@ export const PROBES: ProbeDefinition[] = [
         return { outcome: "ok", summary: `Voice 服务能应答（返回状态：${phase === "not_found" ? "找不到这个请求，符合预期" : phase}）` };
       } catch (error) {
         const { code, message } = describeError(error);
-        if (code.startsWith("VOICE_REQUEST_")) {
+        // Voice 的错误码到调用方这里可能带上 `com.reai.voice/` 前缀。
+        const voiceCode = code.replace(/^com\.reai\.voice\//, "");
+        if (voiceCode.startsWith("VOICE_REQUEST_")) {
           return { outcome: "ok", summary: "Voice 服务能应答（它拒绝了这个测试请求，说明服务在线）", code, detail: scrub(message) };
         }
         if (code === "SERVICE_PROVIDER_UNAVAILABLE" || isGateCode(code) || /CONSENT|DEPENDENCY|NOT_INSTALLED/.test(code)) {
@@ -358,13 +368,16 @@ export const PROBES: ProbeDefinition[] = [
     level: "P0",
     title: "跳到 Driver 设置页",
     what: "请 Driver 打开「本插件的权限设置」页面（会离开当前页面）",
-    expect: "Driver 切到权限设置页",
+    expect: "Driver 切到权限设置页；点 Driver 右上角的「返回」回到探针，收到 Driver 的回执才算通过",
     capability: "system.tasks@1",
     risk: "navigate",
     async run({ port }) {
+      // 跳转成功时 Driver 会关掉探针页面，这次调用的回执来不及回来；
+      // 真正的确认是用户从权限页点「返回」时 Driver 带回的 system-task.return（见 systemTaskReturnResult）。
       try {
-        const result = await port.openSystemTask("app-permissions");
-        return { outcome: "ok", summary: "Driver 已接受，正在打开本插件的权限页", detail: `任务号 ${result.taskId}` };
+        const result = await port.openSystemTask("app-permissions", { probe: NAVIGATE_RETURN_TAG, at: new Date().toISOString() });
+        // Driver 只是接受了请求，还不能证明跳过去了：等用户从权限页点「返回」、Driver 带回回执才算通过。
+        return { outcome: "waiting", summary: "Driver 已接受，正在打开本插件的权限页；到那边点右上角「返回」回到探针，收到回执才算通过", detail: `任务号 ${result.taskId}` };
       } catch (error) {
         return failure(error);
       }
@@ -397,12 +410,23 @@ export const PROBES: ProbeDefinition[] = [
     expect: "同意前被拦下；同意后电脑右上角出现通知",
     capability: "os.notification.post@1",
     risk: "notify",
-    async run({ port }) {
+    async run({ port, signal }) {
+      const post = () => port.notify("能力探针", "这是一条测试通知，可以忽略。");
       try {
-        await port.notify("能力探针", "这是一条测试通知，可以忽略。");
+        await post();
         return { outcome: "ok", summary: "已交给 Driver 发送，请看电脑右上角" };
       } catch (error) {
-        return failure(error);
+        // Driver 偶尔没能把通知交给系统（它发通知时 macOS 主线程正忙）；隔一会儿重试一次，并如实写明。
+        if (describeError(error).code !== "NOTIFICATION_ENQUEUE_FAILED") return failure(error);
+        await sleep(1500, signal);
+        if (signal.aborted) return failure(error);
+        try {
+          await post();
+          return { outcome: "ok", summary: "第一次 Driver 没能把通知交给系统，隔 1.5 秒重试成功，请看电脑右上角", code: "NOTIFICATION_ENQUEUE_FAILED", detail: "第一次失败后重试成功；这是 Driver 侧的偶发问题，值得报告给平台" };
+        } catch (retryError) {
+          const run = failure(retryError);
+          return { ...run, summary: `Driver 两次都没能把通知交给系统：${run.summary}` };
+        }
       }
     },
   },
@@ -490,6 +514,63 @@ export const PROBES: ProbeDefinition[] = [
   gatedProbe("gated-cloud-folder", "云项目文件夹", "挂上一个外脑云项目当文件夹", "resources.files@1", "能列出和读写；如果云端服务还没开放，会如实提示"),
   gatedProbe("gated-agent-folder", "Agent 在文件夹里干活", "把上面的文件夹交给 Agent，让它读一个文件、写一个新文件", "agent.session@2 + resources.files@1", "插件能读到 Agent 写的新文件；只读模式下 Agent 写入被拒"),
 ];
+
+/** 验收口径：成功，或者反例按预期被拦下，才算「通过」。没同意、等你操作、出错、与预期不同都不算。 */
+export function passed(result: Pick<ProbeRun, "outcome" | "expected">): boolean {
+  return result.outcome === "ok" || (result.outcome === "blocked" && result.expected === true);
+}
+
+/** 本版能实际运行的全部探针（含会跳页面、弹通知、启动 Voice 的）。 */
+export function runnableProbes(): ProbeDefinition[] {
+  return PROBES.filter((probe) => probe.run && !probe.disabledReason);
+}
+
+/**
+ * 「跑完全部」的顺序：先跑安全的，再跑弹通知、启动 Voice 的，最后跑会离开页面的。
+ * 这样跳走之前，其他结果都已经出来了。
+ */
+export function acceptanceOrder(): ProbeDefinition[] {
+  const rank: Record<Risk, number> = { safe: 0, notify: 1, wake: 2, navigate: 3 };
+  return runnableProbes().map((probe, index) => ({ probe, index })).sort((a, b) => rank[a.probe.risk] - rank[b.probe.risk] || a.index - b.index).map(({ probe }) => probe);
+}
+
+/** 界面和报告里显示的结果类别：把「按预期被拦下」和「没同意被拦下」分开。 */
+export type Verdict = "ok" | "expected" | "blocked" | "unexpected" | "failed" | "waiting";
+
+export const VERDICT_LABELS: Record<Verdict, string> = {
+  ok: "成功",
+  expected: "按预期拦下",
+  blocked: "被拦下",
+  unexpected: "与预期不同",
+  failed: "出错",
+  waiting: "等你操作",
+};
+
+export const VERDICT_ORDER: Verdict[] = ["ok", "expected", "blocked", "unexpected", "failed", "waiting"];
+
+export function verdictOf(result: Pick<ProbeRun, "outcome" | "expected">): Verdict {
+  return result.outcome === "blocked" && result.expected === true ? "expected" : result.outcome;
+}
+
+/**
+ * Driver 从系统页返回时投递的 system-task.return：只认本探针发起的「本插件权限页」任务。
+ * succeeded / cancelled 都说明 Driver 确实打开了权限页、用户又回来了；failed 说明打开失败。
+ */
+export function systemTaskReturnResult(intent: unknown, now = Date.now()): ProbeResult | undefined {
+  if (!intent || typeof intent !== "object" || Array.isArray(intent)) return undefined;
+  const v = intent as { type?: unknown; taskId?: unknown; target?: unknown; outcome?: unknown; payload?: unknown };
+  if (v.type !== "system-task.return" || v.target !== "app-permissions" || typeof v.taskId !== "string") return undefined;
+  const payload = v.payload as { probe?: unknown; at?: unknown } | undefined;
+  if (!payload || payload.probe !== NAVIGATE_RETURN_TAG || typeof payload.at !== "string") return undefined;
+  const started = Date.parse(payload.at);
+  if (Number.isNaN(started) || started > now + 60_000) return undefined;
+  const base = { probeId: "system-task-open", startedAt: payload.at, durationMs: Math.max(0, now - started), detail: `任务号 ${v.taskId.slice(0, 80)}` };
+  if (v.outcome === "succeeded" || v.outcome === "cancelled") {
+    return { ...base, outcome: "ok", summary: "Driver 打开了本插件的权限页，你点「返回」后它带回了回执" };
+  }
+  if (v.outcome === "failed") return { ...base, outcome: "failed", summary: "Driver 回执说权限页没打开成功" };
+  return undefined;
+}
 
 export function probeById(id: string): ProbeDefinition | undefined {
   return PROBES.find((probe) => probe.id === id);

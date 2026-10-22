@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.example.capability-probe",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisherId": "example",
   "name": "能力探针",
   "description": "列出 Driver 插件平台的全部能力，并用按钮逐项实测本机真实结果",
@@ -237,7 +237,29 @@
         "idempotency": "idempotent",
         "callers": [
           "host"
-        ]
+        ],
+        "bindingPickerVisible": false
+      },
+      {
+        "id": "com.example.capability-probe.open-settings",
+        "componentId": "ui",
+        "title": "打开能力探针设置",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "timeoutMs": 3000,
+        "supportsCancellation": false,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host"
+        ],
+        "bindingPickerVisible": false
       }
     ],
     "intents": []

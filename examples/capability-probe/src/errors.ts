@@ -28,7 +28,8 @@ const SENSITIVE: [RegExp, (match: string, ...groups: string[]) => string][] = [
   // URL 查询参数里名字带 token / secret / signature / key / code / password 等的值
   [new RegExp(`([?&][^=&\\s]*${SECRET_NAME}[^=&\\s]*=)[^&\\s#]+`, "gi"), (_match, prefix) => `${prefix}${HIDDEN}`],
   // JSON 里名字带上述词的字符串字段
-  [new RegExp(`("[^"]*${SECRET_NAME}[^"]*"\\s*:\\s*)"[^"]*"`, "gi"), (_match, prefix) => `${prefix}"${HIDDEN}"`],
+  // 值按 JSON 字符串规则匹配（认得 \" 等转义），不会在转义引号处提前结束、留下凭据尾段
+  [new RegExp(`("[^"]*${SECRET_NAME}[^"]*"\\s*:\\s*)"(?:[^"\\\\]|\\\\.)*"`, "gi"), (_match, prefix) => `${prefix}"${HIDDEN}"`],
 ];
 
 /** 拼进诊断或报告前去掉令牌、签名参数、Cookie 等凭据，并限制长度。 */
@@ -62,7 +63,7 @@ export function isGateCode(code: string): boolean {
 }
 
 export function gateHint(code: string): string {
-  if (code.startsWith("PLUGIN_PERMISSION_") || code === "NETWORK_PERMISSION_REQUIRED") return "还没同意这项权限：到「App Store → 已安装 → 能力探针 → 权限」里点允许，再测一次。";
+  if (code.startsWith("PLUGIN_PERMISSION_") || code === "NETWORK_PERMISSION_REQUIRED") return "还没同意这项权限：到「已安装」点开能力探针，在「权限」里点允许，再测一次。";
   if (code.startsWith("SYSTEM_NOTIFICATION_PERMISSION_")) return "Driver 自己还没有系统通知权限：到 Driver 设置里开启通知。";
   if (code === "HOST_CAPABILITY_NOT_AVAILABLE") return "当前 Driver 版本还没有这项能力。";
   if (code === "APP_CAPABILITY_NOT_GRANTED") return "这项能力需要平台批准。";
