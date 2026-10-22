@@ -78,7 +78,10 @@ export function planVoiceClipRange(request: Pick<VoiceClipRequest, "pressedAtMs"
   if (!Number.isSafeInteger(pressedAtMs) || !Number.isSafeInteger(releasedAtMs) || pressedAtMs < 0 || releasedAtMs <= pressedAtMs) return null;
   const lead = Math.max(0, Math.min(Number.isFinite(request.leadMs) ? Math.trunc(request.leadMs!) : 0, 5_000));
   const tail = Math.max(0, Math.min(Number.isFinite(request.tailMs) ? Math.trunc(request.tailMs!) : VOICE_CLIP_DEFAULT_TAIL_MS, VOICE_CLIP_MAX_TAIL_MS));
-  const startMs = Math.max(0, pressedAtMs - lead);
+  // 范围上限先压前补、再压后补，按下到松开的实录必须完整在内；实录本身超过上限就不增强
+  // （返回 null，调用方退回 Host 会话自己的识别结果），免得片段截掉末尾的话。
+  if (releasedAtMs - pressedAtMs > VOICE_CLIP_MAX_RANGE_MS) return null;
+  const startMs = Math.min(pressedAtMs, Math.max(0, pressedAtMs - lead, releasedAtMs + tail - VOICE_CLIP_MAX_RANGE_MS));
   const endMs = Math.min(releasedAtMs + tail, startMs + VOICE_CLIP_MAX_RANGE_MS);
   if (endMs <= startMs) return null;
   return { startMs, fallbackStartMs: pressedAtMs, endMs };

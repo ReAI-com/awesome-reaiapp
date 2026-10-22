@@ -515,7 +515,7 @@ describe("Voice 插件私有数据归一化", () => {
       dictationPhase: "idle",
       activeMode: undefined,
       sessionId: undefined,
-      error: "单次录音最长 120 秒，已自动停止，请重新开始",
+      error: "已达到单次录音最长时间，已自动停止，请重新开始",
     });
     expect(
       reconcileAuthoritativeVoiceStatus(current, {
@@ -629,6 +629,7 @@ describe("Voice 插件私有数据归一化", () => {
       modelId: DEFAULT_MODEL_ID,
       language: "auto",
       vadEnabled: false,
+      maxRecordingMinutes: 10,
       punctEnabled: true,
       engine: "local",
       // 认不出的润色档位回落到「原样注入」：不认识就别替用户改他说的话。
@@ -686,7 +687,7 @@ describe("Voice 插件私有数据归一化", () => {
     const repository = new VoiceStateRepository(store);
     expect((await repository.load()).settings?.polish).toBe("light");
     // 只改润色档，其余字段（含音源与 endpoint）原样保留在存量设置里。
-    expect(await store.get<Record<string, unknown>>("settings")).toEqual({ ...legacy, polish: "light" });
+    expect(await store.get<Record<string, unknown>>("settings")).toEqual({ ...legacy, maxRecordingMinutes: 10, polish: "light" });
     expect(await store.get<number>(POLISH_LIGHT_DEFAULT_MIGRATION_KEY)).toBe(1);
     // 只迁一次：迁移之后三档显式落盘的选择都原样保留。
     for (const level of ["raw", "light", "formal"] as const) {
