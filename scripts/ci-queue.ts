@@ -219,11 +219,12 @@ function plan() {
   }
   const files = listing.filter((f) => /\.ya?ml$/.test(f.path));
   let issues = 0;
+  let skipped = 0;
   for (const f of files) {
     const text = Buffer.from(api<{ content: string }>(`repos/${repo}/contents/${f.path}`).content, "base64").toString();
     let wf: Workflow;
     try { wf = Bun.YAML.parse(text) as Workflow; }
-    catch { console.log(`\n? ${clean(f.path)}\n  YAML 解析失败，跳过`); continue; }
+    catch { skipped++; console.log(`\n? ${clean(f.path)}\n  YAML 解析失败，跳过`); continue; }
     if (!triggers(wf.on ?? wf.true).some((t) => t === "pull_request" || t === "push")) continue;
 
     const conc = typeof wf.concurrency === "string" ? { group: wf.concurrency } : wf.concurrency;
@@ -242,7 +243,9 @@ function plan() {
     issues++;
     console.log(`\n✗ ${clean(f.path)}${selfHosted ? "（占自托管机器）" : ""}\n  ${problem}`);
   }
-  if (!issues) return console.log("所有 PR/push 工作流都已按分支自动取消旧任务");
+  const unchecked = skipped ? `（另有 ${skipped} 个文件解析失败未检查）` : "";
+  if (!issues) return console.log(`已检查的 PR/push 工作流都已按分支自动取消旧任务${unchecked}`);
+  if (skipped) console.log(`\n注意：${skipped} 个文件解析失败未检查`);
   console.log(`\n建议在上面的文件顶层加入（默认分支不取消，其余分支与 PR 新提交取消旧任务）：
 concurrency:
   group: \${{ github.workflow }}-\${{ github.event.pull_request.number || github.ref }}
