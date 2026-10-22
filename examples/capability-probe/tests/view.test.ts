@@ -80,10 +80,10 @@ describe("能力探针界面", () => {
     view!.openSettings();
     expect(navs.at(-1)).toEqual({ key: "settings", label: "设置" });
     const buttons = [...root.querySelectorAll(".cp-settings-footer button")];
-    expect(buttons.map((button) => button.textContent)).toEqual(["版本 0.1.0", "关于插件"]);
-    expect(buttons[0]?.getAttribute("aria-label")).toBe("查看版本 0.1.0 的更新日志");
+    expect(buttons.map((button) => button.textContent)).toEqual(["版本 0.1.1", "关于插件"]);
+    expect(buttons[0]?.getAttribute("aria-label")).toBe("查看版本 0.1.1 的更新日志");
     (buttons[0] as HTMLButtonElement).click();
-    expect(root.querySelector(".cp-changelog")?.textContent).toContain("## 0.1.0");
+    expect(root.querySelector(".cp-changelog")?.textContent).toContain("## 0.1.1");
     // 标题栏「打开设置」总是打开设置页，不会因为再点一次就跑回首页。
     view!.openSettings();
     view!.openSettings();
