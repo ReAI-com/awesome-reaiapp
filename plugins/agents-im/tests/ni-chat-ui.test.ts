@@ -824,65 +824,89 @@ describe("ni.chat IM client UI", () => {
       view.dispose();
     });
 
-    test("工作中到点自动移出：transient 过期触发重绘，落回「全部」", async () => {
-      // 真实时钟 + 短 TTL：visibleTransientStatus 判过期只在重渲染时发生，
-      // 这条用例钉「到期闹钟」——没有它，到期的那条会一直赖在「工作中」。
-      const state = createMockNiChatState();
-      const expiresAt = new Date(Date.now() + 60).toISOString();
-      state.transientByConversation["agent-agent"] = {
-        conversationId: "agent-agent",
-        profileId: "agent-research",
-        revision: 1,
-        kind: "thinking",
-        expiresAt,
-      };
-      const root = document.createElement("div");
-      document.body.appendChild(root);
-      const adapter = createMockNiChatAdapter(state);
-      const view = await mountNiChatView(root, { adapter, now: () => Date.now() });
-      expect(groupHeaders(root)).toEqual(["工作中 · 1", "全部 · 5"]);
-      await new Promise((resolve) => setTimeout(resolve, 220));
-      await flushRender();
-      expect(groupHeaders(root)).toEqual(["全部 · 6"]);
-      view.dispose();
-    });
-
-    test("dispose 清掉到期闹钟：卸载后到点不重绘、不抛错", async () => {
+    async function mountExpiringState(snapshotDelay: number) {
+      // 挂载耗时不推进协议时钟；测试捕获真实闹钟的回调，显式跨过到期线。
+      let now = Date.parse("2026-08-12T08:00:30Z");
+      const deadline = now + 60;
       const state = createMockNiChatState();
       state.transientByConversation["agent-agent"] = {
         conversationId: "agent-agent",
         profileId: "agent-research",
         revision: 1,
         kind: "thinking",
-        expiresAt: new Date(Date.now() + 60).toISOString(),
+        expiresAt: new Date(deadline).toISOString(),
       };
       const root = document.createElement("div");
       document.body.appendChild(root);
       const adapter = createMockNiChatAdapter(state);
-      const view = await mountNiChatView(root, { adapter, now: () => Date.now() });
-      expect(groupHeaders(root)).toEqual(["工作中 · 1", "全部 · 5"]);
-      // 钉住「闹钟确实被 clearTimeout」而不只靠 disposed 早退兜底：spy 全局
-      // clearTimeout，dispose 时必须清掉一个真实句柄（此刻活跃的正是到期闹钟）。
-      const cleared: unknown[] = [];
-      const originalClearTimeout = globalThis.clearTimeout;
-      globalThis.clearTimeout = ((handle?: unknown) => {
-        cleared.push(handle);
-        if (handle !== undefined && handle !== null) {
-          originalClearTimeout(handle as Parameters<typeof originalClearTimeout>[0]);
-        }
-      }) as typeof clearTimeout;
+      const getSnapshot = adapter.getSnapshot.bind(adapter);
+      adapter.getSnapshot = async () => {
+        if (snapshotDelay) await new Promise((resolve) => setTimeout(resolve, snapshotDelay));
+        return getSnapshot();
+      };
+      const alarms: { delay: number | undefined; handle: ReturnType<typeof setTimeout>; run: () => void }[] = [];
+      const originalSetTimeout = globalThis.setTimeout;
+      globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+        const handle = originalSetTimeout(...args);
+        const [callback, delay, ...callbackArgs] = args;
+        alarms.push({ delay, handle, run: () => callback(...callbackArgs) });
+        return handle;
+      }) as typeof setTimeout;
       try {
-        view.dispose();
+        const view = await mountNiChatView(root, { adapter, now: () => now });
+        const alarm = alarms.find((candidate) => candidate.delay === 61);
+        if (!alarm) {
+          view.dispose();
+          throw new Error("transient expiry alarm was not scheduled");
+        }
+        return { root, view, alarm, expire: () => { now = deadline + 1; } };
       } finally {
-        globalThis.clearTimeout = originalClearTimeout;
+        globalThis.setTimeout = originalSetTimeout;
       }
-      expect(cleared.some((handle) => handle !== undefined && handle !== null)).toBe(true);
-      // dispose 已把根清空——跨过到期线后不应有任何重建（也没有未捕获异常）。
-      await new Promise((resolve) => setTimeout(resolve, 150));
-      await flushRender();
-      expect(root.querySelector(".ni-conversation-group")).toBeNull();
-      expect(root.querySelector(".ni-conversation-item")).toBeNull();
-    });
+    }
+
+    for (const snapshotDelay of [0, 120]) {
+      test(`工作中到点自动移出：transient 过期触发重绘，落回「全部」（快照延迟 ${snapshotDelay}ms）`, async () => {
+        const { root, view, alarm, expire } = await mountExpiringState(snapshotDelay);
+        try {
+          expect(groupHeaders(root)).toEqual(["工作中 · 1", "全部 · 5"]);
+          expire();
+          clearTimeout(alarm.handle);
+          alarm.run();
+          await flushRender();
+          expect(groupHeaders(root)).toEqual(["全部 · 6"]);
+        } finally {
+          view.dispose();
+        }
+      });
+
+      test(`dispose 清掉到期闹钟：卸载后到点不重绘、不抛错（快照延迟 ${snapshotDelay}ms）`, async () => {
+        const { root, view, alarm, expire } = await mountExpiringState(snapshotDelay);
+        const cleared: unknown[] = [];
+        const originalClearTimeout = globalThis.clearTimeout;
+        try {
+          expect(groupHeaders(root)).toEqual(["工作中 · 1", "全部 · 5"]);
+          // 必须清理本次到期闹钟，任意其他 timer 的清理不能代替。
+          globalThis.clearTimeout = ((handle?: unknown) => {
+            cleared.push(handle);
+            if (handle !== undefined && handle !== null) {
+              originalClearTimeout(handle as Parameters<typeof originalClearTimeout>[0]);
+            }
+          }) as typeof clearTimeout;
+          view.dispose();
+          expect(cleared).toContain(alarm.handle);
+          // 模拟已经排队的迟到回调；卸载后不得重建 DOM。
+          expire();
+          alarm.run();
+          await flushRender();
+          expect(root.querySelector(".ni-conversation-group")).toBeNull();
+          expect(root.querySelector(".ni-conversation-item")).toBeNull();
+        } finally {
+          globalThis.clearTimeout = originalClearTimeout;
+          view.dispose();
+        }
+      });
+    }
   });
 
   test("mention 与 reply 展示只信任本地 profile 和原消息，不信任远端摘要标签", async () => {
