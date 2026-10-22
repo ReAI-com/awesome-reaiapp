@@ -1752,6 +1752,11 @@ button:disabled {
   width: min(220px, 42vw);
 }
 
+/* 短选项（如「10 分钟」）用窄壳，不占满一整格。 */
+.settings-select-shell.settings-select-shell-compact {
+  width: 112px;
+}
+
 .settings-select {
   width: 100%;
   min-height: 32px;

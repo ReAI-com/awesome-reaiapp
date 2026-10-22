@@ -41,6 +41,10 @@ import {
   type VoiceErrorDetail,
   sourceMigrationNoticeText,
   SOURCE_MIGRATION_NOTICE,
+  LEGACY_CAPTURE_LIMIT_SECONDS,
+  MAX_RECORDING_MINUTES,
+  MIN_RECORDING_MINUTES,
+  sanitizeMaxRecordingMinutes,
 } from "./data";
 import { createVoiceChatDetail } from "./voice-chat-detail";
 import {
@@ -3723,7 +3727,42 @@ export function mountVoiceView(
     if (sourceNotice) card.append(sourceNotice);
     if (state.settings.source === "system") card.append(systemEndpointRow());
     card.append(languageRow());
+    card.append(maxRecordingRow());
     return card;
+  };
+
+  /**
+   * 单次录音最长时间（1–10 分钟）。Host 回带 `captureLimitSeconds` 才算支持；旧 Host
+   * 不回，置灰并按它固定的 120 秒显示，提示更新 ReAI Board。倒计时由 Host 胶囊负责。
+   */
+  const maxRecordingRow = (): HTMLElement => {
+    const supported = state.captureLimitSeconds !== undefined;
+    const minutes = supported
+      ? sanitizeMaxRecordingMinutes(state.settings.maxRecordingMinutes)
+      : LEGACY_CAPTURE_LIMIT_SECONDS / 60;
+    const select = document.createElement("select");
+    select.className = "settings-select settings-max-recording";
+    bindAttribute(select, "aria-label", () => t("view.maxRecordingDurationCurrentValue", { value0: minutes }));
+    for (let value = MIN_RECORDING_MINUTES; value <= MAX_RECORDING_MINUTES; value += 1) {
+      select.append(option(() => t("view.maxRecordingMinutesOption", { value0: value }), String(value)));
+    }
+    select.value = String(minutes);
+    select.disabled = !supported;
+    select.addEventListener("change", () => {
+      fire(() => saveSettings({ maxRecordingMinutes: sanitizeMaxRecordingMinutes(Number(select.value)) }));
+    });
+    const shell = el("div", "settings-select-shell settings-select-shell-compact");
+    shell.append(select, iconEl("span", "settings-select-chevron", chevronDownIcon()));
+    const row = settingsRow(
+      () => t("view.maxRecordingDuration"),
+      // 首次状态还没读回时不急着说「要更新」，只置灰。
+      () => supported || state.statusLoad !== "loaded"
+        ? t("view.maxRecordingDurationDesc") : t("view.maxRecordingDurationNeedsHostUpdate"),
+      shell,
+    );
+    row.dataset.settingsTarget = "max-recording";
+    if (!supported) row.dataset.hostUnsupported = "";
+    return row;
   };
 
   /** 语言是集合选择，不做“点一下猜下一项”的轮换。 */
@@ -3764,8 +3803,9 @@ export function mountVoiceView(
   };
 
   /**
-   * 稿 `data-vssource`：录音来源 › 行。值写「档位 · 当前实际来源」：键盘这边的 USB / 蓝牙
-   * 按 Host 解析出的真实路由写，路由未知时只写「键盘麦克风」。点击打开五档单选对话框。
+   * 稿 `data-vssource`：录音来源 › 行。值只写档位名（「推荐」只留在对话框里），说明行写当前
+   * 实际在用的麦克风：键盘这边的 USB / 蓝牙按 Host 解析出的真实路由写，路由未知时只写「键盘麦克风」。
+   * 各档完整解释只在点开的五档单选对话框里。
    */
   const sourceRow = (): HTMLElement => {
     const mode = currentAudioSourceMode(state.settings, state.permissions);
@@ -3783,12 +3823,11 @@ export function mountVoiceView(
       : resolved === "unavailable" ? t("view.audioSourceUnavailable") : boardValue();
     const modeLabel = () => isLegacyCompatibilityMode(state.permissions)
       ? t("view.audioSourceLegacyUac")
-      : audioModeCopy[mode].label();
-    const value = () => t("view.audioSourceNow", { value0: modeLabel(), value1: now() });
+      : mode === "auto" ? t("view.audioModeAutoShort") : audioModeCopy[mode].label();
     const row = settingsLinkRow(
       () => t("view.recordingSource"),
-      () => t("view.autoPrefersTheKeyboardMicrophoneFallsBack"),
-      () => value(),
+      () => t("view.audioSourceCurrent", { value0: now() }),
+      modeLabel,
       () => {
         sourceDialogOpen = true;
         render();
@@ -3798,7 +3837,7 @@ export function mountVoiceView(
     row.dataset.audioSourceMode = mode;
     row.setAttribute("aria-haspopup", "dialog");
     if (focusedSettingsTarget === "source") row.classList.add("settings-target-flash");
-    bindAttribute(row, "aria-label", () => t("view.recordingSourceValueClickToChoose", { value0: value() }));
+    bindAttribute(row, "aria-label", () => t("view.recordingSourceValueClickToChoose", { value0: modeLabel(), value1: now() }));
     return row;
   };
 

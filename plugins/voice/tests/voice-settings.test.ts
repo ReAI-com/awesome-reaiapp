@@ -126,7 +126,7 @@ describe("Voice 设置主页面", () => {
       "Agent 配置",
     ]);
     const engine = harness.root.querySelector('[data-settings-target="engine"]');
-    expect(rowTitles(engine)).toEqual(["引擎", "本地模型", "录音来源", "识别语言"]);
+    expect(rowTitles(engine)).toEqual(["引擎", "本地模型", "录音来源", "识别语言", "单次录音最长时间"]);
     expect(harness.root.textContent).not.toContain("测试语音识别");
     expect(harness.root.textContent).not.toContain("Agent 底层");
     expect(harness.root.textContent).not.toContain("麦克风增益");
@@ -137,7 +137,7 @@ describe("Voice 设置主页面", () => {
     const harness = mount({ commandLoggedIn: false, settings: { ...DEFAULT_SETTINGS, engine: "cloud" } });
     harness.view.openSettings();
     const engine = harness.root.querySelector('[data-settings-target="engine"]');
-    expect(rowTitles(engine)).toEqual(["引擎", "云端状态", "录音来源", "识别语言"]);
+    expect(rowTitles(engine)).toEqual(["引擎", "云端状态", "录音来源", "识别语言", "单次录音最长时间"]);
     const cloud = Array.from(engine?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])
       .find((button) => button.textContent === "云端引擎");
     expect(cloud?.disabled).toBeFalse();
