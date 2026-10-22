@@ -11,7 +11,7 @@
  * 限定到支持视觉输入的候选。
  *
  * 安全边界都在引擎侧（紧急停止、速率上限、护栏），这里只做：步数上限、
- * 每步前检查中断、失败即停。
+ * 每步前检查中断、失败即停；中断不解除引擎停止位。
  */
 import { computerCall, aiCall, type Screenshot } from "./computer-bridge";
 
@@ -49,9 +49,28 @@ export interface StepReport {
 
 export interface TaskCallbacks {
   onStep?: (report: StepReport) => void;
-  /** shouldAbort 每步（含截图前）轮询；true 则停止循环并尝试恢复（resume）。 */
+  /**
+   * shouldAbort 在每步开始、截图返回、模型回复返回、动作失败及循环结束时轮询；
+   * true 则停止循环并报告 aborted。
+   * 中止**只停本插件的循环，绝不调用 computer.resume**：引擎停止位是用户主权，
+   * 只能由用户在插件页点「恢复操控」解除，否则「先紧急停止、再中止任务」会
+   * 悄悄撤销紧急停止。
+   */
   shouldAbort?: () => boolean;
 }
+
+/** 循环依赖的宿主调用；默认走真实 bridge，测试可替换。 */
+export interface TaskDeps {
+  computer: typeof computerCall;
+  ai: typeof aiCall;
+  sleep: (ms: number) => Promise<void>;
+}
+
+const DEFAULT_DEPS: TaskDeps = {
+  computer: computerCall,
+  ai: aiCall,
+  sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+};
 
 const SYSTEM_PROMPT = `你是一个操作 macOS/Windows 电脑的 GUI Agent。你会收到一张屏幕截图（全屏或某个窗口）与一个任务目标，每轮回复**只输出一个 JSON 对象**，不要输出任何其他文字或代码块标记。
 
@@ -82,14 +101,8 @@ export function parseActionReply(reply: string): { thought?: string; action: Age
   for (const candidate of candidates) {
     try {
       const parsed = JSON.parse(candidate) as Record<string, unknown>;
-      if (typeof parsed.action === "string") {
-        const action = parsed as unknown as AgentAction;
-        // 基本合法性：click 需要有限坐标。
-        if (action.action === "click") {
-          const x = Number((parsed as { x?: unknown }).x);
-          const y = Number((parsed as { y?: unknown }).y);
-          if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
-        }
+      const action = toAgentAction(parsed);
+      if (action) {
         const thought =
           typeof parsed.thought === "string" ? (parsed.thought as string) : undefined;
         return { thought, action };
@@ -97,6 +110,56 @@ export function parseActionReply(reply: string): { thought?: string; action: Age
     } catch {
       // 试下一个候选。
     }
+  }
+  return null;
+}
+
+/**
+ * 模型回复不可信：逐字段校验后重建动作，只保留已知字段，任何字段不合法即拒绝。
+ * 坐标只接受有限数字或数字字符串；null / false / "" 经 Number() 会变成 0，
+ * 不能被当成「点左上角」放行。
+ */
+function toAgentAction(raw: Record<string, unknown>): AgentAction | null {
+  const detail = typeof raw.detail === "string" ? raw.detail : undefined;
+  switch (raw.action) {
+    case "click": {
+      const x = toCoordinate(raw.x);
+      const y = toCoordinate(raw.y);
+      if (x === null || y === null) return null;
+      if (raw.button !== undefined && raw.button !== "left" && raw.button !== "right") return null;
+      if (raw.double !== undefined && typeof raw.double !== "boolean") return null;
+      const action: AgentAction = { action: "click", x, y };
+      if (raw.button !== undefined) action.button = raw.button;
+      if (raw.double !== undefined) action.double = raw.double;
+      return action;
+    }
+    case "type":
+      return typeof raw.text === "string" && raw.text !== ""
+        ? { action: "type", text: raw.text }
+        : null;
+    case "press":
+      return typeof raw.key === "string" && raw.key.trim() !== ""
+        ? { action: "press", key: raw.key.trim() }
+        : null;
+    case "scroll": {
+      const dx = raw.dx === undefined ? 0 : toCoordinate(raw.dx);
+      const dy = raw.dy === undefined ? 0 : toCoordinate(raw.dy);
+      if (dx === null || dy === null || (dx === 0 && dy === 0)) return null;
+      return { action: "scroll", dx, dy };
+    }
+    case "done":
+    case "fail":
+      return detail === undefined ? { action: raw.action } : { action: raw.action, detail };
+    default:
+      return null;
+  }
+}
+
+function toCoordinate(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
 }
@@ -157,12 +220,13 @@ let invocationSeq = 0;
 
 /** Host 云通道一次视觉决策调用（`ai.text.generate`，返回 `{invocationId, text}`）。 */
 async function askVlm(
+  ai: TaskDeps["ai"],
   config: VlmConfig,
   messages: ChatMessage[],
 ): Promise<string> {
   invocationSeq += 1;
   const invocationId = `cu-${Date.now().toString(36)}-${invocationSeq}`;
-  const payload = await aiCall<{ text?: unknown }>("ai.text.generate", {
+  const payload = await ai<{ text?: unknown }>("ai.text.generate", {
     invocationId,
     model: config.modelAlias,
     messages,
@@ -185,6 +249,7 @@ export async function runComputerTask(
   config: VlmConfig,
   task: string,
   callbacks: TaskCallbacks = {},
+  deps: TaskDeps = DEFAULT_DEPS,
 ): Promise<TaskResult> {
   const history: ChatMessage[] = [
     { role: "system", content: SYSTEM_PROMPT },
@@ -196,17 +261,24 @@ export async function runComputerTask(
     },
   ];
 
+  // 每个异步等待之后都先看中止：用户中止（含紧急停止）的优先级高于随之而来的
+  // 失败，界面应显示「已中止」而不是「出错」，也不再多发一次模型请求或动作。
+  const aborted = () => callbacks.shouldAbort?.() ?? false;
+
   for (let step = 1; step <= MAX_STEPS; step += 1) {
-    if (callbacks.shouldAbort?.()) {
-      await computerCall("computer.resume", {}).catch(() => undefined);
+    if (aborted()) {
       return { status: "aborted", steps: step - 1 };
     }
 
     let shot: Screenshot;
     try {
-      shot = await computerCall<Screenshot>("computer.screenshot", { maxEdge: 1024 });
+      shot = await deps.computer<Screenshot>("computer.screenshot", { maxEdge: 1024 });
     } catch (error) {
+      if (aborted()) return { status: "aborted", steps: step - 1 };
       return { status: "error", detail: describeError(error), steps: step - 1 };
+    }
+    if (aborted()) {
+      return { status: "aborted", steps: step - 1 };
     }
 
     // Host 云通道的图片 part 合同：{type:"image", mime, dataBase64}
@@ -223,9 +295,14 @@ export async function runComputerTask(
 
     let reply: string;
     try {
-      reply = await askVlm(config, askMessages);
+      reply = await askVlm(deps.ai, config, askMessages);
     } catch (error) {
+      if (aborted()) return { status: "aborted", steps: step - 1 };
       return { status: "error", detail: describeError(error), steps: step - 1 };
+    }
+    // 模型思考期间用户可能已中止：不再解析、不再执行这一步。
+    if (aborted()) {
+      return { status: "aborted", steps: step - 1 };
     }
 
     const parsed = parseActionReply(reply);
@@ -252,13 +329,15 @@ export async function runComputerTask(
     let ok = true;
     let error: string | undefined;
     try {
-      await executeAction(shot, action);
+      await executeAction(deps.computer, shot, action);
     } catch (cause) {
       ok = false;
       error = describeError(cause);
     }
     callbacks.onStep?.({ step, thought: parsed.thought, action, ok, error });
     if (!ok) {
+      // 紧急停止会让引擎拒绝这一步：此时如实报告为中止。
+      if (aborted()) return { status: "aborted", steps: step };
       return { status: "error", detail: error, steps: step };
     }
 
@@ -273,16 +352,21 @@ export async function runComputerTask(
       history.splice(1, history.length - 32);
     }
 
-    await new Promise((resolve) => setTimeout(resolve, STEP_COOLDOWN_MS));
+    if (step < MAX_STEPS) await deps.sleep(STEP_COOLDOWN_MS);
   }
+  if (aborted()) return { status: "aborted", steps: MAX_STEPS };
   return { status: "fail", detail: `达到 ${MAX_STEPS} 步上限仍未完成任务`, steps: MAX_STEPS };
 }
 
-async function executeAction(shot: Screenshot, action: AgentAction): Promise<void> {
+async function executeAction(
+  computer: TaskDeps["computer"],
+  shot: Screenshot,
+  action: AgentAction,
+): Promise<void> {
   switch (action.action) {
     case "click": {
       const { x, y } = denormalize(shot, action.x, action.y);
-      await computerCall("computer.mouse.click", {
+      await computer("computer.mouse.click", {
         x,
         y,
         button: action.button ?? "left",
@@ -291,13 +375,13 @@ async function executeAction(shot: Screenshot, action: AgentAction): Promise<voi
       return;
     }
     case "type":
-      await computerCall("computer.text.type", { text: action.text });
+      await computer("computer.text.type", { text: action.text });
       return;
     case "press":
-      await computerCall("computer.key.press", { key: action.key });
+      await computer("computer.key.press", { key: action.key });
       return;
     case "scroll":
-      await computerCall("computer.mouse.scroll", {
+      await computer("computer.mouse.scroll", {
         dx: action.dx ?? 0,
         dy: action.dy ?? 0,
       });

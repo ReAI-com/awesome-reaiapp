@@ -15,6 +15,9 @@ html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 }
 .main-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 
+/* 带 display 的组件类会盖掉 [hidden] 的默认隐藏，这里统一兜底。 */
+.cu-home [hidden] { display: none !important; }
+
 .cu-home {
   display: flex;
   flex-direction: column;
@@ -252,4 +255,40 @@ html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
   background: var(--reai-bg, #f8fafc);
   color: inherit;
   font: inherit;
+}
+
+/* 设置区底部「版本 / 关于插件」：普通文档流，随正文滚动到达，窄窗自然换行。 */
+.cu-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  padding: 4px 0 8px;
+  font-size: 12px;
+}
+
+.cu-egress-hint { margin-top: 2px; }
+
+.cu-changelog {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.7;
+  font-family: inherit;
+}
+
+.cu-about {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  margin: 0;
+  font-size: 13px;
+}
+.cu-about dt { opacity: 0.7; }
+.cu-about dd { margin: 0; word-break: break-all; }
+
+.cu-link-btn:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+  border-radius: 4px;
 }

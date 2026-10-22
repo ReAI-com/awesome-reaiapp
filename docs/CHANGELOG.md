@@ -1,5 +1,11 @@
 # ReAI App 平台规范更新日志
 
+## 2026-10-22 · Agent 电脑原型与电脑操控插件送审修补
+
+- 新增 [Agent 电脑原型 v0](agent-computer-prototype-v0.md)：每个 Agent 一台与宿主同系统的后台虚拟机，Agent 的鼠标键盘只作用于虚拟机，文件经用户批准才进入用户目录。原型代码在 `prototypes/agent-computer/`，独立依赖，不属于平台包；本次只实现 macOS 客体，接口按平台无关设计。文档记录方案、方法支持矩阵、文件出口与分权合同、真机验收及已知风险。
+- 插件工具链 CI 新增 `Verify prototype agent-computer`，在 `prototypes/**` 变化时运行原型的单元测试与类型检查，不启停虚拟机。
+- 电脑操控插件 `0.1.1-dev.1`：中止任务不再解除紧急停止，设置区底部补齐版本与「关于插件」入口，新增插件更新日志。插件改动记录在 `plugins/computer/CHANGELOG.md`。
+
 ## 2026-10-21 · 补迁 project-data-app 与 workflow-app 样例
 
 - 两个样例由插件仓接管：来源为主项目导出提交 `4ed2325a750e` 的同名样例，依赖改为 `vendor/platform/` 中的平台包。预览改读随附的主题色快照 `tests/fixtures/theme-tokens.json`，输出写到仓库根 `.artifacts/`。

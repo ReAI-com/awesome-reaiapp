@@ -9,10 +9,11 @@
   "scripts": {
     "test": "bun test --pass-with-no-tests tests",
     "typecheck": "tsc --noEmit",
-    "build": "reai-app build .",
+    "build": "bun scripts/sync-release-notes.ts && reai-app build .",
     "validate": "reai-app validate .",
     "test:contract": "reai-app contract-test . --host-api 1.5",
-    "pack": "reai-app pack . --out computer-0.1.1-dev.1.reaiapp"
+    "pack": "bun scripts/sync-release-notes.ts && reai-app pack . --out computer-0.1.1-dev.1.reaiapp",
+    "sync:notes": "bun scripts/sync-release-notes.ts"
   },
   "devDependencies": {
     "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
