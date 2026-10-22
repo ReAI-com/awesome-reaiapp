@@ -1,6 +1,20 @@
-/* 电脑操控主页。颜色一律用宿主注入的 :root token（跟随主题切换），
-   不写死色值——写死了亮暗主题下必炸一边。
-   根框架消费标题栏安全线（#587 合同）：macOS 上正文从标题栏下方开始画。 */
+/* 电脑操控主页。颜色只用 Host 主题 Token（docs/plugin-design-system-v1.md §1），
+   兜底值取浅色主题的 Token 值，不写死其他颜色，也不自己判断明暗。
+   根框架消费一次标题栏安全线：macOS 上正文从标题栏下方开始画。 */
+
+/* §3.1 全局按钮基线：focus-visible 不许删。 */
+button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: inherit;
+}
+button:focus-visible { outline: 2px solid var(--accent, #5c5ce0); outline-offset: 2px; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
 .plugin-main-frame {
@@ -12,6 +26,8 @@ html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg, #f4f3f9);
+  color: var(--text-primary, #1c1c2e);
 }
 .main-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 
@@ -25,8 +41,10 @@ html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
   padding: 12px 16px 16px;
   max-width: 720px;
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
+/* ── 紧急停止条 ── */
 .cu-stopbar {
   position: sticky;
   top: 0;
@@ -34,261 +52,238 @@ html, body, #app { width: 100%; height: 100%; margin: 0; overflow: hidden; }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--reai-border, #e2e8f0);
-  border-radius: 10px;
-  background: var(--reai-surface, #ffffff);
+  padding: 12px;
+  border: 1px solid var(--alert-line, rgba(255,59,48,.32));
+  border-radius: 12px;
+  background: var(--card-bg, rgba(255,255,255,.8));
 }
-
-.cu-stop-btn {
-  flex: none;
-  padding: 8px 18px;
-  border: none;
-  border-radius: 8px;
-  background: #dc2626;
-  color: #fff;
-  font-weight: 700;
-  font-size: 14px;
-  cursor: pointer;
-}
-
-.cu-stop-btn:hover {
-  background: #b91c1c;
-}
-
-.cu-stop-hint {
-  font-size: 12px;
-  opacity: 0.7;
-}
+.cu-stop-hint { font-size: 12px; color: var(--text-secondary, #6b6b80); line-height: 1.6; }
 
 .cu-stopped-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  background: rgba(220, 38, 38, 0.12);
-  border: 1px solid rgba(220, 38, 38, 0.4);
-  color: #b91c1c;
+  padding: 12px;
+  border: 1px solid var(--alert-line, rgba(255,59,48,.32));
+  border-radius: 12px;
+  background: var(--alert-soft, rgba(255,59,48,.07));
+  color: var(--alert, #ff3b30);
+  font-size: 14px;
   font-weight: 600;
 }
 
+/* ── 卡片 ── */
 .cu-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border: 1px solid var(--reai-border, #e2e8f0);
-  border-radius: 10px;
-  background: var(--reai-surface, #ffffff);
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--card-border, rgba(92,92,224,.1));
+  border-radius: 12px;
+  background: var(--card-bg, rgba(255,255,255,.8));
 }
+.cu-card h2 { margin: 0; font-size: 16px; line-height: 24px; color: var(--text-primary, #1c1c2e); }
+.cu-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.cu-sub { margin: 0; font-size: 12px; line-height: 20px; color: var(--text-secondary, #6b6b80); }
 
-.cu-card h2 {
-  margin: 0;
-  font-size: 15px;
+/* ── 三档按钮（§3.2）──
+   主按钮：accent 实底白字，一屏一颗（开始任务）；
+   危险按钮：紧急停止，alert 三色组（主色字 / soft 底 / line 描边），与主按钮同尺寸；
+   次按钮：透明底 + 描边；文字链接按钮：刻意保留较小内边距。 */
+.cu-primary-btn,
+.cu-secondary-btn,
+.cu-danger-btn {
+  min-height: 36px;
+  padding: 4px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 20px;
+  white-space: nowrap;
 }
-
-.cu-sub {
-  margin: 0;
+.cu-primary-btn { background: var(--accent, #5c5ce0); color: white; }
+.cu-primary-btn:hover:not(:disabled) { filter: brightness(0.92); }
+.cu-secondary-btn {
+  border: 1px solid var(--card-border, rgba(92,92,224,.1));
+  color: var(--text-primary, #1c1c2e);
+}
+.cu-secondary-btn:hover:not(:disabled) { background: var(--accent-soft, rgba(92,92,224,.07)); }
+.cu-danger-btn {
+  border: 1px solid var(--alert-line, rgba(255,59,48,.32));
+  background: var(--alert-soft, rgba(255,59,48,.07));
+  color: var(--alert, #ff3b30);
+  font-weight: 600;
+}
+.cu-danger-btn:hover:not(:disabled) { border-color: var(--alert, #ff3b30); }
+.cu-link-btn {
+  align-self: flex-start;
+  padding: 4px 8px;
+  border-radius: 8px;
+  color: var(--accent, #5c5ce0);
   font-size: 12px;
-  opacity: 0.7;
-  line-height: 1.6;
+  line-height: 20px;
 }
+.cu-link-btn:hover:not(:disabled) { background: var(--accent-soft, rgba(92,92,224,.07)); }
 
+/* ── 权限 ── */
 .cu-perm-row {
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
+  gap: 12px;
+  font-size: 14px;
+  line-height: 20px;
 }
+.cu-perm-state { font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+/* 状态点用 CSS 画，不用字符图标。 */
+.cu-perm-state::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.cu-perm-state.is-granted { color: var(--bound, #1f9d55); }
+.cu-perm-state.is-denied { color: var(--alert, #ff3b30); }
+.cu-perm-state.is-unknown { color: var(--text-tertiary, #a5a5b8); }
 
-.cu-perm-state.granted { color: #16a34a; font-weight: 600; }
-.cu-perm-state.denied { color: #dc2626; font-weight: 600; }
-.cu-perm-state.unknown { opacity: 0.6; }
-
+/* ── 任务控制台 ── */
 .cu-task-input {
   width: 100%;
   box-sizing: border-box;
-  padding: 10px;
-  border: 1px solid var(--reai-border, #e2e8f0);
+  padding: 8px 12px;
+  border: 1px solid var(--card-border, rgba(92,92,224,.1));
   border-radius: 8px;
-  background: var(--reai-bg, #f8fafc);
-  color: inherit;
+  background: var(--bg, #f4f3f9);
+  color: var(--text-primary, #1c1c2e);
   font: inherit;
+  font-size: 14px;
+  line-height: 20px;
   resize: vertical;
 }
-
-.cu-runrow {
-  display: flex;
-  gap: 10px;
-}
-
-.cu-primary-btn {
-  padding: 8px 18px;
-  border: none;
-  border-radius: 8px;
-  background: #0284c7;
-  color: #fff;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.cu-primary-btn:disabled { opacity: 0.5; cursor: default; }
-.cu-primary-btn:hover:not(:disabled) { background: #0369a1; }
-
-.cu-secondary-btn {
-  padding: 8px 14px;
-  border: 1px solid var(--reai-border, #cbd5e1);
-  border-radius: 8px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-}
-
-.cu-secondary-btn:disabled { opacity: 0.5; cursor: default; }
-/* 刻意的纯文字链接（设计规范 §3.5 按钮留白的例外）：不铺底色、无边框，所以 padding:0。
-   将来加悬停底色时必须同时补四周留白。 */
-.cu-link-btn {
-  align-self: flex-start;
-  border: none;
-  background: none;
-  color: #0284c7;
-  cursor: pointer;
-  font-size: 12px;
-  padding: 0;
-}
+.cu-task-input::placeholder { color: var(--text-tertiary, #a5a5b8); }
+.cu-task-input:focus-visible { outline: 2px solid var(--accent, #5c5ce0); outline-offset: 2px; }
+.cu-runrow { display: flex; flex-wrap: wrap; gap: 12px; }
+.cu-progress { margin: 0; font-size: 12px; line-height: 20px; color: var(--text-secondary, #6b6b80); }
 
 .cu-task-result {
-  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
   border-radius: 8px;
-  font-size: 13px;
+  border: 1px solid var(--card-border, rgba(92,92,224,.1));
+  font-size: 14px;
+  line-height: 20px;
 }
-
-.cu-task-result.ok {
-  background: rgba(22, 163, 74, 0.12);
-  color: #15803d;
-}
-
-.cu-task-result.error {
-  background: rgba(220, 38, 38, 0.1);
-  color: #b91c1c;
-}
+.cu-task-result.is-ok { border-color: var(--bound-line, rgba(31,157,85,.34)); background: var(--bound-soft, rgba(31,157,85,.1)); color: var(--bound, #1f9d55); }
+.cu-task-result.is-error { border-color: var(--alert-line, rgba(255,59,48,.32)); background: var(--alert-soft, rgba(255,59,48,.07)); color: var(--alert, #ff3b30); }
+.cu-result-detail { color: var(--text-primary, #1c1c2e); white-space: pre-wrap; word-break: break-word; }
 
 .cu-steps {
   margin: 0;
   padding-left: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 260px;
-  overflow-y: auto;
-  font-size: 13px;
-}
-
-.cu-step-head { display: block; font-weight: 600; }
-.cu-step-thought { margin-left: 8px; font-weight: 400; opacity: 0.65; }
-.cu-step-error { display: block; color: #b91c1c; font-size: 12px; }
-.cu-step.ok .cu-step-head { color: inherit; }
-.cu-step.error .cu-step-head { color: #b91c1c; }
-
-.cu-field {
-  display: grid;
-  grid-template-columns: 80px 1fr;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-}
-
-.cu-field input {
-  padding: 8px 10px;
-  border: 1px solid var(--reai-border, #cbd5e1);
-  border-radius: 8px;
-  background: var(--reai-bg, #f8fafc);
-  color: inherit;
-  font: inherit;
-}
-
-.cu-trace-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.cu-trace {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 220px;
+  max-height: 280px;
   overflow-y: auto;
   font-size: 12px;
+  line-height: 20px;
+}
+.cu-step { margin-bottom: 8px; }
+.cu-step-head { display: block; color: var(--text-primary, #1c1c2e); }
+.cu-step.is-error .cu-step-head { color: var(--alert, #ff3b30); }
+.cu-step-thought { display: block; color: var(--text-secondary, #6b6b80); }
+.cu-step-error { display: block; color: var(--alert, #ff3b30); }
+.cu-step-raw {
+  display: block;
+  color: var(--text-secondary, #6b6b80);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
+/* ── 模型设置：统一下拉（§3.7）──
+   appearance:none + 自绘箭头 + 右侧留白。 */
+.cu-field { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; font-size: 14px; line-height: 20px; }
+.cu-select { position: relative; display: inline-flex; }
+.cu-select select {
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 36px;
+  padding: 4px 36px 4px 12px;
+  border: 1px solid var(--card-border, rgba(92,92,224,.1));
+  border-radius: 8px;
+  background: var(--card-bg, rgba(255,255,255,.8));
+  color: var(--text-primary, #1c1c2e);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.cu-select select:focus-visible { outline: 2px solid var(--accent, #5c5ce0); outline-offset: 2px; }
+.cu-select select:disabled { cursor: not-allowed; opacity: 0.45; }
+.cu-select::after {
+  content: "";
+  position: absolute;
+  right: 16px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-secondary, #6b6b80);
+  border-bottom: 2px solid var(--text-secondary, #6b6b80);
+  transform: translateY(-75%) rotate(45deg);
+  pointer-events: none;
+}
+.cu-field-status { font-size: 12px; color: var(--text-secondary, #6b6b80); }
+
+/* ── 审计 ── */
+.cu-trace { margin: 0; padding: 0; list-style: none; max-height: 240px; overflow-y: auto; }
 .cu-trace-item {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: var(--reai-bg, #f1f5f9);
-}
-
-.cu-trace-item.error { color: #b91c1c; }
-.cu-trace-meta { opacity: 0.6; }
-
-.cu-notice {
-  padding: 10px;
-  border-radius: 8px;
-  background: rgba(2, 132, 199, 0.1);
-  color: #0369a1;
-  font-size: 13px;
-}
-
-.cu-field select {
-  padding: 8px 10px;
-  border: 1px solid var(--reai-border, #cbd5e1);
-  border-radius: 8px;
-  background: var(--reai-bg, #f8fafc);
-  color: inherit;
-  font: inherit;
-}
-
-/* 设置区底部「版本 / 关于插件」：普通文档流，随正文滚动到达，窄窗自然换行。 */
-.cu-footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px 20px;
-  padding: 4px 0 8px;
+  gap: 4px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--divider, rgba(92,92,224,.08));
   font-size: 12px;
+  line-height: 20px;
+}
+.cu-trace-item.is-error { color: var(--alert, #ff3b30); }
+.cu-trace-meta { color: var(--text-secondary, #6b6b80); }
+
+/* ── 通知与诊断 ── */
+.cu-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--card-border, rgba(92,92,224,.1));
+  border-radius: 8px;
+  background: var(--card-bg, rgba(255,255,255,.8));
+  font-size: 12px;
+  line-height: 20px;
+}
+.cu-notice.is-error { border-color: var(--alert-line, rgba(255,59,48,.32)); background: var(--alert-soft, rgba(255,59,48,.07)); }
+.cu-notice-text { margin: 0; color: var(--text-primary, #1c1c2e); }
+.cu-notice.is-error .cu-notice-text { color: var(--alert, #ff3b30); }
+.cu-notice-hint { margin: 0; color: var(--text-secondary, #6b6b80); }
+.cu-notice-detail {
+  margin: 0;
+  color: var(--text-secondary, #6b6b80);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
-.cu-egress-hint { margin-top: 2px; }
-
+/* ── 版本 / 关于插件：普通文档流，随正文滚动到达，窄窗自然换行 ── */
+.cu-footer { display: flex; flex-wrap: wrap; gap: 12px 20px; padding: 4px 0 8px; }
 .cu-changelog {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 12px;
-  line-height: 1.7;
   font-family: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--text-primary, #1c1c2e);
 }
-
 .cu-about {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 6px 16px;
+  gap: 8px 16px;
   margin: 0;
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 20px;
 }
-.cu-about dt { opacity: 0.7; }
-.cu-about dd { margin: 0; word-break: break-all; }
-
-.cu-link-btn:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
-  border-radius: 4px;
-}
+.cu-about dt { color: var(--text-secondary, #6b6b80); }
+.cu-about dd { margin: 0; word-break: break-all; user-select: text; }

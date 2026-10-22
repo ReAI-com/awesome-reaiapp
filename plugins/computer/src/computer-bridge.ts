@@ -8,6 +8,7 @@
  * 的每次调用同样生效。
  */
 import { BRIDGE_GLOBAL_KEY, type HostBridge, type RequestMethod } from "@reai/app-sdk/v1";
+import { t } from "./computer-i18n";
 
 type AnyBridge = {
   request<T = unknown>(method: string, params: unknown): Promise<T>;
@@ -45,7 +46,7 @@ export async function computerCall<T = unknown>(
 ): Promise<T> {
   const b = bridge();
   if (!b) {
-    throw new Error("电脑操控 bridge 未注入（不在插件 surface 上下文里）");
+    throw new Error(t("errors.bridgeMissing"));
   }
   return (b as unknown as AnyBridge).request<T>(method as RequestMethod, params);
 }
@@ -59,7 +60,7 @@ export async function aiCall<T = unknown>(
 ): Promise<T> {
   const b = bridge();
   if (!b) {
-    throw new Error("云 AI bridge 未注入（不在插件 surface 上下文里）");
+    throw new Error(t("errors.aiBridgeMissing"));
   }
   return (b as unknown as AnyBridge).request<T>(method as RequestMethod, params);
 }

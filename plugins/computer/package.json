@@ -9,15 +9,19 @@
   "scripts": {
     "test": "bun test --pass-with-no-tests tests",
     "typecheck": "tsc --noEmit",
-    "build": "bun scripts/sync-release-notes.ts && reai-app build .",
-    "validate": "reai-app validate .",
-    "test:contract": "reai-app contract-test . --host-api 1.5",
-    "pack": "bun scripts/sync-release-notes.ts && reai-app pack . --out computer-0.1.1-dev.1.reaiapp",
-    "sync:notes": "bun scripts/sync-release-notes.ts"
+    "sync:notes": "bun scripts/sync-release-notes.ts",
+    "build": "bun scripts/sync-release-notes.ts && reai-app-i18n build .",
+    "validate": "reai-app-i18n validate .",
+    "test:contract": "reai-app contract-test . --host-api 1.25",
+    "pack": "bun scripts/sync-release-notes.ts && reai-app-i18n pack . --out computer-0.1.1-dev.1.reaiapp",
+    "check:submission": "reai-app-i18n submission check .",
+    "pack:submission": "bun scripts/sync-release-notes.ts && reai-app-i18n submission pack . --out computer-0.1.1-dev.1-submission.reaiapp"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^20.0.0",
     "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
     "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+    "@reai/app-i18n-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-i18n-cli.tgz",
     "@reai/app-sdk": "file:../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz",
     "@reai/app-test": "file:../../vendor/platform/4ed2325a750e/packs/app-test.tgz",
     "@types/bun": "^1.3.14",

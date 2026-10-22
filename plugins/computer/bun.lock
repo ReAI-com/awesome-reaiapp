@@ -5,8 +5,10 @@
     "": {
       "name": "reai-computer-app",
       "devDependencies": {
+        "@happy-dom/global-registrator": "^20.0.0",
         "@reai/app-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-cli.tgz",
         "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+        "@reai/app-i18n-cli": "file:../../vendor/platform/4ed2325a750e/packs/app-i18n-cli.tgz",
         "@reai/app-sdk": "file:../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz",
         "@reai/app-test": "file:../../vendor/platform/4ed2325a750e/packs/app-test.tgz",
         "@types/bun": "^1.3.14",
@@ -82,6 +84,8 @@
 
     "@reai/app-contract": ["@reai/app-contract@../../vendor/platform/4ed2325a750e/packs/app-contract.tgz", {}, "sha512-MeF0dCH4YSAb7zGU2kym9CQ+wHdTPdJLqvoEaxegM7Ek7GMpRjFuBzuPwS03J0wFbqTjM8wrsrx1P3RAje1nuA=="],
 
+    "@reai/app-i18n-cli": ["@reai/app-i18n-cli@../../vendor/platform/4ed2325a750e/packs/app-i18n-cli.tgz", { "dependencies": { "@reai/app-cli": "1.4.2-v106.2", "@reai/app-contract": "1.26.0-v106.2", "fflate": "0.8.3" }, "bin": { "reai-app-i18n": "./src/cli.ts" } }, "sha512-5kHZrB6sfzaVvYT24DUH8bLe76bygBPZYzNT4YninBEF4BoMTU17HAJHHMceF7Y/3WU9pnSv84Sfs2He2kf1LA=="],
+
     "@reai/app-sdk": ["@reai/app-sdk@../../vendor/platform/4ed2325a750e/packs/app-sdk.tgz", { "dependencies": { "@reai/app-contract": "1.26.0-v106.2" } }, "sha512-vrdHdEJisj2Kb/e94pkw079NxJHEPBBvosUak5erfn7XYFNCUEK7zO/x0m3V+w+ppVql1Pkg+uJ7MGmPRo6McQ=="],
 
     "@reai/app-test": ["@reai/app-test@../../vendor/platform/4ed2325a750e/packs/app-test.tgz", { "dependencies": { "@reai/app-contract": "1.26.0-v106.2", "@reai/app-sdk": "1.27.0-v106.2" } }, "sha512-uuyebeGbOfr+hY88P+hePbjxOK0ZKgd5Mh/Isf8aUJi2rO0EbaLreuHY2lojHkQrV1ppBILFRItENKXNzJfpug=="],
@@ -155,6 +159,8 @@
     "esbuild": ["esbuild@0.25.12", "https://registry.npmmirror.com/esbuild/-/esbuild-0.25.12.tgz", { "optionalDependencies": { "@esbuild/aix-ppc64": "0.25.12", "@esbuild/android-arm": "0.25.12", "@esbuild/android-arm64": "0.25.12", "@esbuild/android-x64": "0.25.12", "@esbuild/darwin-arm64": "0.25.12", "@esbuild/darwin-x64": "0.25.12", "@esbuild/freebsd-arm64": "0.25.12", "@esbuild/freebsd-x64": "0.25.12", "@esbuild/linux-arm": "0.25.12", "@esbuild/linux-arm64": "0.25.12", "@esbuild/linux-ia32": "0.25.12", "@esbuild/linux-loong64": "0.25.12", "@esbuild/linux-mips64el": "0.25.12", "@esbuild/linux-ppc64": "0.25.12", "@esbuild/linux-riscv64": "0.25.12", "@esbuild/linux-s390x": "0.25.12", "@esbuild/linux-x64": "0.25.12", "@esbuild/netbsd-arm64": "0.25.12", "@esbuild/netbsd-x64": "0.25.12", "@esbuild/openbsd-arm64": "0.25.12", "@esbuild/openbsd-x64": "0.25.12", "@esbuild/openharmony-arm64": "0.25.12", "@esbuild/sunos-x64": "0.25.12", "@esbuild/win32-arm64": "0.25.12", "@esbuild/win32-ia32": "0.25.12", "@esbuild/win32-x64": "0.25.12" }, "bin": { "esbuild": "bin/esbuild" } }, "sha512-bbPBYYrtZbkt6Os6FiTLCTFxvq4tt3JKall1vRwshA3fdVztsLAatFaZobhkBC8/BrPetoa0oksYoKXoG4ryJg=="],
 
     "fdir": ["fdir@6.5.0", "https://registry.npmmirror.com/fdir/-/fdir-6.5.0.tgz", { "peerDependencies": { "picomatch": "^3 || ^4" }, "optionalPeers": ["picomatch"] }, "sha512-tIbYtZbucOs0BRGqPJkshJUYdL+SDH7dVM8gjy+ERp3WAUjLEFJE+02kanyHtwjWOnwrKYBiwAmM0p4kLJAnXg=="],
+
+    "fflate": ["fflate@0.8.3", "https://registry.npmmirror.com/fflate/-/fflate-0.8.3.tgz", {}, "sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA=="],
 
     "fsevents": ["fsevents@2.3.3", "https://registry.npmmirror.com/fsevents/-/fsevents-2.3.3.tgz", { "os": "darwin" }, "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw=="],
 

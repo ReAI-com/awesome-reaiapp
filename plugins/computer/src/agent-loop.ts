@@ -14,6 +14,7 @@
  * 每步前检查中断、失败即停；中断不解除引擎停止位。
  */
 import { computerCall, aiCall, type Screenshot } from "./computer-bridge";
+import type { UiMessage } from "./computer-i18n";
 
 /** 模型档位（ai.models.list 的 id），不是真实模型名。 */
 export interface VlmConfig {
@@ -27,6 +28,16 @@ export const DEFAULT_VLM_CONFIG: VlmConfig = {
 
 /** 单步动作上限。微信发消息级别的小任务 20 步足够；失控循环靠它兜底。 */
 export const MAX_STEPS = 20;
+
+/**
+ * 宿主 ai.text.generate 单次请求的消息条数上限（宿主 cloud MAX_MESSAGES）。
+ * 历史最多保留到「上限 - 1」，给本轮带截图的 user 消息留位置。
+ */
+export const MAX_REQUEST_MESSAGES = 32;
+
+/** 宿主 computer.mouse.scroll 按 i32 读取 dx/dy，越界会被当成 0。 */
+const I32_MIN = -2147483648;
+const I32_MAX = 2147483647;
 
 /** 每步执行后等 UI 响应的间隔。 */
 const STEP_COOLDOWN_MS = 800;
@@ -44,7 +55,8 @@ export interface StepReport {
   thought?: string;
   action: AgentAction;
   ok: boolean;
-  error?: string;
+  /** 失败原因：key 由界面按当前语言渲染，raw 为宿主或模型原文。 */
+  error?: UiMessage;
 }
 
 export interface TaskCallbacks {
@@ -142,8 +154,9 @@ function toAgentAction(raw: Record<string, unknown>): AgentAction | null {
         ? { action: "press", key: raw.key.trim() }
         : null;
     case "scroll": {
-      const dx = raw.dx === undefined ? 0 : toCoordinate(raw.dx);
-      const dy = raw.dy === undefined ? 0 : toCoordinate(raw.dy);
+      // 宿主按整数（i32）读取：这里统一取整并校验范围，执行、展示与回填历史都用归一化后的值。
+      const dx = raw.dx === undefined ? 0 : toScrollDelta(raw.dx);
+      const dy = raw.dy === undefined ? 0 : toScrollDelta(raw.dy);
       if (dx === null || dy === null || (dx === 0 && dy === 0)) return null;
       return { action: "scroll", dx, dy };
     }
@@ -153,6 +166,14 @@ function toAgentAction(raw: Record<string, unknown>): AgentAction | null {
     default:
       return null;
   }
+}
+
+function toScrollDelta(value: unknown): number | null {
+  const parsed = toCoordinate(value);
+  if (parsed === null) return null;
+  const rounded = Math.round(parsed);
+  if (rounded < I32_MIN || rounded > I32_MAX) return null;
+  return rounded === 0 ? 0 : rounded; // 归一化 -0
 }
 
 function toCoordinate(value: unknown): number | null {
@@ -198,8 +219,10 @@ export function describeError(thrown: unknown): string {
     const candidate = thrown as Record<string, unknown>;
     for (const key of ["userMessage", "message", "detail"]) {
       if (typeof candidate[key] === "string" && candidate[key]) {
+        const text = String(candidate[key]);
         const code = typeof candidate.code === "string" ? candidate.code : "";
-        return code ? `${candidate[key]}（${code}）` : String(candidate[key]);
+        // 宿主错误串本身形如 "COMPUTER_X: 原因"，已带 code 时不再重复拼接。
+        return code && !text.startsWith(code) ? `${text}（${code}）` : text;
       }
     }
     try {
@@ -235,13 +258,59 @@ async function askVlm(
     maxOutputTokens: 1024,
   });
   if (typeof payload.text === "string" && payload.text) return payload.text;
-  throw new Error("云端视觉模型回复里没有文本内容");
+  throw new EmptyReplyError();
 }
+
+class EmptyReplyError extends Error {
+  constructor() {
+    super("empty model reply");
+    this.name = "EmptyReplyError";
+  }
+}
+
+const ABORTED: UiMessage = { key: "result.aborted" };
 
 export interface TaskResult {
   status: "done" | "fail" | "aborted" | "error";
-  detail?: string;
+  /** 结果说明：key 由界面按当前语言渲染；raw 为模型给出的 detail 或宿主原始错误。 */
+  message: UiMessage;
   steps: number;
+}
+
+/** 宿主错误码（对象的 code 字段，或宿主错误串的 "COMPUTER_X:" 前缀）。 */
+const ERROR_CODE = /^[A-Z][A-Z0-9_]{2,63}$/;
+
+export function errorCode(thrown: unknown): string | undefined {
+  if (typeof thrown === "object" && thrown !== null && Object.hasOwn(thrown, "code")) {
+    const code = (thrown as { code?: unknown }).code;
+    if (typeof code === "string" && ERROR_CODE.test(code)) return code;
+  }
+  return /^([A-Z][A-Z0-9_]{2,63}):/.exec(describeError(thrown))?.[1];
+}
+
+/** 已知宿主错误码 → 本地化原因（Map 查表，不会命中原型链上的属性）。 */
+const COMPUTER_CAUSES = new Map<string, string>([
+  ["COMPUTER_PERMISSION_MISSING", "cause.permissionMissing"],
+  ["COMPUTER_STOPPED", "cause.stopped"],
+  ["COMPUTER_RATE_LIMITED", "cause.rateLimited"],
+  ["COMPUTER_TARGET_REJECTED", "cause.targetRejected"],
+  ["COMPUTER_PLUGIN_DISABLED", "cause.engineRejected"],
+]);
+
+/**
+ * 失败原因：按宿主已知错误码给出本地化原因与恢复方法，原始错误放 raw（仅开发者模式展示）。
+ * source 区分电脑引擎与云模型，未知错误码时给出对应的通用恢复方法。
+ */
+export function causeMessage(thrown: unknown, source: "computer" | "model"): UiMessage {
+  const code = errorCode(thrown);
+  const key = (code && COMPUTER_CAUSES.get(code)) || (source === "model" ? "cause.model" : "cause.unknown");
+  return { key, raw: describeError(thrown) };
+}
+
+/** 宿主或模型调用失败时的结果消息。 */
+function errorMessage(error: unknown, source: "computer" | "model"): UiMessage {
+  if (error instanceof EmptyReplyError) return { key: "result.emptyReply" };
+  return causeMessage(error, source);
 }
 
 /** 执行一个自然语言任务，返回终态。 */
@@ -267,18 +336,18 @@ export async function runComputerTask(
 
   for (let step = 1; step <= MAX_STEPS; step += 1) {
     if (aborted()) {
-      return { status: "aborted", steps: step - 1 };
+      return { status: "aborted", message: ABORTED, steps: step - 1 };
     }
 
     let shot: Screenshot;
     try {
       shot = await deps.computer<Screenshot>("computer.screenshot", { maxEdge: 1024 });
     } catch (error) {
-      if (aborted()) return { status: "aborted", steps: step - 1 };
-      return { status: "error", detail: describeError(error), steps: step - 1 };
+      if (aborted()) return { status: "aborted", message: ABORTED, steps: step - 1 };
+      return { status: "error", message: errorMessage(error, "computer"), steps: step - 1 };
     }
     if (aborted()) {
-      return { status: "aborted", steps: step - 1 };
+      return { status: "aborted", message: ABORTED, steps: step - 1 };
     }
 
     // Host 云通道的图片 part 合同：{type:"image", mime, dataBase64}
@@ -287,58 +356,55 @@ export async function runComputerTask(
       { type: "text", text: `任务：${task}` },
       { type: "image", mime: shot.mime, dataBase64: shot.dataBase64 },
     ];
-    const askMessages: ChatMessage[] = [
-      history[0],
-      ...history.slice(1),
-      { role: "user", content: userContent },
-    ];
+    const askMessages: ChatMessage[] = [...history, { role: "user", content: userContent }];
 
     let reply: string;
     try {
       reply = await askVlm(deps.ai, config, askMessages);
     } catch (error) {
-      if (aborted()) return { status: "aborted", steps: step - 1 };
-      return { status: "error", detail: describeError(error), steps: step - 1 };
+      if (aborted()) return { status: "aborted", message: ABORTED, steps: step - 1 };
+      return { status: "error", message: errorMessage(error, "model"), steps: step - 1 };
     }
     // 模型思考期间用户可能已中止：不再解析、不再执行这一步。
     if (aborted()) {
-      return { status: "aborted", steps: step - 1 };
+      return { status: "aborted", message: ABORTED, steps: step - 1 };
     }
 
     const parsed = parseActionReply(reply);
     if (!parsed) {
-      callbacks.onStep?.({
-        step,
-        action: { action: "fail", detail: "模型回复不是合法的动作 JSON" },
-        ok: false,
-        error: reply.slice(0, 200),
-      });
-      return { status: "error", detail: "模型回复不是合法的动作 JSON", steps: step };
+      const invalid: UiMessage = { key: "result.invalidReply", raw: reply.slice(0, 200) };
+      callbacks.onStep?.({ step, action: { action: "fail" }, ok: false, error: invalid });
+      return { status: "error", message: invalid, steps: step };
     }
     const { action } = parsed;
 
     if (action.action === "done" || action.action === "fail") {
       callbacks.onStep?.({ step, thought: parsed.thought, action, ok: true });
+      const detail = action.detail ?? parsed.thought;
       return {
         status: action.action === "done" ? "done" : "fail",
-        detail: action.detail ?? parsed.thought,
+        message: {
+          key: action.action === "done" ? "result.done" : "result.fail",
+          params: { steps: step },
+          ...(detail ? { raw: detail } : {}),
+        },
         steps: step,
       };
     }
 
     let ok = true;
-    let error: string | undefined;
+    let error: UiMessage | undefined;
     try {
       await executeAction(deps.computer, shot, action);
     } catch (cause) {
       ok = false;
-      error = describeError(cause);
+      error = causeMessage(cause, "computer");
     }
     callbacks.onStep?.({ step, thought: parsed.thought, action, ok, error });
     if (!ok) {
       // 紧急停止会让引擎拒绝这一步：此时如实报告为中止。
-      if (aborted()) return { status: "aborted", steps: step };
-      return { status: "error", detail: error, steps: step };
+      if (aborted()) return { status: "aborted", message: ABORTED, steps: step };
+      return { status: "error", message: error!, steps: step };
     }
 
     // 把动作回填进历史（不带图片，控制上下文体积），下一轮附新截图。
@@ -347,15 +413,16 @@ export async function runComputerTask(
       role: "user",
       content: [{ type: "text", text: "已执行。这是新的截图，请输出下一个动作 JSON。" }],
     });
-    if (history.length > 32) {
-      // 保留 system + 最近动作对，防长任务上下文膨胀。
-      history.splice(1, history.length - 32);
+    // 历史最多「上限 - 1」条，给下一轮带截图的 user 消息留位置；始终保留 system 与首条
+    // 任务说明，按「动作 + 回执」成对裁掉最早的历史，不留孤立的 assistant。
+    while (history.length > MAX_REQUEST_MESSAGES - 1) {
+      history.splice(2, 2);
     }
 
     if (step < MAX_STEPS) await deps.sleep(STEP_COOLDOWN_MS);
   }
-  if (aborted()) return { status: "aborted", steps: MAX_STEPS };
-  return { status: "fail", detail: `达到 ${MAX_STEPS} 步上限仍未完成任务`, steps: MAX_STEPS };
+  if (aborted()) return { status: "aborted", message: ABORTED, steps: MAX_STEPS };
+  return { status: "fail", message: { key: "result.stepLimit", params: { max: MAX_STEPS } }, steps: MAX_STEPS };
 }
 
 async function executeAction(
@@ -387,6 +454,6 @@ async function executeAction(
       });
       return;
     default:
-      throw new Error(`未知的执行动作: ${(action as { action: string }).action}`);
+      throw new Error(`unknown action: ${(action as { action: string }).action}`);
   }
 }

@@ -19,7 +19,7 @@ function fakeDeps(replies: string[], options: { failOn?: string } = {}) {
   const deps: TaskDeps = {
     computer: (async (method: string, params: unknown) => {
       calls.push({ method, params });
-      if (method === options.failOn) throw { code: "STOPPED", userMessage: "已紧急停止" };
+      if (method === options.failOn) throw { code: "COMPUTER_STOPPED", message: "COMPUTER_STOPPED: 已紧急停止" };
       return method === "computer.screenshot" ? SHOT : {};
     }) as TaskDeps["computer"],
     ai: (async (method: string, params: unknown) => {
@@ -53,7 +53,7 @@ describe("runComputerTask", () => {
   test("开始前已中止：不截图、不调模型", async () => {
     const { deps, calls } = fakeDeps(['{"action":"done"}']);
     const result = await runComputerTask(CONFIG, "测试", { shouldAbort: () => true }, deps);
-    expect(result).toEqual({ status: "aborted", steps: 0 });
+    expect(result).toEqual({ status: "aborted", message: { key: "result.aborted" }, steps: 0 });
     expect(calls).toHaveLength(0);
   });
 
@@ -75,7 +75,7 @@ describe("runComputerTask", () => {
       '{"action":"done","detail":"好了"}',
     ]);
     const result = await runComputerTask(CONFIG, "测试", {}, deps);
-    expect(result).toEqual({ status: "done", detail: "好了", steps: 2 });
+    expect(result).toEqual({ status: "done", message: { key: "result.done", params: { steps: 2 }, raw: "好了" }, steps: 2 });
     const click = calls.find((call) => call.method === "computer.mouse.click");
     expect(click?.params).toEqual({ x: 1024, y: 640, button: "left", double: false });
   });
@@ -92,7 +92,7 @@ describe("runComputerTask", () => {
       deps,
     );
     expect(result.status).toBe("error");
-    expect(result.detail).toBe("已紧急停止（STOPPED）");
+    expect(result.message).toEqual({ key: "cause.stopped", raw: "COMPUTER_STOPPED: 已紧急停止" });
     expect(steps).toEqual([false]);
     expect(methods().filter((m) => m === "computer.key.press")).toHaveLength(1);
   });
@@ -136,7 +136,7 @@ describe("runComputerTask", () => {
       return realComputer(method as never, params);
     }) as TaskDeps["computer"];
     const result = await runComputerTask(CONFIG, "测试", { shouldAbort: () => aborted }, deps);
-    expect(result).toEqual({ status: "aborted", steps: 0 });
+    expect(result).toEqual({ status: "aborted", message: { key: "result.aborted" }, steps: 0 });
     expect(methods()).not.toContain("ai.text.generate");
   });
 
@@ -178,7 +178,7 @@ describe("runComputerTask", () => {
       { shouldAbort: () => scrolls() >= MAX_STEPS }, // 第 20 步动作执行时用户中止
       deps,
     );
-    expect(result).toEqual({ status: "aborted", steps: MAX_STEPS });
+    expect(result).toEqual({ status: "aborted", message: { key: "result.aborted" }, steps: MAX_STEPS });
     expect(sleeps).toBe(MAX_STEPS - 1);
   });
 });
