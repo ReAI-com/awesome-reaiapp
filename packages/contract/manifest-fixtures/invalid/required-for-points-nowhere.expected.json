@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_REFERENCE_INVALID"
-  ],
-  "note": "requiredFor 必须指向自己声明过的 contribution"
-}

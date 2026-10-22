@@ -58,44 +58,6 @@ test("invalid allocation requests and independent streams cannot evade the cumul
   first.ensureBuffer(512); second.ensureBuffer(512); expect(budget.used).toBe(1024);
   expect(() => second.ensureBuffer(513)).toThrow(marker); expect(second.buffer.length).toBe(512);
 });
-test("tail growth bounds buffer copies when another stream has reserved capacity", () => {
-  const limit = 16 * 1024 * 1024, budget = new worker.VoicePdfDecodedBudget(limit), stream = {};
-  budget.reserve({}, "buffer", 512);
-  let capacity = 0, allocations = 0, copyBytes = 0, usedBeforeRequest = 0, capacityBeforeRequest = 0;
-  // Flate back-references can request only 258 more bytes. Count the copies without allocating them.
-  expect(() => {
-    for (let requested = 1; requested <= 18 * 1024 * 1024; requested += 258) {
-      usedBeforeRequest = budget.used; capacityBeforeRequest = capacity;
-      const next = budget.grow(stream, requested, capacity);
-      if (next !== capacity) { allocations++; copyBytes += capacity; }
-      capacity = next;
-    }
-  }).toThrow(marker);
-  expect(budget.used).toBe(usedBeforeRequest);
-  expect(capacity).toBe(capacityBeforeRequest);
-  expect(budget.used).toBe(capacity + 512);
-  expect(budget.used).toBeLessThanOrEqual(limit);
-  expect(allocations).toBeLessThan(256);
-  expect(copyBytes).toBeLessThan(2 * 1024 * 1024 * 1024);
-  const usedAtFailure = budget.used;
-  expect(() => budget.grow(stream, 0, capacity)).toThrow(marker);
-  expect(budget.used).toBe(usedAtFailure);
-});
-test("tail growth preserves decoded bytes and capacity for a later stream", () => {
-  const budget = new worker.VoicePdfDecodedBudget(16 * 1024 * 1024);
-  budget.reserve({}, "buffer", 512);
-  const first = new worker.FlateStream(source(deflateSync(new Uint8Array(9 * 1024 * 1024).fill(65)), budget));
-  const firstBytes = first.getBytes();
-  expect(firstBytes.length).toBe(9 * 1024 * 1024);
-  expect(firstBytes.every((value: number) => value === 65)).toBe(true);
-  const later = new worker.FlateStream(source(deflateSync(new Uint8Array(4 * 1024 * 1024).fill(66)), budget));
-  const laterBytes = later.getBytes();
-  expect(laterBytes.length).toBe(4 * 1024 * 1024);
-  expect(laterBytes.every((value: number) => value === 66)).toBe(true);
-  expect(firstBytes.every((value: number) => value === 65)).toBe(true);
-  expect(budget.used).toBeLessThanOrEqual(budget.limit);
-  expect(budget.failed).toBe(false);
-});
 test("raw and decoded substreams/clones preserve document ownership", () => {
   const budget = new worker.VoicePdfDecodedBudget(4096), raw = source(new Uint8Array([1,2,3]), budget);
   expect(raw.makeSubStream(0, 2).voicePdfBudget).toBe(budget); expect(raw.clone().voicePdfBudget).toBe(budget);

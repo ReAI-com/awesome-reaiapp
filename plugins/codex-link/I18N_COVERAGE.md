@@ -22,7 +22,7 @@
 
 送审候选（0.5.12 起）声明 `metadata.i18n@1`，Host 范围为 `>=1.19.0 <2.0.0`。不可变旧包不受影响。
 
-当前 Manifest 使用 `metadata.i18n@1`，不声明 `storeListing.*` 等 v2 目标。商店文案由提交表单填写。资源中的 `metadataV2.*` 键暂留，待兼容的合同支持后再引用。`scripts/plugin-submission.ts` 在提交打包前检查目标枚举。
+2026-09-26 的 0.5.11 送审被开放平台拒绝：平台 Manifest 合同基线（1.1@c3475cb）的 i18n `messages[].target` 枚举不含 `storeListing.*` 等 v2 目标（原文「/i18n/messages/9/target · enum · 1.1@c3475cb」，第 9 条即 `storeListing.category`）。与 Voice（b220b130）、Browser（e142e1ab）同姿势：能力降回 `metadata.i18n@1`，移除全部 `storeListing.*` 引用；商店展示文案改由提交表单填写。语言包里的 `metadataV2.*` 键暂留（未被引用，不影响校验），待平台合同升到 v2 目标后再挂回。`scripts/plugin-submission.ts` 已加同一枚举的本地预检，打包前就会拒绝 v2 目标。
 
 | target | ID / index | 资源 |
 | --- | --- | --- |

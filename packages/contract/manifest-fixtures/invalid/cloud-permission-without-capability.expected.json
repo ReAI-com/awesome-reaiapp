@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_REFERENCE_INVALID"
-  ],
-  "note": "声明 cloud.model.invoke@1 用户权限却漏了同名平台能力"
-}

@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "HOST_CAPABILITY_NOT_AVAILABLE"
-  ],
-  "note": "拼错的能力名不能当成未知就放过"
-}

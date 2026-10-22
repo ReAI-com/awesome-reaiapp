@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "MANIFEST_REFERENCE_INVALID"
-  ],
-  "note": "contributes.tabItems.componentId 必须指向已声明的 runtime.components——指向不存在的 component 意味着条目推送永远到不了插件"
-}

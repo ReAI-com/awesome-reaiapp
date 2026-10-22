@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "HOST_API_INCOMPATIBLE"
-  ],
-  "note": "range 不覆盖当前 Host 主版本"
-}

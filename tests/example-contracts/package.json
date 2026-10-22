@@ -1,0 +1,17 @@
+{
+  "name": "reai-example-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "样例插件的跨边界合同（插件半），自主项目 tests/plugin-contracts 迁入：只读 examples/ 源码，Host 承诺只经 vendor 平台包 @reai/app-contract 取得。",
+  "scripts": {
+    "test": "bun test ."
+  },
+  "devDependencies": {
+    "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz",
+    "@types/bun": "^1.3.14"
+  },
+  "overrides": {
+    "@reai/app-contract": "file:../../vendor/platform/4ed2325a750e/packs/app-contract.tgz"
+  }
+}

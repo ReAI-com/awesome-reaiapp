@@ -14,7 +14,7 @@
 | Skill | 独立 ZIP、可复制一行连接、Python 客户端/runner、原理和接口参考 | Python 标准库；未知写结果保留日志，不盲目换 ID |
 | 界面 | 四页签、四列全局、五列子任务，错误重试、角色连接、双语/主题 | 保留既有视觉系统；管理员选择器只读 |
 
-Host 公共合同见 [接口参考](../../docs/plugin-api-reference-v1.md)，实现计划见 当前计划（原 Board 仓库内 `plans/2026-09-13-code-worker-completion.md`；未迁入）。反馈与编排两份候选必须共同本地侧载，不能使用旧锁定反馈包证明 planned 同步。无跨项目写入、云迁移或自批准 Catalog 操作。
+Host 公共合同见 [接口参考](../../platform-docs/plugin-api-reference-v1.md)，实现计划见 当前计划（Board 仓库内部材料，未公开）。反馈与编排两份候选必须共同本地侧载，不能使用旧锁定反馈包证明 planned 同步。无跨项目写入、云迁移或自批准 Catalog 操作。
 
 独立 验收 HTML（原 Board 仓库内 `docs/testing/code-worker-acceptance.html`；未迁入） 的人工结果继续留空，由用户逐项勾选或粘贴文字/截图；开发证据不代勾。
 
@@ -38,7 +38,7 @@ Host 公共合同见 [接口参考](../../docs/plugin-api-reference-v1.md)，实
 
 ### 统一候选与人工反馈
 
-统一开发顺序见 完整候选计划（原 Board 仓库内 `plans/2026-09-13-code-worker-completion.md`；未迁入）。独立 验收 HTML（原 Board 仓库内 `docs/testing/code-worker-acceptance.html`；未迁入） 包含 25 项准备条件、操作步骤和通过标准，支持勾选、文字/截图反馈、按版本复测及完整导出。该文档自身的验证不代表业务功能完成，人工通过项初始为空。
+统一开发顺序见 完整候选计划（Board 仓库内部材料，未公开）。独立 验收 HTML（原 Board 仓库内 `docs/testing/code-worker-acceptance.html`；未迁入） 包含 25 项准备条件、操作步骤和通过标准，支持勾选、文字/截图反馈、按版本复测及完整导出。该文档自身的验证不代表业务功能完成，人工通过项初始为空。
 
 ### 0.2.0 开发验证与合并前记录
 

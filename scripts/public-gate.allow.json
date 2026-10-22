@@ -1,0 +1,8 @@
+[
+  {
+    "path": "plugins/voice/packages/chat-ui/tests/markdown.test.ts",
+    "rule": "real-email",
+    "sha256": "8aded86fb3bf971a9ec250a2972603df004147da2c523411b6852926c58517cd",
+    "reason": "Markdown 自动链接测试里的占位邮箱；Voice 2.14.8-rc.1 正在源码审查，不能改源码，下一版改用保留示例域后删除本项"
+  }
+]

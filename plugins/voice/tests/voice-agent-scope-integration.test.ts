@@ -85,7 +85,7 @@ async function mount(options: {
         if (options.choices) await store.set("command-conversation-options-v1", options.choices);
         await store.set(COMMAND_HISTORY_KEY, options.history ?? [SEED]);
         if (options.pending) await store.set("agent-pending-admissions-v2", options.pending);
-        ctx.folderPick.pick = async () => { picks++; return options.pick ? options.pick() : "/workspace/project"; };
+        ctx.folderPick.pick = async () => { picks++; return options.pick ? options.pick() : "/Users/example/project"; };
         if (options.failSave) {
           const privateStore = ctx.storage.private.bind(ctx.storage);
           ctx.storage.private = name => {
@@ -353,11 +353,11 @@ for (const locale of ["zh", "en"] as const) {
 }
 
 test("存量对话此前选过的 direct 工作目录仍生效：撤的只是 UI 入口，不清洗既有选择", async () => {
-  const h = await mount({ choices: { "pi-old": { backend: "dsh", workspace: { kind: "direct", path: "/workspace/project" } } } });
+  const h = await mount({ choices: { "pi-old": { backend: "dsh", workspace: { kind: "direct", path: "/Users/example/project" } } } });
   try {
     h.send("写入一个测试文件");
     await until(() => h.starts.length === 1);
-    expect(h.configs[0]).toMatchObject({ runtime: "dsh", workspace: { kind: "direct", path: "/workspace/project" }, mode: "yolo" });
+    expect(h.configs[0]).toMatchObject({ runtime: "dsh", workspace: { kind: "direct", path: "/Users/example/project" }, mode: "yolo" });
     expect(h.picks()).toBe(0);
   } finally { await h.close(); }
 });

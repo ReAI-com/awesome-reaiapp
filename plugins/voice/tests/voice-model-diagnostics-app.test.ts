@@ -27,7 +27,7 @@ async function until(check: () => boolean, message: string, timeoutMs = 2500): P
 }
 
 const CUSTOM_ID = "alice-private-asr";
-const CUSTOM_NAME = "/workspace/Models/私人模型.onnx";
+const CUSTOM_NAME = "/Users/alice/Models/私人模型.onnx";
 const PRIVATE = [CUSTOM_ID, CUSTOM_NAME, "alice", "/Users", "私人模型", ".onnx"];
 const CUSTOM_MODEL = {
   id: CUSTOM_ID, name: CUSTOM_NAME, description: "", sizeBytes: 1000, state: "failed",

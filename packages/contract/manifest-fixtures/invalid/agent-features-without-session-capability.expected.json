@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "HOST_CAPABILITY_NOT_AVAILABLE"
-  ],
-  "note": "声明 agentFeatures 必须同时声明 agent.session@2——配置页只对 v2 会话生效，缺能力等于给用户一个必然不生效的入口"
-}

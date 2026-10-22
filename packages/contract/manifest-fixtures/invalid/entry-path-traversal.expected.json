@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "PACKAGE_PATH_UNSAFE"
-  ],
-  "note": "entry 不能带 .. 路径段"
-}

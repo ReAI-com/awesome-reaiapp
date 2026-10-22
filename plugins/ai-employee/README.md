@@ -8,7 +8,7 @@
 
 ## 跑通本地闭环
 
-先在仓库 `packages/` 目录安装冻结依赖，再在本目录执行：
+平台包来自仓库根 `vendor/platform/` 中按摘要锁定的 tarball。在本目录执行：
 
 ```sh
 bun install --frozen-lockfile --ignore-scripts
@@ -25,12 +25,10 @@ bun run dev
 
 ### 在另一台电脑打开
 
-需要安装 Bun，并检出包含本插件的 PR 分支。保留完整仓库，插件依赖仓库内的共享包，不能只复制本目录。从仓库根目录执行：
+需要安装 Bun，并检出包含本插件的 PR 分支。保留完整仓库，插件依赖仓库根 `vendor/platform/` 中的平台包，不能只复制本目录。从仓库根目录执行：
 
 ```sh
-cd packages
-bun install --frozen-lockfile --ignore-scripts
-cd ../plugins/ai-employee
+cd plugins/ai-employee
 bun install --frozen-lockfile --ignore-scripts
 bun run dev
 ```

@@ -51,6 +51,7 @@ interface Harness {
   /** 输入坞已经消费或明确丢弃的语音结果 session。 */
   acknowledgedResults: string[];
   browserInstallRetries: VoiceCommandHistoryItem[];
+  openedSourceLinks: string[];
   /** 控制「发送」什么时候算发起成功（命令工作流起跑）。 */
   releaseSend: (taskId?: string) => void;
   rejectSend: (cause: unknown) => void;
@@ -64,7 +65,7 @@ interface Harness {
   rejectDictation(cause: unknown): void;
 }
 
-function mount(overrides: Partial<VoiceViewState> = {}): Harness {
+function mount(overrides: Partial<VoiceViewState> = {}, openSource?: (url: string) => Promise<void>): Harness {
   const root = document.createElement("div");
   document.body.append(root);
   const harness: Harness = {
@@ -78,6 +79,7 @@ function mount(overrides: Partial<VoiceViewState> = {}): Harness {
     dictateCancels: () => 0,
     acknowledgedResults: [],
     browserInstallRetries: [],
+    openedSourceLinks: [],
     releaseSend: () => undefined,
     rejectSend: () => undefined,
     resolveDictation: () => undefined,
@@ -145,6 +147,7 @@ function mount(overrides: Partial<VoiceViewState> = {}): Harness {
     onInstallBrowserWebAccessAndRetry: async (item: VoiceCommandHistoryItem) => {
       harness.browserInstallRetries.push(item);
     },
+    onOpenSourceLink: async (url: string) => { if (openSource) await openSource(url); harness.openedSourceLinks.push(url); },
     onLoadReplayAudio: async () => new Blob([new Uint8Array([1])], { type: "audio/wav" }),
     onReplayRetentionChanged: async () => undefined,
     onClearReplayCache: async () => undefined,
@@ -1041,7 +1044,7 @@ describe("负责人 rc.2.7 反馈：工具过程合成一条、回答按 Markdow
   });
   const reply = "**天气：**多云转晴\n\n- **气温：**18~26℃\n- 风力 3级\n\n[来源](https://example.com/w) <script>alert(1)</script>";
 
-  test("同一回合多个不同工具（真机截图那两张卡）只渲染一条折叠进度；点开出全部明细，再点收起；回合结束后保持折叠", () => {
+  test("同一回合多个不同工具（真机截图那两张卡）只渲染一条折叠进度；点开出全部明细，再点收起；回合结束后保持折叠", async () => {
     setVoiceLocale("zh");
     const item = commandItem({
       reply,
@@ -1069,14 +1072,24 @@ describe("负责人 rc.2.7 反馈：工具过程合成一条、回答按 Markdow
     harness.root.querySelector<HTMLButtonElement>(".chat-status-toggle")!.click();
     expect(harness.root.querySelector(".chat-status-calls")?.hasAttribute("hidden")).toBeTrue();
 
-    // 问题 4：回答按 Markdown 渲染，不露原始符号；脚本不执行、链接不可导航但来源可读。
+    // 回答按 Markdown 渲染；脚本不执行，来源点击经 Host 打开，插件不导航。
     const bubble = harness.root.querySelector(".from-ai .chat-markdown")!;
     expect(Array.from(bubble.querySelectorAll("strong"), (node) => node.textContent)).toEqual(["天气：", "气温："]);
     expect(bubble.querySelectorAll("ul li")).toHaveLength(2);
     expect(bubble.textContent).not.toContain("**");
     expect(bubble.textContent).not.toMatch(/^- /m);
-    expect(bubble.querySelector("script, a")).toBeNull();
+    expect(bubble.querySelector("script") === null).toBe(true);
     expect(bubble.querySelector(".chat-markdown-source")?.textContent).toBe("来源 (https://example.com/w)");
+    expect(harness.openedSourceLinks).toEqual([]);
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    bubble.querySelector("a")!.dispatchEvent(click);
+    bubble.querySelector("a")!.click();
+    await flush();
+    expect(click.defaultPrevented).toBe(true);
+    expect(harness.openedSourceLinks).toEqual(["https://example.com/w"]);
+    bubble.querySelector("a")!.click();
+    await flush();
+    expect(harness.openedSourceLinks).toEqual(["https://example.com/w"]);
     harness.dispose();
   });
 
@@ -1100,6 +1113,26 @@ describe("负责人 rc.2.7 反馈：工具过程合成一条、回答按 Markdow
     const elapsed = head.querySelector<HTMLElement>(".chat-status-meta [data-voice-elapsed-since]")!;
     expect(elapsed.textContent).toMatch(/^已用 \d+ 秒$/);
     expect(head.querySelector(".chat-globe")?.getAttribute("data-spinning")).toBe("true");
+    harness.dispose();
+  });
+
+  test("source failure stays on the detail page and a successful retry clears it", async () => {
+    setVoiceLocale("zh");
+    let unavailable = true;
+    const item = commandItem({ reply: "[来源](https://example.com/source)" });
+    const harness = mount({ commandHistory: [item] }, async () => {
+      if (unavailable) throw { code: "EXTERNAL_LINK_UNAVAILABLE", userMessage: "当前 App 不支持打开来源链接，请更新 App，或复制网址到浏览器打开" };
+    });
+    openChat(harness);
+    harness.root.querySelector<HTMLAnchorElement>(".chat-markdown a")!.click();
+    await flush();
+    expect(harness.root.textContent).toContain("请更新 App");
+    expect(harness.root.textContent).toContain("https://example.com/source");
+    unavailable = false;
+    harness.root.querySelector<HTMLAnchorElement>(".chat-markdown a")!.click();
+    await flush();
+    expect(harness.openedSourceLinks).toEqual(["https://example.com/source"]);
+    expect(harness.root.textContent).not.toContain("请更新 App");
     harness.dispose();
   });
 

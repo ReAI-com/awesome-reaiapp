@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "APP_PERMISSION_UNSUPPORTED"
-  ],
-  "note": "首版未开放的插件权限必须在安装前明确拒绝"
-}

@@ -981,7 +981,9 @@
         "VOICE_ATTACHMENT_MODEL_UNCONFIRMED": "尚未确认当前 Agent 模型的附件支持能力。请在设置中启用命令附件并检查当前模型。"
       },
       "removeNamed": "移除 {name}"
-    }
+    },
+    "openSourceFailed": "无法打开来源链接。请复制网址到浏览器重试。",
+    "openSourceUnavailable": "当前 App 不支持打开来源链接，请更新 App，或复制网址到浏览器打开。"
   },
   "metadata": {
     "name": "语音输入法",

@@ -1,0 +1,158 @@
+{
+  "manifestVersion": "1.1",
+  "appId": "com.example.project-data",
+  "version": "1.0.0",
+  "publisherId": "example",
+  "name": "项目数据示例",
+  "description": "以本插件的 OAuth 连接读写既有 Project 的业务记录",
+  "icon": "assets/icon.svg",
+  "targets": [
+    {
+      "platform": "macos",
+      "architectures": [
+        "aarch64"
+      ]
+    }
+  ],
+  "hostApi": {
+    "range": ">=1.25.0 <2.0.0"
+  },
+  "requires": {
+    "hostCapabilities": [
+      "surface.main@1",
+      "sidebar.item@1",
+      "metadata.i18n@2"
+    ],
+    "hardwareServices": [],
+    "appIntents": []
+  },
+  "runtime": {
+    "components": [
+      {
+        "id": "ui",
+        "kind": "web-surface",
+        "protocol": "web-surface@1",
+        "required": true,
+        "headless": false,
+        "activation": "on-demand",
+        "entry": "dist/app.js",
+        "dependsOn": [],
+        "lifecycle": {
+          "activate": "default.activate",
+          "deactivate": "default.deactivate"
+        }
+      }
+    ]
+  },
+  "permissions": [
+    {
+      "id": "http.fetch@1",
+      "purpose": "读取与保存你主动选择的 Project 业务记录，并软删除或恢复记录",
+      "required": true
+    }
+  ],
+  "requirementsVersion": "1.1",
+  "requirements": [],
+  "network": {
+    "policyVersion": 1,
+    "endpoints": [
+      {
+        "id": "project-data",
+        "componentId": "ui",
+        "origins": [
+          "https://block2-api.wainao.chat"
+        ],
+        "pathPrefixes": [
+          "/projects/"
+        ],
+        "methods": [
+          "GET",
+          "POST",
+          "PATCH",
+          "DELETE"
+        ],
+        "owner": "reai",
+        "purpose": [
+          "sync"
+        ],
+        "dataCategories": [
+          "user_prompt",
+          "account_identifier"
+        ],
+        "retention": {
+          "mode": "provider_policy",
+          "policyUrl": "https://docs.wainao.chat/guide/release.html",
+          "maxDays": 3650
+        },
+        "required": true,
+        "providerMode": "host_brokered",
+        "auth": {
+          "mode": "oauth_app"
+        }
+      }
+    ]
+  },
+  "billing": {
+    "mode": "none"
+  },
+  "data": {
+    "privateStores": [],
+    "imports": [],
+    "exports": []
+  },
+  "dataCompatibility": {
+    "rollbackFloor": "1.0.0"
+  },
+  "contributes": {
+    "surfaces": [
+      {
+        "id": "main",
+        "componentId": "ui",
+        "location": "app.main",
+        "title": "项目数据示例"
+      }
+    ],
+    "sidebarItems": [
+      {
+        "id": "project-data",
+        "label": "项目数据示例",
+        "icon": "assets/icon.svg",
+        "opens": "surface:main"
+      }
+    ],
+    "commands": [],
+    "intents": []
+  },
+  "oauthAppId": "PROJECT_DATA_EXAMPLE_CLIENT_ID",
+  "i18n": {
+    "locales": [
+      "zh",
+      "en"
+    ],
+    "messages": [
+      {
+        "target": "name",
+        "key": "metadata.name"
+      },
+      {
+        "target": "description",
+        "key": "metadata.description"
+      },
+      {
+        "target": "surface.title",
+        "id": "main",
+        "key": "metadata.name"
+      },
+      {
+        "target": "sidebar.label",
+        "id": "project-data",
+        "key": "metadata.name"
+      },
+      {
+        "target": "permission.purpose",
+        "id": "http.fetch@1",
+        "key": "metadata.permission"
+      }
+    ]
+  }
+}

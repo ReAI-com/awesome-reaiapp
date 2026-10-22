@@ -1,4 +1,3 @@
-// Synthetic credential bytes test diagnostic privacy.
 /**
  * §6.0 #waiting-failure-minimum 白名单结构的回归（2026-09-27 主线改做法）：复制出去的诊断与浮层只由
  * 结构化安全字段组成，上游原文不清洗、不复制、不进浮层。这里不测「清洗得干不干净」，而是测结构：

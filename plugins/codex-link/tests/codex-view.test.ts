@@ -1967,7 +1967,7 @@ describe("Codex Link 0.5 Surface", () => {
 
   test("选文件夹挑回来的目录进候选并当场选中，取消什么都不改", async () => {
     const root = document.createElement("div");
-    let answer: string | undefined = "/workspace/work/demo";
+    let answer: string | undefined = "/Users/me/work/demo";
     const view = mountCodexView(root, {
       store: memoryStore(),
       pollIntervalMs: 0,
@@ -1990,7 +1990,7 @@ describe("Codex Link 0.5 Surface", () => {
     await Promise.resolve();
     // 刚挑的目录还没有任何 Codex 会话，从快照里推不出来——不自己记住就等于白挑。
     // 选完写在 placeholder 上（不动它就用它），空态收起，可以提交了。
-    expect(search.placeholder).toBe("/workspace/work/demo");
+    expect(search.placeholder).toBe("~/work/demo");
     expect(empty.hidden).toBeTrue();
     expect(root.querySelector<HTMLButtonElement>('[data-action="submit-task"]')?.disabled).toBeFalse();
 
@@ -1999,7 +1999,7 @@ describe("Codex Link 0.5 Surface", () => {
     (root.querySelector('[data-action="pick-folder"]') as HTMLButtonElement).click();
     await Promise.resolve();
     await Promise.resolve();
-    expect(search.placeholder).toBe("/workspace/work/demo");
+    expect(search.placeholder).toBe("~/work/demo");
     view.dispose();
   });
 
@@ -2010,7 +2010,7 @@ describe("Codex Link 0.5 Surface", () => {
       store: memoryStore(),
       pollIntervalMs: 0,
       call: emptyCall,
-      pickFolder: async () => "/workspace/work/demo",
+      pickFolder: async () => "/Users/me/work/demo",
     });
     await view.refresh();
     view.openCompose();
@@ -2019,7 +2019,7 @@ describe("Codex Link 0.5 Surface", () => {
     await Promise.resolve();
     await view.refresh();
     const search = root.querySelector<HTMLInputElement>('[data-field="cwd-search"]')!;
-    expect(search.placeholder).toBe("/workspace/work/demo");
+    expect(search.placeholder).toBe("~/work/demo");
     view.dispose();
   });
 
@@ -2225,7 +2225,7 @@ describe("Codex Link 0.5 Surface", () => {
       store: memoryStore(),
       pollIntervalMs: 0,
       call: emptyCall,
-      pickFolder: async () => "/workspace/work/demo",
+      pickFolder: async () => "/Users/me/work/demo",
     });
     await view.refresh();
 

@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="ReAI App Platform v1.1 的发行、唯一 Host、复合 Runtime、Extension 生命周期与分阶段交付规范。">
+  <title>发行、Host 与 Extension 规范 · ReAI App Platform v1.1</title>
+  <style>
+    :root {
+      --bg: #f5f2ea;
+      --surface: #fffdf8;
+      --surface-2: #ebe8df;
+      --ink: #17211f;
+      --muted: #596864;
+      --line: #d5d9cf;
+      --teal: #087d74;
+      --teal-strong: #05655e;
+      --teal-soft: #dcefeb;
+      --blue: #2766a7;
+      --blue-soft: #e1ebf6;
+      --amber: #99601a;
+      --amber-soft: #f7e9ce;
+      --red: #a33f3f;
+      --red-soft: #f5dfdc;
+      --violet: #6652a3;
+      --violet-soft: #ebe6f6;
+      --shadow: 0 18px 52px rgba(22, 43, 37, .09);
+      --radius: 22px;
+      --radius-sm: 14px;
+      --focus: #0577c8;
+      --max: 1180px;
+    }
+    html[data-theme="dark"] {
+      --bg: #101816;
+      --surface: #18221f;
+      --surface-2: #202d29;
+      --ink: #edf5f1;
+      --muted: #adbbb6;
+      --line: #34443f;
+      --teal: #5ed3c5;
+      --teal-strong: #8ce7dc;
+      --teal-soft: #183b36;
+      --blue: #89bdef;
+      --blue-soft: #1e354d;
+      --amber: #f2bd70;
+      --amber-soft: #49351f;
+      --red: #f19a94;
+      --red-soft: #4d2828;
+      --violet: #c2b1f3;
+      --violet-soft: #332b4a;
+      --shadow: 0 18px 52px rgba(0, 0, 0, .28);
+      --focus: #84c7ff;
+    }
+    @media (prefers-color-scheme: dark) {
+      html:not([data-theme="light"]) {
+        --bg: #101816; --surface: #18221f; --surface-2: #202d29; --ink: #edf5f1; --muted: #adbbb6; --line: #34443f;
+        --teal: #5ed3c5; --teal-strong: #8ce7dc; --teal-soft: #183b36; --blue: #89bdef; --blue-soft: #1e354d;
+        --amber: #f2bd70; --amber-soft: #49351f; --red: #f19a94; --red-soft: #4d2828; --violet: #c2b1f3;
+        --violet-soft: #332b4a; --shadow: 0 18px 52px rgba(0,0,0,.28); --focus: #84c7ff;
+      }
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: radial-gradient(circle at 8% 7%, color-mix(in srgb, var(--teal-soft) 74%, transparent) 0, transparent 31rem), var(--bg);
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 16px;
+      line-height: 1.68;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: var(--teal-strong); text-underline-offset: .18em; }
+    button, input, select { font: inherit; }
+    button, select, input[type="checkbox"] { cursor: pointer; }
+    :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+    ::selection { color: #fff; background: var(--teal); }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    .skip-link { position: fixed; z-index: 100; top: 10px; left: 10px; padding: 10px 14px; border-radius: 10px; color: var(--surface); background: var(--ink); transform: translateY(-160%); }
+    .skip-link:focus { transform: translateY(0); }
+
+    .topbar { position: sticky; z-index: 30; top: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent); background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(16px); }
+    .topbar-inner { width: min(var(--max), calc(100% - 32px)); min-height: 66px; margin: auto; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+    .suite-nav { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding: 9px 2px; }
+    .suite-label { color: var(--muted); font-size: .76rem; font-weight: 760; letter-spacing: .08em; white-space: nowrap; }
+    .suite-nav a { min-height: 44px; display: inline-flex; align-items: center; padding: 7px 12px; border: 1px solid transparent; border-radius: 999px; color: var(--muted); font-size: .84rem; font-weight: 700; text-decoration: none; white-space: nowrap; }
+    .suite-nav a:hover { color: var(--ink); background: var(--surface-2); }
+    .suite-nav a[aria-current="page"] { color: var(--teal-strong); border-color: var(--teal); background: var(--teal-soft); }
+    .utility { display: flex; gap: 8px; flex: none; }
+    .icon-button { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink); background: var(--surface); }
+    .icon-button:hover { color: var(--teal-strong); border-color: var(--teal); }
+
+    main, footer { width: min(var(--max), calc(100% - 32px)); margin: 0 auto; }
+    .hero { padding: clamp(70px, 10vw, 122px) 0 62px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(270px, .7fr); gap: 48px; align-items: end; }
+    .eyebrow, .kicker { display: block; color: var(--teal-strong); font-size: .78rem; font-weight: 790; letter-spacing: .12em; text-transform: uppercase; }
+    .eyebrow { margin: 0 0 14px; }
+    .kicker { margin-bottom: 9px; }
+    h1, h2, h3 { line-height: 1.14; letter-spacing: -.025em; }
+    h1 { max-width: 850px; margin: 0; font-size: clamp(2.65rem, 7vw, 5.6rem); font-weight: 800; }
+    h2 { margin: 0 0 12px; font-size: clamp(1.8rem, 4vw, 3rem); }
+    h3 { margin: 0 0 10px; font-size: 1.1rem; }
+    .hero-copy { max-width: 780px; margin: 24px 0 0; color: var(--muted); font-size: clamp(1.05rem, 2vw, 1.22rem); }
+    .version-card, .card { border: 1px solid var(--line); background: var(--surface); box-shadow: 0 7px 28px rgba(24, 45, 39, .05); }
+    .version-card { padding: 24px; border-radius: var(--radius); box-shadow: var(--shadow); }
+    .version-line { display: flex; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+    .version-line:last-child { border: 0; }
+    .version-line span { color: var(--muted); }
+    .status { color: var(--teal-strong); }
+
+    .section { padding: 74px 0; border-top: 1px solid var(--line); }
+    .section-head { max-width: 790px; margin-bottom: 30px; }
+    .section-head p { margin: 0; color: var(--muted); }
+    .card { padding: 24px; border-radius: var(--radius); }
+    .card p:last-child, .card ul:last-child { margin-bottom: 0; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .pill { display: inline-flex; align-items: center; padding: 5px 9px; border-radius: 999px; color: var(--teal-strong); background: var(--teal-soft); font-size: .75rem; font-weight: 770; }
+    .pill.blue { color: var(--blue); background: var(--blue-soft); }
+    .pill.amber { color: var(--amber); background: var(--amber-soft); }
+    .pill.red { color: var(--red); background: var(--red-soft); }
+    .pill.violet { color: var(--violet); background: var(--violet-soft); }
+    .decision-card strong { display: block; margin: 12px 0 6px; font-size: 1.12rem; }
+    .decision-card p { margin: 0; color: var(--muted); }
+    .callout { margin-top: 18px; padding: 17px 20px; border-left: 4px solid var(--teal); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; background: var(--teal-soft); }
+    .callout strong { color: var(--teal-strong); }
+    .callout.warning { border-color: var(--amber); background: var(--amber-soft); }
+    .callout.warning strong { color: var(--amber); }
+
+    .architecture { display: grid; grid-template-columns: .75fr 1.2fr 1fr 1fr 1fr; gap: 12px; align-items: stretch; }
+    .arch-node { position: relative; min-height: 158px; padding: 21px 18px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+    .arch-node.host { border: 2px solid var(--teal); background: var(--teal-soft); }
+    .arch-node:not(:last-child)::after { content: "→"; position: absolute; z-index: 3; top: 50%; right: -19px; width: 26px; height: 26px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--teal-strong); background: var(--bg); transform: translateY(-50%); }
+    .arch-node span { color: var(--muted); font: 760 .7rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .arch-node h3 { margin-top: 9px; }
+    .arch-node p { margin: 0; color: var(--muted); font-size: .88rem; }
+    .migration { margin-top: 18px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .migration article { padding: 18px; border: 1px dashed var(--line); border-radius: var(--radius-sm); }
+    .migration p { margin: 5px 0 0; color: var(--muted); font-size: .9rem; }
+
+    .object-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .object-card { padding: 20px 17px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+    .object-card.policy { border-color: var(--violet); background: var(--violet-soft); }
+    .object-card small { color: var(--muted); font: 740 .7rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .object-card h3 { margin-top: 9px; }
+    .object-card p { margin: 0; color: var(--muted); font-size: .86rem; }
+    .catalog-fields { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 7px; }
+    .catalog-fields span, .permission-chip { padding: 6px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface); font-size: .78rem; }
+
+    .runtime-kinds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .runtime-kind { padding: 20px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+    .runtime-kind code { display: block; margin: 11px 0 8px; color: var(--teal-strong); font-weight: 760; overflow-wrap: anywhere; }
+    .runtime-kind p { margin: 0; color: var(--muted); font-size: .87rem; }
+    .permission-grid { margin-top: 18px; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; }
+    .permission-chip { min-height: 68px; display: grid; place-items: center; color: var(--ink); text-align: center; font-weight: 700; border-radius: 12px; }
+
+    .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 18px; }
+    .tab { min-height: 46px; padding: 9px 16px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface); font-weight: 720; }
+    .tab[aria-selected="true"] { color: var(--teal-strong); border-color: var(--teal); background: var(--teal-soft); }
+    .tab-panel { animation: reveal .22s ease both; }
+    .tab-panel[hidden] { display: none; }
+    @keyframes reveal { from { opacity: .35; transform: translateY(4px); } }
+    .surface-window { overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+    .surface-bar { min-height: 58px; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+    .surface-bar strong { font-size: 1.05rem; }
+    .text-button { min-height: 44px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 10px; color: var(--teal-strong); background: var(--surface); font-weight: 720; }
+    .extension-list { padding: 14px; display: grid; gap: 10px; }
+    .extension-row { padding: 15px; display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 13px; align-items: center; border: 1px solid var(--line); border-radius: 13px; }
+    .extension-icon { width: 44px; height: 44px; display: grid; place-items: center; border-radius: 12px; color: var(--teal-strong); background: var(--teal-soft); font-weight: 800; }
+    .extension-row h3 { margin: 0 0 3px; font-size: 1rem; }
+    .extension-row p { margin: 0; color: var(--muted); font-size: .84rem; }
+    .row-actions { display: flex; align-items: center; gap: 8px; }
+    .browse-grid { padding: 16px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .browse-card { padding: 18px; border: 1px solid var(--line); border-radius: 14px; }
+    .browse-card p { color: var(--muted); font-size: .88rem; }
+
+    .stage-panel h3, .channel-panel h3 { font-size: 1.42rem; }
+    .stage-list, .channel-list { margin: 14px 0 0; padding-left: 1.22rem; }
+    .stage-list li, .channel-list li { margin: 8px 0; }
+    .stage-gate { margin-top: 16px; padding: 14px; border-radius: 12px; color: var(--teal-strong); background: var(--teal-soft); font-weight: 700; }
+
+    .status-layout, .decision-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .78fr); gap: 18px; align-items: start; }
+    .form-card { padding: 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+    .select-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .field label, fieldset legend { display: block; margin-bottom: 6px; font-weight: 730; }
+    select, .search { width: 100%; min-height: 46px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; color: var(--ink); background: var(--bg); }
+    .summary-output, .decision-output { min-height: 100%; padding: 27px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow); }
+    .summary-mark { width: 58px; height: 58px; display: grid; place-items: center; border-radius: 17px; color: var(--teal-strong); background: var(--teal-soft); font-size: 1.55rem; font-weight: 800; }
+    .summary-output.is-warning .summary-mark, .decision-output.is-warning .summary-mark { color: var(--amber); background: var(--amber-soft); }
+    .summary-output.is-danger .summary-mark, .decision-output.is-danger .summary-mark { color: var(--red); background: var(--red-soft); }
+    .summary-output h3, .decision-output h3 { margin-top: 18px; font-size: 1.5rem; }
+    .summary-output p, .decision-output p { color: var(--muted); }
+    .dimension-readout { margin-top: 15px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .dimension-readout code { padding: 5px 7px; border-radius: 7px; color: var(--muted); background: var(--surface-2); font-size: .72rem; }
+
+    fieldset { margin: 0; padding: 0; border: 0; }
+    .checks { display: grid; gap: 9px; }
+    .check { display: grid; grid-template-columns: 21px 1fr; gap: 9px; align-items: start; padding: 10px; border: 1px solid var(--line); border-radius: 10px; }
+    .check input { width: 18px; height: 18px; margin-top: 3px; accent-color: var(--teal); }
+    .check span { color: var(--muted); font-size: .88rem; }
+
+    .timeline { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+    .timeline-step { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+    .timeline-step b { width: 34px; height: 34px; display: grid; place-items: center; margin-bottom: 11px; border-radius: 50%; color: var(--teal-strong); background: var(--teal-soft); }
+    .timeline-step strong { display: block; }
+    .timeline-step span { color: var(--muted); font-size: .82rem; }
+
+    .filterbar { display: grid; grid-template-columns: minmax(220px, 1fr) 2fr; gap: 14px; margin-bottom: 18px; }
+    .filter-buttons { display: flex; flex-wrap: wrap; gap: 7px; }
+    .filter-button { min-height: 44px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--surface); font-size: .84rem; font-weight: 700; }
+    .filter-button[aria-pressed="true"] { color: var(--teal-strong); border-color: var(--teal); background: var(--teal-soft); }
+    .rule-count { margin: 0 0 13px; color: var(--muted); font-size: .88rem; }
+    .rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+    .rule { padding: 19px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+    .rule[hidden] { display: none; }
+    .rule-meta { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .rule-id { color: var(--muted); font: 720 .73rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .rule h3 { font-size: 1rem; }
+    .rule p { margin: 0; color: var(--muted); font-size: .9rem; }
+
+    .app-card { display: grid; grid-template-columns: 55px 1fr; gap: 16px; }
+    .app-icon { width: 55px; height: 55px; display: grid; place-items: center; border-radius: 16px; color: var(--teal-strong); background: var(--teal-soft); font-weight: 800; }
+    .app-card ul { margin-bottom: 0; padding-left: 1.1rem; }
+    .app-card li { margin: 7px 0; }
+    .checklist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .checklist section { padding: 19px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+    .checklist ul { margin: 11px 0 0; padding: 0; list-style: none; }
+    .checklist li { position: relative; margin: 8px 0; padding-left: 27px; color: var(--muted); }
+    .checklist li::before { content: "□"; position: absolute; left: 0; color: var(--teal-strong); font-size: 1.08rem; }
+    .source-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+    .source-list li { padding: 15px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+    .source-list strong { display: block; }
+    .source-list span { color: var(--muted); font-size: .87rem; overflow-wrap: anywhere; }
+    footer { padding: 34px 0 62px; border-top: 1px solid var(--line); color: var(--muted); font-size: .82rem; }
+
+    @media (max-width: 1000px) {
+      .architecture { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .arch-node:not(:last-child)::after { display: none; }
+      .object-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .runtime-kinds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .permission-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .timeline { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+    @media (max-width: 820px) {
+      .hero, .status-layout, .decision-layout { grid-template-columns: 1fr; }
+      .hero { gap: 28px; }
+      .grid-3, .browse-grid { grid-template-columns: 1fr; }
+      .migration { grid-template-columns: 1fr; }
+      .extension-row { grid-template-columns: 44px 1fr; }
+      .row-actions { grid-column: 2; }
+    }
+    @media (max-width: 650px) {
+      .topbar-inner { width: min(100% - 20px, var(--max)); align-items: flex-start; gap: 7px; }
+      .suite-label { display: none; }
+      .suite-nav a { padding-inline: 9px; font-size: .76rem; }
+      #printButton { display: none; }
+      main, footer { width: min(100% - 24px, var(--max)); }
+      .hero { padding-top: 52px; }
+      .section { padding: 54px 0; }
+      .grid-2, .grid-4, .architecture, .object-grid, .runtime-kinds, .permission-grid, .select-grid, .filterbar, .rules, .checklist { grid-template-columns: 1fr; }
+      .timeline { grid-template-columns: 1fr 1fr; }
+      .tabs { flex-direction: column; }
+      .tab { width: 100%; border-radius: 11px; text-align: left; }
+      .card, .form-card, .summary-output, .decision-output { padding: 19px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    }
+    @media print {
+      :root, html[data-theme="dark"] { --bg: #fff; --surface: #fff; --surface-2: #f2f2ef; --ink: #111; --muted: #444; --line: #bbb; --teal: #087d74; --teal-strong: #075f59; --teal-soft: #e7f3f0; --shadow: none; }
+      body { background: #fff; font-size: 10.2pt; }
+      .topbar, .utility, .filterbar, .status-layout, .decision-layout, .tabs, .skip-link { display: none !important; }
+      main, footer { width: 100%; }
+      .hero { padding: 16mm 0 10mm; grid-template-columns: 1.4fr .6fr; }
+      .section { padding: 9mm 0; }
+      .tab-panel[hidden], .rule[hidden] { display: block !important; }
+      .tab-panel { margin-bottom: 6mm; }
+      .card, .arch-node, .object-card, .runtime-kind, .rule, .checklist section { break-inside: avoid; box-shadow: none; }
+    }
+  </style>
+</head>
+<body>
+<div style="position:sticky;top:0;z-index:9999;background:#b45309;color:#fff;padding:10px 16px;font:600 14px/1.5 system-ui;">本页是手工维护的交互快照，内容可能落后于同名 .md——平台合同一律以 Markdown 版为准（横幅添加于 2026-08-13，当时已知本页未同步 http.fetch@1 等 1.2 内容）。</div>
+
+  <a class="skip-link" href="#main">跳到正文</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <nav class="suite-nav" aria-label="App Platform v1 文档">
+        <span class="suite-label">APP PLATFORM V1</span>
+        <a href="distribution-policy-v1.html" aria-current="page">发行与 Host</a>
+        <a href="runtime-dependencies-v1.html">运行依赖</a>
+        <a href="network-billing-policy-v1.html">网络与计费</a>
+      </nav>
+      <div class="utility">
+        <button class="icon-button" id="printButton" type="button" aria-label="↗ 打印本文档" title="打印"><span aria-hidden="true">↗</span></button>
+        <button class="icon-button" id="themeButton" type="button" aria-label="切换浅色或深色主题" title="切换主题"><span aria-hidden="true">◐</span></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">ReAI App Platform v1.1 · Locked Target Baseline</p>
+        <h1 id="page-title">发行、Host 与<br>Extension 规范</h1>
+        <p class="hero-copy">唯一 Host 是运行时治理规则，不是目录名称。平台以 Hardware SDK / Provider 为底座，以复合 Runtime、六维状态和可管理的 Extensions 构建后续 Direct Distribution 与 Marketplace。</p>
+      </div>
+      <aside class="version-card" aria-label="文档状态">
+        <div class="version-line"><span>正文版本</span><strong>v1.1</strong></div>
+        <div class="version-line"><span>文件名</span><strong>保留 -v1</strong></div>
+        <div class="version-line"><span>状态</span><strong class="status">已锁定的目标基线</strong></div>
+        <div class="version-line"><span>日期</span><strong>2026-08-01</strong></div>
+      </aside>
+    </section>
+
+    <section class="section" aria-labelledby="decisions-title">
+      <div class="section-head"><span class="kicker">01 · What Changed</span><h2 id="decisions-title">v1.1 的六个核心修正</h2><p>这些是实现和评审时优先级最高的规则。</p></div>
+      <div class="grid-3">
+        <article class="card decision-card"><span class="pill">HOST</span><strong>唯一治理权威</strong><p>Extension Registry、权限、状态、进程和 Provider 路由只有一个所有者；不绑定目录或产品名。</p></article>
+        <article class="card decision-card"><span class="pill blue">SDK</span><strong>Provider 是硬件边界</strong><p>Extension 只调用 Host Capability，Host 再通过 Provider 与稳定 Hardware SDK 访问设备。</p></article>
+        <article class="card decision-card"><span class="pill violet">RUNTIME</span><strong>复合 Components</strong><p>Source Manifest 使用 runtime.components[]，一个 App 可以组合 Web Surface、Wasm、远端和原生组件。</p></article>
+        <article class="card decision-card"><span class="pill amber">HEADLESS</span><strong>没有 UI 也必须可管</strong><p>Headless Extension 一样要显示在已安装列表，并支持启停、授权、更新和卸载。</p></article>
+        <article class="card decision-card"><span class="pill blue">STATE</span><strong>六维状态</strong><p>installation、activation、health、permissions、dependencies、update 独立保存，摘要只由 Host 推导。</p></article>
+        <article class="card decision-card"><span class="pill">VOICE</span><strong>推荐但可卸载</strong><p>Voice 是第一方推荐 Extension，不是 required system app；卸载不能破坏平台核心。</p></article>
+      </div>
+      <div class="callout"><strong>术语：</strong>用户安装和使用的功能统一称为 App；Extension 只强调它是由 Host 安装、启停和治理的扩展单元。两者使用同一个稳定 <code>appId</code>，不是两套对象。</div>
+    </section>
+
+    <section class="section" aria-labelledby="host-title">
+      <div class="section-head"><span class="kicker">02 · Single Host Rule</span><h2 id="host-title">一个治理中心，多种受控组件</h2><p>“一个 Host”不等于“一个进程”，也不等于仓库根目录。隔离进程可以存在，但必须受 Host 监督。</p></div>
+      <div class="architecture" aria-label="Extension 到硬件的 SDK Provider 路由">
+        <article class="arch-node"><span>REQUEST</span><h3>Extension</h3><p>只请求声明过的 Capability，不持有设备句柄。</p></article>
+        <article class="arch-node host"><span>ONE AUTHORITY</span><h3>唯一 Host</h3><p>验签、权限、生命周期、六维状态和路由。</p></article>
+        <article class="arch-node"><span>CONTROL</span><h3>Capability Gate</h3><p>授权、审计、资源限制与调用仲裁。</p></article>
+        <article class="arch-node"><span>ABSTRACTION</span><h3>Provider Registry</h3><p>枚举 Provider、协议、能力与健康。</p></article>
+        <article class="arch-node"><span>DEVICE</span><h3>Hardware SDK</h3><p>稳定版本合同连接 USB、BLE 和未来硬件。</p></article>
+      </div>
+      <div class="migration">
+        <article><span class="pill red">迁移目标</span><h3>旧 root App</h3><p>在能力、数据和发布切换全部验收后退役；本文不声称当前已经退役。</p></article>
+        <article><span class="pill amber">首个 SDK 版本</span><h3>Driver</h3><p>作为 SDK / Provider 架构验证载体，但不会因此被永久指定为最终 Host。</p></article>
+        <article><span class="pill">最终产品</span><h3>Host 身份</h3><p>由产品整合和发行决定；无论名称与目录如何，都继承唯一 Host 规则。</p></article>
+      </div>
+      <div class="callout"><strong>MUST：</strong>迁移期如果有多个可执行程序，必须通过 ownership 协议选出唯一 Host；其他程序只能作为客户端或退出。</div>
+    </section>
+
+    <section class="section" aria-labelledby="objects-title">
+      <div class="section-head"><span class="kicker">03 · Ownership Model</span><h2 id="objects-title">开发者声明与平台政策分开</h2><p>开发者说明代码需要什么；ReAI 决定是否审核通过、在哪个渠道可见、如何灰度和何时下架。</p></div>
+      <div class="object-grid">
+        <article class="object-card"><small>DISCOVERY</small><h3>Catalog Entry</h3><p>经审核的名称、版本、媒体、系统要求，以及对应 target 的 Envelope / Package 引用。</p></article>
+        <article class="object-card policy"><small>REAI OWNED</small><h3>Catalog Policy</h3><p>审核、渠道、灰度、价格、下架和紧急撤回；开发者不能自批。</p></article>
+        <article class="object-card"><small>DEVELOPER</small><h3>Source Manifest</h3><p><code>app.manifest.json</code> 声明 hostApi.range、Components、权限、依赖、网络、计费和回滚边界。</p></article>
+        <article class="object-card"><small>RELEASE PROOF</small><h3>Release Envelope</h3><p>发布系统按 target 生成，绑定 Source Manifest 摘要、Package 摘要、buildId 与发布签名。</p></article>
+        <article class="object-card"><small>EXECUTION</small><h3>Package</h3><p>不可变、内容寻址、签名绑定的代码和资源。</p></article>
+        <article class="object-card"><small>LOCAL FACT</small><h3>Local State</h3><p>六维状态、授权、配置、失败原因和 last-known-good。</p></article>
+      </div>
+      <div class="catalog-fields" aria-label="Catalog Entry 字段">
+        <span>评分</span><span>价格</span><span>截图 / 视频</span><span>分类</span><span>本地化</span><span>隐私说明</span><span>支持入口</span><span>更新日志</span><span>系统要求</span>
+      </div>
+      <div class="callout warning"><strong>Source Manifest 边界：</strong>不得包含 Package 摘要、发布签名、审核状态或 Catalog Policy，也不得设置 review.status、channelEligibility、rollout、生产价格例外或强制停用策略。</div>
+      <div class="callout"><strong>Release Envelope：</strong><code>release-envelope.json</code> 至少包含 envelopeVersion、identity、target、manifestDigest、packageDigest、buildId 和 signature。签名覆盖除 <code>signature.value</code> 外的全部字段；Package 摘要不包含 Envelope 自身。Host 固定按“Envelope 签名 → Source Manifest 摘要 → Package 摘要 → Catalog Policy”验证，任一步失败都不得解包或执行。</div>
+    </section>
+
+    <section class="section" aria-labelledby="runtime-title">
+      <div class="section-head"><span class="kicker">04 · Compound Runtime</span><h2 id="runtime-title">runtime.components[]</h2><p>kind 属于 Component，不属于整个 App。运行故障只改变 health 和受影响 Contribution，不能偷偷改写用户的 activation 选择。</p></div>
+      <div class="runtime-kinds">
+        <article class="runtime-kind"><span class="pill">UI SURFACE</span><code>web-surface · @1</code><p>Package 内 entry 是 ESM JavaScript；由 Host 隔离呈现，通过显式 Host Capability 完成功能。</p></article>
+        <article class="runtime-kind"><span class="pill blue">SANDBOX</span><code>wasm-component · @1</code><p>必须有 Package 内 entry，仅获得显式 Capability，并受资源配额和停止超时控制。</p></article>
+        <article class="runtime-kind"><span class="pill violet">CLOUD</span><code>remote-service · @1</code><p>必须使用 serviceRef 且没有本地 Hook；停用只撤销 Broker 会话，不代表关闭第三方服务器。</p></article>
+        <article class="runtime-kind"><span class="pill red">HIGH REVIEW</span><code>native-companion · @1</code><p>必须有 Package 内 entry；签名、受监督、不可自更新、提权或脱离 Host 常驻。</p></article>
+      </div>
+      <h3 style="margin-top:26px">权限必须拆成七类</h3>
+      <div class="permission-grid" aria-label="七类权限">
+        <span class="permission-chip">Host 能力</span><span class="permission-chip">OS 权限</span><span class="permission-chip">数据</span><span class="permission-chip">后台</span><span class="permission-chip">网络</span><span class="permission-chip">设备</span><span class="permission-chip">文件</span>
+      </div>
+      <div class="callout"><strong>Component 合同：</strong>公共必填字段是 <code>id / kind / protocol / required / headless / activation</code>；未知 protocol 版本 fail closed。本地 kind 必须写 <code>entry</code>，remote-service 必须写 <code>serviceRef</code>，二者不得并存。<code>platforms</code> 只能是顶层 targets 的子集，<code>dependsOn</code> 默认 []。Host Capability 单独写在 <code>requires.hostCapabilities</code>。</div>
+      <div class="callout"><strong>状态语义：</strong><code>activation=active</code> 表示用户允许 Host 运行 App，不等于每个 Component 都健康；on-demand Component 可以 stopped。required 失败聚合为 <code>health=unhealthy</code> 并阻断核心 Contribution，optional 失败聚合为 <code>health=degraded</code> 并只阻断引用它的 Contribution。只有用户停用、更新切换、卸载或安全策略才能进入 stopping → disabled。</div>
+      <div class="callout"><strong>权限字段：</strong>需要用户授权的 Host、OS、后台和文件能力写入 <code>permissions[]</code>，每项包含 <code>id / kind / componentId / capability / purpose / required / requiredFor / grantDuration</code>，可选 platforms。网络、跨 App 数据和硬件分别写入 <code>network</code>、<code>data</code>、<code>requires.hardwareServices</code>，不得在 permissions[] 复制；Hardware Service 还要声明版本化 capabilities、purpose 和 grantDuration。<br><strong>Headless：</strong>当 <code>contributes.surfaces</code> 为空而 Runtime Component 非空时，必须在 Extensions 标记“无界面 / 后台能力”并提供完整管理。</div>
+      <div class="callout"><strong>系统通知归属：</strong>系统通知是 OS 权限，不是普通 Host Capability。插件只能声明并调用 Host Broker；系统授权由 Host App 持有，不能因为 Host 已获授权就推定任意插件也已获用户同意。</div>
+    </section>
+
+    <section class="section" aria-labelledby="ux-title">
+      <div class="section-head"><span class="kicker">05 · Product Surface</span><h2 id="ux-title">Browse Extensions 与 Extensions</h2><p>Browse Extensions 只负责发现、搜索、详情和安装，不维护第二套本机状态；Extensions 是唯一管理入口，默认显示 Installed。试用下方界面切换。</p></div>
+      <div class="tabs" role="tablist" aria-label="Extension 产品入口" data-tabs="ux">
+        <button class="tab" id="ux-browse-tab" role="tab" aria-selected="true" aria-controls="ux-browse" tabindex="0" data-key="browse">Browse Extensions</button>
+        <button class="tab" id="ux-installed-tab" role="tab" aria-selected="false" aria-controls="ux-installed" tabindex="-1" data-key="installed">Extensions · 已安装 4</button>
+      </div>
+      <div class="surface-window tab-panel" id="ux-browse" role="tabpanel" aria-labelledby="ux-browse-tab" data-panel="browse" data-group="ux">
+        <div class="surface-bar"><strong>Browse Extensions</strong><button class="text-button" id="openInstalled" type="button">查看已安装（4）</button></div>
+        <div class="browse-grid">
+          <article class="browse-card"><span class="pill">第一方 · 推荐</span><h3>Voice</h3><p>推荐且可卸载；真正接入前必须先有版本化 Voice / Media Capability，不能调用未定义接口。</p><button class="text-button" type="button" disabled>已安装</button></article>
+          <article class="browse-card"><span class="pill blue">第一方</span><h3>Terminal</h3><p>通过 Host Capability 提供受控 PTY 与进程管理。</p><button class="text-button" type="button" disabled>已安装</button></article>
+          <article class="browse-card"><span class="pill violet">第一方 · Headless</span><h3>Device Sync</h3><p>没有独立页面；安装前必须披露后台 Component 与权限。</p><button class="text-button" type="button" disabled>已安装</button></article>
+        </div>
+      </div>
+      <div class="surface-window tab-panel" id="ux-installed" role="tabpanel" aria-labelledby="ux-installed-tab" data-panel="installed" data-group="ux" hidden>
+        <div class="surface-bar"><strong>Extensions · 已安装</strong><span class="pill">唯一管理列表</span></div>
+        <div class="extension-list">
+          <article class="extension-row"><div class="extension-icon">AI</div><div><h3>Agent Shell</h3><p>active · healthy · 2 optional adapters missing</p></div><div class="row-actions"><span class="pill amber">部分降级</span><button class="text-button" type="button">管理</button></div></article>
+          <article class="extension-row"><div class="extension-icon">&gt;_</div><div><h3>Terminal</h3><p>active · healthy · permissions granted</p></div><div class="row-actions"><span class="pill">运行正常</span><button class="text-button" type="button">管理</button></div></article>
+          <article class="extension-row"><div class="extension-icon">VO</div><div><h3>Voice</h3><p>disabled · recommended first-party · removable</p></div><div class="row-actions"><span class="pill blue">已停用</span><button class="text-button" type="button">管理 / 卸载</button></div></article>
+          <article class="extension-row"><div class="extension-icon">HL</div><div><h3>Device Sync <span class="pill violet">Headless</span></h3><p>active · healthy · 后台能力，无独立页面</p></div><div class="row-actions"><span class="pill">运行正常</span><button class="text-button" type="button">管理</button></div></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="state-title">
+      <div class="section-head"><span class="kicker">06 · Orthogonal State</span><h2 id="state-title">六维状态摘要实验台</h2><p>修改任一维度，观察 Host 如何单向推导用户摘要。摘要不能反向写入状态机。</p></div>
+      <div class="status-layout">
+        <form class="form-card" id="statusForm">
+          <div class="select-grid">
+            <div class="field"><label for="installation">installation</label><select id="installation" name="installation"><option>absent</option><option>downloading</option><option>verifying</option><option>staged</option><option selected>installed</option><option>removing</option></select></div>
+            <div class="field"><label for="activation">activation</label><select id="activation" name="activation"><option>disabled</option><option>starting</option><option selected>active</option><option>stopping</option></select></div>
+            <div class="field"><label for="health">health</label><select id="health" name="health"><option>unknown</option><option selected>healthy</option><option>degraded</option><option>unhealthy</option><option>crash_loop</option></select></div>
+            <div class="field"><label for="permissions">permissions</label><select id="permissions" name="permissions"><option>not_required</option><option>pending</option><option selected>granted</option><option>partial</option><option>denied</option></select></div>
+            <div class="field"><label for="dependencies">dependencies</label><select id="dependencies" name="dependencies"><option>checking</option><option selected>ready</option><option>missing_optional</option><option>missing_required</option><option>incompatible</option></select></div>
+            <div class="field"><label for="update">update</label><select id="update" name="update"><option selected>idle</option><option>available</option><option>downloading</option><option>ready</option><option>applying</option><option>blocked</option><option>rollback_pending</option></select></div>
+          </div>
+        </form>
+        <output class="summary-output" id="statusOutput" aria-live="polite" aria-atomic="true">
+          <div class="summary-mark" aria-hidden="true">✓</div><h3 id="statusTitle">运行正常</h3><p id="statusText">Extension 已安装并处于 active，required 依赖、权限和健康检查均通过。</p><div class="dimension-readout" id="dimensionReadout"></div>
+        </output>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="stages-title">
+      <div class="section-head"><span class="kicker">07 · Delivery Roadmap</span><h2 id="stages-title">三阶段交付，不造三套架构</h2><p>后续阶段必须复用 Platform Core 的 Host、Source Manifest、Release Envelope、状态和供应链。</p></div>
+      <div class="tabs" role="tablist" aria-label="交付阶段" data-tabs="stages">
+        <button class="tab" id="stage-core-tab" role="tab" aria-selected="true" aria-controls="stage-core" tabindex="0" data-key="core">A · Platform Core v1.1</button>
+        <button class="tab" id="stage-direct-tab" role="tab" aria-selected="false" aria-controls="stage-direct" tabindex="-1" data-key="direct">B · Direct Distribution</button>
+        <button class="tab" id="stage-market-tab" role="tab" aria-selected="false" aria-controls="stage-market" tabindex="-1" data-key="market">C · Marketplace</button>
+      </div>
+      <div class="card stage-panel tab-panel" id="stage-core" role="tabpanel" aria-labelledby="stage-core-tab" data-panel="core" data-group="stages"><span class="pill">当前实现目标</span><h3>先把平台核心做对</h3><ul class="stage-list"><li>单一 Host ownership 与 Hardware SDK / Provider</li><li>Catalog Policy、Source Manifest 与 Release Envelope 分离</li><li>runtime.components[]、Headless、七类权限、六维状态</li><li>Extensions 已安装管理；基础 Browse Extensions 只展示本次 Host Release 已审核第一方内容</li><li>Voice 是推荐、可卸载政策；真正接入前先定义版本化 Voice / Media Capability</li></ul><div class="stage-gate">本阶段不依赖远程 Feed 或第三方 Marketplace 才能工作，也不能调用未定义的 Voice / Media 接口。</div></div>
+      <div class="card stage-panel tab-panel" id="stage-direct" role="tabpanel" aria-labelledby="stage-direct-tab" data-panel="direct" data-group="stages" hidden><span class="pill blue">第二阶段</span><h3>官网签名分发</h3><ul class="stage-list"><li>签名 Catalog Feed 与按需 Package</li><li>Host / Extension / 资源三通道更新</li><li>last-known-good、防回滚、灰度与紧急撤回</li><li>新 Extension 独立发布门禁</li><li>独立 developer_local Profile 与受控本地导入</li></ul><div class="stage-gate">Developer Mode 必须持续显示“未经过 ReAI 审核”，且不能关闭 Sandbox 或权限门禁。</div></div>
+      <div class="card stage-panel tab-panel" id="stage-market" role="tabpanel" aria-labelledby="stage-market-tab" data-panel="market" data-group="stages" hidden><span class="pill violet">第三阶段</span><h3>第三方 Marketplace</h3><ul class="stage-list"><li>开发者提交、源码审核、受控构建与签名</li><li>Browse Extensions 增加公开第三方搜索、评分、付费、推荐与运营</li><li>价格、授权、地区/年龄、举报、下架与争议处理</li><li>发布者身份、复审与安全响应 SLA</li></ul><div class="stage-gate">Marketplace 不能创建第二个 Host，也不能让 Source Manifest 获得 Catalog Policy 权限。</div></div>
+    </section>
+
+    <section class="section" aria-labelledby="channels-title">
+      <div class="section-head"><span class="kicker">08 · Channel Profiles</span><h2 id="channels-title">三条生产发行通道</h2><p>商店版目录随 Host Release；Direct 在第二阶段通过签名 Feed 独立更新。</p></div>
+      <div class="tabs" role="tablist" aria-label="发行渠道" data-tabs="channels">
+        <button class="tab" id="channel-mac-tab" role="tab" aria-selected="true" aria-controls="channel-mac" tabindex="0" data-key="mac">mac_app_store</button>
+        <button class="tab" id="channel-win-tab" role="tab" aria-selected="false" aria-controls="channel-win" tabindex="-1" data-key="win">microsoft_store</button>
+        <button class="tab" id="channel-direct-tab" role="tab" aria-selected="false" aria-controls="channel-direct" tabindex="-1" data-key="direct">direct</button>
+      </div>
+      <div class="card channel-panel tab-panel" id="channel-mac" role="tabpanel" aria-labelledby="channel-mac-tab" data-panel="mac" data-group="channels"><h3>Mac App Store</h3><ul class="channel-list"><li>Catalog 成员随 Host Release 提交审核。</li><li>可执行 Package 随 App Bundle 交付，用户按需启用。</li><li>非执行模型与媒体可按需下载并验证摘要。</li><li>Host 只通过商店更新，遵守 Sandbox，不提权、不留未授权常驻进程。</li></ul></div>
+      <div class="card channel-panel tab-panel" id="channel-win" role="tabpanel" aria-labelledby="channel-win-tab" data-panel="win" data-group="channels" hidden><h3>Microsoft Store</h3><ul class="channel-list"><li>Catalog 成员随 Host Release 认证。</li><li>v1.1 默认随主包交付可执行能力。</li><li>Optional Executable Package 需 Store 许可、Related Set、签名与独立 Profile 升级。</li><li>非 Microsoft 驱动或 NT Service 不作为普通 Extension。</li></ul></div>
+      <div class="card channel-panel tab-panel" id="channel-direct" role="tabpanel" aria-labelledby="channel-direct-tab" data-panel="direct" data-group="channels" hidden><h3>ReAI Direct</h3><ul class="channel-list"><li>生产 Host 需平台认可的签名；macOS 直发完成公证。</li><li>Feed 使用 HTTPS、整体签名、单调版本、防回滚和 last-known-good。</li><li>新 Extension 可独立发布，但必须通过全部门禁。</li><li>Developer Mode 使用独立 developer_local Profile：显式开启、逐包导入、持续未审核提示、一键停用。</li></ul><div class="callout warning"><strong>本地导入不是审核：</strong>不得获得生产 Catalog 标识、生产计费权益、静默自启或安全门禁豁免。</div></div>
+    </section>
+
+    <section class="section" aria-labelledby="decision-title">
+      <div class="section-head"><span class="kicker">09 · Independent Release Gate</span><h2 id="decision-title">新 Extension 决策器</h2><p>正式发布系统必须生成等价的机器可读审核结果。</p></div>
+      <div class="decision-layout">
+        <form class="form-card" id="decisionForm">
+          <div class="field"><label for="decisionProfile">发行路径</label><select id="decisionProfile" name="profile"><option value="mac">Mac App Store</option><option value="windows">Microsoft Store</option><option value="direct" selected>Direct Production Feed</option><option value="developer">Developer Mode / 本地导入</option></select></div>
+          <fieldset><legend>门禁</legend><div class="checks">
+            <label class="check"><input type="checkbox" name="reviewed" checked><span><strong>审核 / Release Envelope</strong><br>生产版完成全量审核、受控构建与 Envelope 签名；本地版显示开发来源</span></label>
+            <label class="check"><input type="checkbox" name="runtime" checked><span><strong>复合 Runtime</strong><br>当前 Host 支持所有 Component kind、protocol、字段与生命周期</span></label>
+            <label class="check"><input type="checkbox" name="capability" checked><span><strong>Host / Provider</strong><br>Host API 与 Hardware Provider Capability 均兼容</span></label>
+            <label class="check"><input type="checkbox" name="permissions" checked><span><strong>七类权限</strong><br>Host 能展示、请求、撤销并审计全部范围</span></label>
+            <label class="check"><input type="checkbox" name="migration" checked><span><strong>配套规范</strong><br>依赖、网络、计费、数据迁移与回滚均通过</span></label>
+          </div></fieldset>
+        </form>
+        <output class="decision-output" id="decisionOutput" aria-live="polite" aria-atomic="true"><div class="summary-mark" aria-hidden="true">✓</div><h3 id="decisionTitle">可以独立发布</h3><p id="decisionText">Direct Production Feed 且全部门禁通过，无需升级 Host。</p><ul id="decisionReasons"><li>仍需保存审核批次、Release Envelope、Catalog Policy、Manifest / Package 摘要和兼容结果。</li></ul></output>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="lifecycle-title">
+      <div class="section-head"><span class="kicker">10 · Lifecycle</span><h2 id="lifecycle-title">审核一次，组件按图启停</h2><p>Package 先 staging；Host 完成 Envelope、Source Manifest、Package 和 Catalog Policy 验证后，再按依赖图运行 Component。</p></div>
+      <div class="timeline"><article class="timeline-step"><b>1</b><strong>审核</strong><span>源码、Source Manifest、Policy、权限</span></article><article class="timeline-step"><b>2</b><strong>受控构建</strong><span>锁依赖、SBOM、Manifest / Package 摘要</span></article><article class="timeline-step"><b>3</b><strong>签名发布</strong><span>生成 Release Envelope 与独立 Catalog Policy</span></article><article class="timeline-step"><b>4</b><strong>验证启用</strong><span>staging、固定顺序验签、依赖图启动</span></article><article class="timeline-step"><b>5</b><strong>监测回滚</strong><span>健康门槛、逆序停止、LKG</span></article></div>
+      <div class="callout"><strong>MUST：</strong>停用时先阻止新调用，再按组件依赖逆序停止；Host 退出后 Headless / Companion 也必须停止，除非有单独且可撤销的常驻授权。</div>
+    </section>
+
+    <section class="section" aria-labelledby="rules-title">
+      <div class="section-head"><span class="kicker">11 · Rule Explorer</span><h2 id="rules-title">筛选 v1.1 规则</h2><p>可按主题或关键词快速定位发送给合作方的规则。</p></div>
+      <div class="filterbar"><label><span class="sr-only">搜索规则</span><input class="search" id="ruleSearch" type="search" placeholder="搜索 Host、Headless、权限、Voice…" autocomplete="off"></label><div class="filter-buttons" aria-label="规则分类"><button class="filter-button" type="button" aria-pressed="true" data-filter="all">全部</button><button class="filter-button" type="button" aria-pressed="false" data-filter="host">Host / SDK</button><button class="filter-button" type="button" aria-pressed="false" data-filter="manifest">Manifest</button><button class="filter-button" type="button" aria-pressed="false" data-filter="permission">权限</button><button class="filter-button" type="button" aria-pressed="false" data-filter="state">状态</button><button class="filter-button" type="button" aria-pressed="false" data-filter="channel">发行</button><button class="filter-button" type="button" aria-pressed="false" data-filter="ux">界面</button></div></div>
+      <p class="rule-count" id="ruleCount" aria-live="polite">显示 14 条规则</p>
+      <div class="rules">
+        <article class="rule" data-category="host" data-text="唯一 host 运行时 目录 ownership"><div class="rule-meta"><span class="pill">MUST</span><span class="rule-id">HOST-01</span></div><h3>Host 是规则，不是目录</h3><p>一个平台实例只能有一个 Registry、权限权威、状态所有者和 Provider 路由中心。</p></article>
+        <article class="rule" data-category="host" data-text="hardware sdk provider extension capability 设备"><div class="rule-meta"><span class="pill">MUST</span><span class="rule-id">HOST-02</span></div><h3>设备访问经过 Provider</h3><p>Extension 只请求 Host Capability，不依赖 Driver 内部模块或持有底层设备句柄。</p></article>
+        <article class="rule" data-category="host" data-text="root app 退役 driver 最终 host 规划 现状"><div class="rule-meta"><span class="pill amber">PLAN</span><span class="rule-id">HOST-03</span></div><h3>迁移目标不冒充现状</h3><p>旧 root App 退役需等迁移验收；Driver 是首个 SDK 规划版本，不是永久最终 Host。</p></article>
+        <article class="rule" data-category="manifest" data-text="runtime components protocol required optional health activation degraded unhealthy"><div class="rule-meta"><span class="pill">MUST</span><span class="rule-id">MANIFEST-01</span></div><h3>使用 runtime.components[]</h3><p>kind 与 protocol 属于 Component；required 失败聚合 unhealthy，optional 失败聚合 degraded，都不改写 activation。</p></article>
+        <article class="rule" data-category="manifest" data-text="source manifest release envelope catalog policy digest signature 审核"><div class="rule-meta"><span class="pill red">MUST NOT</span><span class="rule-id">MANIFEST-02</span></div><h3>Source Manifest 不含发布证明</h3><p>Package 摘要和签名只在 Release Envelope；审核、渠道、灰度、价格与下架只在 Catalog Policy。</p></article>
+        <article class="rule" data-category="manifest" data-text="headless 无界面 后台 安装 启用 卸载"><div class="rule-meta"><span class="pill">MUST</span><span class="rule-id">MANIFEST-03</span></div><h3>Headless 同样受管</h3><p>没有页面也必须可安装、启停、授权、更新、回滚和卸载。</p></article>
+        <article class="rule" data-category="permission" data-text="permissions network data hardware services host os 后台 文件 七类 componentId requiredFor grantDuration"><div class="rule-meta"><span class="pill">MUST</span><span class="rule-id">PERM-01</span></div><h3>权限按所有权分字段</h3><p>Host、OS、后台、文件进入 permissions[]；网络、跨 App 数据、硬件分别进入 network、data、requires.hardwareServices。</p></article>
+        <article class="rule" data-category="permission" data-text="权限 扩大 重新审核 签名 用户同意"><div class="rule-meta"><span class="pill">MUST</span><span class="rule-id">PERM-02</span></div><h3>扩大范围重新授权</h3><p>新增类别或扩大范围必须重新审核、签名，并让用户再次明确同意。</p></article>
+        <article class="rule" data-category="state" data-text="六维 状态 installation activation health permissions dependencies update 摘要"><div class="rule-meta"><span class="pill">MUST</span><span class="rule-id">STATE-01</span></div><h3>六维独立保存</h3><p>用户摘要由 Host 单向推导，不反向成为状态机输入。</p></article>
+        <article class="rule" data-category="state" data-text="组件 health extension healthy 自报 host 聚合"><div class="rule-meta"><span class="pill red">MUST NOT</span><span class="rule-id">STATE-02</span></div><h3>Extension 不可自报总体健康</h3><p>Component 可提供观测，只有 Host 能聚合并持久化 Extension health。</p></article>
+        <article class="rule" data-category="channel" data-text="商店 catalog host release mac microsoft"><div class="rule-meta"><span class="pill">MUST</span><span class="rule-id">CHANNEL-01</span></div><h3>商店目录锁定 Host Release</h3><p>Mac / Microsoft Store 新成员随下一次 Host 提交，不用 Feed 静默增加。</p></article>
+        <article class="rule" data-category="channel" data-text="developer mode local import developer_local 未审核 安全"><div class="rule-meta"><span class="pill amber">MUST</span><span class="rule-id">CHANNEL-02</span></div><h3>本地导入使用独立 Profile</h3><p>持续显示未审核来源，不继承生产权益，也不能关闭 Sandbox 与权限门禁。</p></article>
+        <article class="rule" data-category="ux" data-text="browse extensions install extensions installed 管理 headless unique"><div class="rule-meta"><span class="pill">MUST</span><span class="rule-id">UX-01</span></div><h3>发现与唯一管理分离</h3><p>Browse Extensions 只负责发现、详情和安装；Extensions 是唯一管理入口，默认 Installed 并包含 Headless。</p></article>
+        <article class="rule" data-category="ux" data-text="voice 推荐 第一方 可卸载 system app required"><div class="rule-meta"><span class="pill">MUST</span><span class="rule-id">UX-02</span></div><h3>Voice 可卸载</h3><p>推荐安装不等于系统必需；移除 Voice 后 Host、Provider 和 Extensions 管理仍正常。</p></article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="apps-title">
+      <div class="section-head"><span class="kicker">12 · First-party Baseline</span><h2 id="apps-title">首批第一方 Extensions</h2><p>高权限能力留在 Host Capability；App 通过 Source Manifest 组合 Contributions、Runtime Components 与 requires。</p></div>
+      <div class="grid-3">
+        <article class="card app-card"><div class="app-icon">&gt;_</div><div><span class="pill">高权限</span><h3>Terminal</h3><ul><li>PTY 与进程控制在 Host</li><li>本身不要求 Node / Python</li><li>商店版随 Host 审核</li></ul></div></article>
+        <article class="card app-card"><div class="app-icon">AI</div><div><span class="pill blue">复合 Runtime</span><h3>Agent Shell</h3><ul><li>web-surface + remote-service Components</li><li>CLI 通过 requires.hostCapabilities 请求</li><li>缺单个 CLI 只局部 degraded</li></ul></div></article>
+        <article class="card app-card"><div class="app-icon">VO</div><div><span class="pill amber">推荐 · 可卸载</span><h3>Voice</h3><ul><li>先定义版本化 Voice / Media Capability，禁止未定义接口</li><li>Source Manifest 显式声明麦克风、STT、注入权限</li><li>absent / disabled 不影响平台核心</li></ul></div></article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="accept-title">
+      <div class="section-head"><span class="kicker">13 · Acceptance</span><h2 id="accept-title">v1.1 验收清单</h2><p>每项都要有代码或真实运行证据，不能只以文档宣称完成。</p></div>
+      <div class="checklist">
+        <section><h3>Host / SDK</h3><ul><li>只有一个 Registry、权限和状态所有者</li><li>Host 身份不依赖目录名</li><li>Extension 经 Provider / SDK 访问设备</li><li>迁移目标未写成当前事实</li></ul></section>
+        <section><h3>Manifest / Catalog</h3><ul><li>runtime.components[] 与 protocol 合同已落地</li><li>Source Manifest / Release Envelope / Policy 分离</li><li>Host 按固定顺序验证 Envelope 与摘要</li><li>权限字段无重复事实源</li></ul></section>
+        <section><h3>状态 / 界面</h3><ul><li>六维状态独立持久化</li><li>故障不改写用户 activation 选择</li><li>Extensions 是唯一管理入口并默认 Installed</li><li>Headless 与未审核来源可见</li></ul></section>
+        <section><h3>发行 / 第一方</h3><ul><li>Platform Core 不依赖 Marketplace</li><li>Developer Mode 使用独立 Profile</li><li>Terminal / Agent Shell 权限边界正确</li><li>Voice 先定义 Capability；卸载后平台仍可用</li></ul></section>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="sources-title">
+      <div class="section-head"><span class="kicker">14 · Primary Sources</span><h2 id="sources-title">官方政策复核入口</h2><p>为保持本文件完全离线，交互版不创建外部链接；发布前按以下地址核对最新原文。</p></div>
+      <ul class="source-list">
+        <li><strong>Apple App Review Guidelines</strong><span>developer.apple.com/app-store/review/guidelines/ · 重点：2.4.5、3.1.1、4.7</span></li>
+        <li><strong>Apple Certificates Overview</strong><span>developer.apple.com/help/account/certificates/certificates-overview</span></li>
+        <li><strong>Microsoft Store Policies</strong><span>learn.microsoft.com/windows/apps/publish/store-policies · 重点：10.1.5、10.2.2、10.2.4、10.2.9</span></li>
+        <li><strong>Optional packages with executable code</strong><span>learn.microsoft.com/windows/msix/package/optional-packages-with-executable-code</span></li>
+        <li><strong>Sign an MSIX package</strong><span>learn.microsoft.com/windows/msix/package/signing-package-overview</span></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>ReAI App Platform v1.1 · 发行、Host 与 Extension 规范 · MUST / MUST NOT / SHOULD / MAY · 自包含离线版本</footer>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const themeButton = document.getElementById('themeButton');
+      try {
+        const saved = localStorage.getItem('reai-doc-theme');
+        if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
+      } catch (_) {}
+      const resolvedTheme = () => root.dataset.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      const updateThemeLabel = () => {
+        const next = resolvedTheme() === 'dark' ? '浅色' : '深色';
+        themeButton.setAttribute('aria-label', `切换为${next}主题`);
+        themeButton.title = `切换为${next}主题`;
+      };
+      updateThemeLabel();
+      themeButton.addEventListener('click', () => {
+        const next = resolvedTheme() === 'dark' ? 'light' : 'dark';
+        root.dataset.theme = next;
+        try { localStorage.setItem('reai-doc-theme', next); } catch (_) {}
+        updateThemeLabel();
+      });
+      document.getElementById('printButton').addEventListener('click', () => window.print());
+
+      const tabGroups = new Map();
+      document.querySelectorAll('[data-tabs]').forEach(list => {
+        const name = list.dataset.tabs;
+        const tabs = [...list.querySelectorAll('[role="tab"]')];
+        const panels = [...document.querySelectorAll(`[role="tabpanel"][data-group="${name}"]`)];
+        const activate = (tab, focus = true) => {
+          tabs.forEach(item => {
+            const selected = item === tab;
+            item.setAttribute('aria-selected', String(selected));
+            item.tabIndex = selected ? 0 : -1;
+          });
+          panels.forEach(panel => { panel.hidden = panel.dataset.panel !== tab.dataset.key; });
+          if (focus) tab.focus();
+        };
+        tabs.forEach((tab, index) => {
+          tab.addEventListener('click', () => activate(tab, false));
+          tab.addEventListener('keydown', event => {
+            let next = null;
+            if (event.key === 'ArrowRight' || event.key === 'ArrowDown') next = (index + 1) % tabs.length;
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') next = (index - 1 + tabs.length) % tabs.length;
+            if (event.key === 'Home') next = 0;
+            if (event.key === 'End') next = tabs.length - 1;
+            if (next !== null) { event.preventDefault(); activate(tabs[next]); }
+          });
+        });
+        tabGroups.set(name, { tabs, activate });
+      });
+      document.getElementById('openInstalled').addEventListener('click', () => {
+        const group = tabGroups.get('ux');
+        group.activate(group.tabs.find(tab => tab.dataset.key === 'installed'));
+      });
+
+      const statusForm = document.getElementById('statusForm');
+      const statusOutput = document.getElementById('statusOutput');
+      const statusTitle = document.getElementById('statusTitle');
+      const statusText = document.getElementById('statusText');
+      const statusMark = statusOutput.querySelector('.summary-mark');
+      const readout = document.getElementById('dimensionReadout');
+      function renderStatus() {
+        const s = Object.fromEntries(new FormData(statusForm));
+        let title = '状态确认中';
+        let text = 'Host 正在聚合六个维度。';
+        let tone = '';
+        let mark = '…';
+        if (s.update === 'rollback_pending') { title = '回滚中'; text = '新版本未达到健康门槛，Host 正在恢复 last-known-good。'; tone = 'is-danger'; mark = '↶'; }
+        else if (s.installation === 'absent') { title = '未安装'; text = 'Catalog 可以展示，但本机没有 Package 或运行资格。'; mark = '—'; }
+        else if (['downloading','verifying','staged','removing'].includes(s.installation)) { title = s.installation === 'removing' ? '正在卸载' : '安装处理中'; text = `installation=${s.installation}，Host 尚未进入稳定安装状态。`; tone = 'is-warning'; mark = '…'; }
+        else if (s.update === 'applying' || s.update === 'downloading') { title = s.update === 'applying' ? '正在应用更新' : '正在下载更新'; text = `update=${s.update}，当前 active Package 在原子切换前保持不变。`; tone = 'is-warning'; mark = '↑'; }
+        else if (s.update === 'blocked') { title = '更新被阻止'; text = '兼容、权限、依赖或 Catalog Policy 门禁阻止了本次更新。'; tone = 'is-warning'; mark = '!'; }
+        else if (['missing_required','incompatible'].includes(s.dependencies)) { title = '缺少必要依赖'; text = '用户的 activation 选择保持不变；Host 聚合 health=unhealthy，并阻断依赖它的核心 Contribution。'; tone = 'is-danger'; mark = '!'; }
+        else if (['pending','partial','denied'].includes(s.permissions)) { title = s.permissions === 'denied' ? '权限已拒绝' : '需要权限'; text = 'Host 必须展示具体权限类别、范围和修复入口。'; tone = 'is-warning'; mark = '!'; }
+        else if (s.activation === 'starting' || s.activation === 'stopping') { title = s.activation === 'starting' ? '启动中' : '停止中'; text = 'Host 正按 Runtime Component 依赖图执行生命周期。'; tone = 'is-warning'; mark = '…'; }
+        else if (s.health === 'unhealthy' || s.health === 'crash_loop') { title = '运行失败'; text = 'Host 阻断受影响 Contribution，并按策略回滚或进入安全模式；运行故障本身不会偷偷停用 App。'; tone = 'is-danger'; mark = '!'; }
+        else if (s.health === 'degraded' || s.dependencies === 'missing_optional') { title = '部分功能降级'; text = 'Extension 可以 active，但 optional Component 或依赖不可用。'; tone = 'is-warning'; mark = '△'; }
+        else if (s.update === 'available' || s.update === 'ready') { title = '更新可用'; text = '当前版本仍可运行，Host 已发现或准备好兼容更新。'; mark = '↑'; }
+        else if (s.activation === 'active' && s.health === 'healthy') { title = '运行正常'; text = 'Extension 已安装并处于 active，required 依赖、权限和健康检查均通过。'; mark = '✓'; }
+        else if (s.activation === 'disabled') { title = '已停用'; text = 'Package 可保留，但所有 Runtime Component 都没有运行资格。'; mark = 'Ⅱ'; }
+        statusOutput.classList.toggle('is-warning', tone === 'is-warning');
+        statusOutput.classList.toggle('is-danger', tone === 'is-danger');
+        statusTitle.textContent = title;
+        statusText.textContent = text;
+        statusMark.textContent = mark;
+        readout.replaceChildren(...Object.entries(s).map(([key, value]) => {
+          const item = document.createElement('code'); item.textContent = `${key}=${value}`; return item;
+        }));
+      }
+      statusForm.addEventListener('change', renderStatus);
+      renderStatus();
+
+      const decisionForm = document.getElementById('decisionForm');
+      const decisionOutput = document.getElementById('decisionOutput');
+      const decisionTitle = document.getElementById('decisionTitle');
+      const decisionText = document.getElementById('decisionText');
+      const decisionReasons = document.getElementById('decisionReasons');
+      const decisionMark = decisionOutput.querySelector('.summary-mark');
+      function renderDecision() {
+        const data = new FormData(decisionForm);
+        const profile = data.get('profile');
+        const labels = { reviewed: '审核、受控构建或 Release Envelope 未通过', runtime: '当前 Host 不支持全部 Component kind、protocol 或字段', capability: 'Host API 或 Provider Capability 不兼容', permissions: 'permissions / network / data / hardwareServices 无法完整治理', migration: '依赖、网络、计费、迁移或回滚未通过' };
+        let title, text, reasons, tone = 'is-danger', mark = '!';
+        if (profile === 'mac') { title = '必须升级 Host'; text = 'Mac App Store 的 Catalog 成员锁定到 Host Release。'; reasons = ['把新 Extension 纳入下一次 Host 提交与审核。']; }
+        else if (profile === 'windows') { title = 'v1.1 必须升级 Host'; text = 'Microsoft Store v1.1 不通过 Feed 静默增加成员。'; reasons = ['Optional Executable Package 需要另立 Profile 并获得真实 Store 许可。']; }
+        else {
+          const missing = Object.keys(labels).filter(key => data.get(key) !== 'on');
+          if (missing.length) { title = profile === 'developer' ? '本地导入被阻止' : '不能独立发布'; text = 'Direct 路径也不能绕过 Host、权限与供应链边界。'; reasons = missing.map(key => labels[key]); }
+          else if (profile === 'developer') { title = '可本地导入 · 未审核'; text = '仅进入 developer_local Profile，不会成为生产 Catalog 成员。'; reasons = ['持续显示未经过 ReAI 审核。', '继续执行 Sandbox、七类权限、依赖、生命周期和资源门禁。']; tone = 'is-warning'; mark = 'DEV'; }
+          else { title = '可以独立发布'; text = 'Direct Production Feed 且全部门禁通过，无需升级 Host。'; reasons = ['仍需保存审核批次、Release Envelope、Catalog Policy、Manifest / Package 摘要和兼容结果。']; tone = ''; mark = '✓'; }
+        }
+        decisionOutput.classList.toggle('is-warning', tone === 'is-warning');
+        decisionOutput.classList.toggle('is-danger', tone === 'is-danger');
+        decisionTitle.textContent = title;
+        decisionText.textContent = text;
+        decisionMark.textContent = mark;
+        decisionReasons.replaceChildren(...reasons.map(reason => { const li = document.createElement('li'); li.textContent = reason; return li; }));
+      }
+      decisionForm.addEventListener('change', renderDecision);
+      renderDecision();
+
+      const search = document.getElementById('ruleSearch');
+      const filterButtons = [...document.querySelectorAll('[data-filter]')];
+      const rules = [...document.querySelectorAll('.rule')];
+      const count = document.getElementById('ruleCount');
+      let activeFilter = 'all';
+      function filterRules() {
+        const query = search.value.trim().toLocaleLowerCase('zh-CN');
+        let visible = 0;
+        rules.forEach(rule => {
+          const category = activeFilter === 'all' || rule.dataset.category === activeFilter;
+          const text = `${rule.dataset.text} ${rule.textContent}`.toLocaleLowerCase('zh-CN');
+          rule.hidden = !(category && (!query || text.includes(query)));
+          if (!rule.hidden) visible += 1;
+        });
+        count.textContent = `显示 ${visible} 条规则`;
+      }
+      filterButtons.forEach(button => button.addEventListener('click', () => {
+        activeFilter = button.dataset.filter;
+        filterButtons.forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+        filterRules();
+      }));
+      search.addEventListener('input', filterRules);
+    })();
+  </script>
+</body>
+</html>

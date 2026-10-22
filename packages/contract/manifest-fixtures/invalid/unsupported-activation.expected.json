@@ -1,6 +1,0 @@
-{
-  "codes": [
-    "HOST_RUNTIME_KIND_NOT_SUPPORTED"
-  ],
-  "note": "只支持 on-demand 激活"
-}

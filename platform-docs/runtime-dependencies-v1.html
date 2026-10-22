@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="icon" href="data:,">
+  <meta name="description" content="ReAI App Platform v1.1 运行依赖规范：可组合 Runtime Component、Hardware Service Provider、headless、依赖探测与逐功能降级。">
+  <title>运行依赖规范 · ReAI App Platform v1.1</title>
+  <style>
+    :root {
+      --bg: #f6f2e9;
+      --bg-elevated: rgba(255, 253, 247, .86);
+      --card: #fffdf8;
+      --card-strong: #ffffff;
+      --ink: #172326;
+      --muted: #657277;
+      --line: #d9dfdb;
+      --line-strong: #bdcbc5;
+      --accent: #087f79;
+      --accent-2: #0c6677;
+      --accent-soft: #dff3ee;
+      --blue-soft: #e4f0f5;
+      --warn: #9a5b12;
+      --warn-soft: #fff0d3;
+      --danger: #a43e38;
+      --danger-soft: #fbe7e2;
+      --ok: #247458;
+      --ok-soft: #e1f2e8;
+      --shadow: 0 18px 50px rgba(28, 46, 45, .09);
+      --radius: 20px;
+      --radius-sm: 12px;
+      --max: 1180px;
+    }
+
+    :root[data-theme="dark"] {
+      --bg: #10191b;
+      --bg-elevated: rgba(20, 31, 34, .88);
+      --card: #172326;
+      --card-strong: #1c2a2d;
+      --ink: #edf5f2;
+      --muted: #a8b8b7;
+      --line: #304246;
+      --line-strong: #466066;
+      --accent: #58c9bd;
+      --accent-2: #79c7dd;
+      --accent-soft: #183b3a;
+      --blue-soft: #19343e;
+      --warn: #f2be72;
+      --warn-soft: #3d2d17;
+      --danger: #f2998d;
+      --danger-soft: #432522;
+      --ok: #79d0aa;
+      --ok-soft: #17372a;
+      --shadow: 0 20px 60px rgba(0, 0, 0, .28);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #10191b;
+        --bg-elevated: rgba(20, 31, 34, .88);
+        --card: #172326;
+        --card-strong: #1c2a2d;
+        --ink: #edf5f2;
+        --muted: #a8b8b7;
+        --line: #304246;
+        --line-strong: #466066;
+        --accent: #58c9bd;
+        --accent-2: #79c7dd;
+        --accent-soft: #183b3a;
+        --blue-soft: #19343e;
+        --warn: #f2be72;
+        --warn-soft: #3d2d17;
+        --danger: #f2998d;
+        --danger-soft: #432522;
+        --ok: #79d0aa;
+        --ok-soft: #17372a;
+        --shadow: 0 20px 60px rgba(0, 0, 0, .28);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 9% 0%, color-mix(in srgb, var(--accent) 10%, transparent), transparent 32rem),
+        radial-gradient(circle at 94% 7%, color-mix(in srgb, var(--accent-2) 9%, transparent), transparent 28rem),
+        var(--bg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      line-height: 1.65;
+      min-height: 100vh;
+    }
+    a { color: var(--accent-2); text-underline-offset: .2em; }
+    a:hover { color: var(--accent); }
+    button, input, select { font: inherit; }
+    button, select { cursor: pointer; }
+    :focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 65%, transparent); outline-offset: 3px; }
+    .skip-link {
+      position: fixed; top: 8px; left: 8px; z-index: 100;
+      transform: translateY(-150%); padding: 9px 13px;
+      color: var(--card); background: var(--ink); border-radius: 9px;
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .topbar {
+      position: sticky; top: 0; z-index: 30;
+      border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+      background: var(--bg-elevated);
+      -webkit-backdrop-filter: blur(18px);
+      backdrop-filter: blur(18px);
+    }
+    .topbar-inner {
+      width: min(var(--max), calc(100% - 32px)); margin: 0 auto;
+      min-height: 66px; display: flex; align-items: center; gap: 14px;
+    }
+    .brand {
+      min-height: 44px; display: inline-flex; align-items: center;
+      color: var(--ink); text-decoration: none; font-weight: 760; letter-spacing: -.02em;
+      white-space: nowrap;
+    }
+    .brand-mark {
+      display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: 8px;
+      color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      border-radius: 10px; box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 25%, transparent);
+    }
+    .doc-nav { display: flex; gap: 5px; margin-left: auto; }
+    .doc-nav a {
+      min-height: 44px; display: inline-flex; align-items: center;
+      color: var(--muted); text-decoration: none; padding: 8px 11px; border-radius: 10px;
+      font-size: 14px; font-weight: 650;
+    }
+    .doc-nav a:hover { color: var(--ink); background: var(--accent-soft); }
+    .doc-nav a[aria-current="page"] { color: var(--accent); background: var(--accent-soft); }
+    .top-actions { display: flex; gap: 7px; }
+    .icon-btn {
+      width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 11px;
+      color: var(--ink); background: var(--card); display: grid; place-items: center;
+    }
+    .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    main { width: min(var(--max), calc(100% - 32px)); margin: 0 auto; padding: 54px 0 90px; }
+    .hero {
+      position: relative; overflow: hidden; padding: clamp(30px, 6vw, 66px);
+      border: 1px solid var(--line); border-radius: 30px; background: var(--card); box-shadow: var(--shadow);
+    }
+    .hero::after {
+      content: ""; position: absolute; width: 300px; height: 300px; right: -110px; top: -140px;
+      border: 55px solid color-mix(in srgb, var(--accent) 12%, transparent); border-radius: 50%; pointer-events: none;
+    }
+    .eyebrow { margin: 0 0 14px; color: var(--accent); font-weight: 780; letter-spacing: .09em; font-size: 13px; text-transform: uppercase; }
+    h1 { margin: 0; max-width: 850px; font-size: clamp(36px, 7vw, 70px); line-height: 1.04; letter-spacing: -.055em; }
+    .hero-lead { max-width: 820px; margin: 23px 0 0; color: var(--muted); font-size: clamp(17px, 2vw, 21px); }
+    .hero-lead strong { color: var(--ink); }
+    .meta-row { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 26px; }
+    .meta-pill, .tag {
+      display: inline-flex; align-items: center; gap: 6px; min-height: 29px; padding: 4px 10px;
+      border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: var(--bg);
+      font-size: 13px; font-weight: 650;
+    }
+    .meta-pill.locked { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, var(--line)); background: var(--ok-soft); }
+    .meta-row a.meta-pill { min-height: 44px; }
+    .principles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 20px; }
+    .principle { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: color-mix(in srgb, var(--card-strong) 75%, transparent); }
+    .principle b { display: block; margin-bottom: 5px; font-size: 15px; }
+    .principle span { color: var(--muted); font-size: 13px; }
+
+    .section { margin-top: 60px; scroll-margin-top: 88px; }
+    .section-head { display: flex; gap: 20px; align-items: end; justify-content: space-between; margin-bottom: 19px; }
+    .section h2 { margin: 0; font-size: clamp(25px, 4vw, 38px); line-height: 1.18; letter-spacing: -.035em; }
+    .section-intro { max-width: 780px; margin: 9px 0 0; color: var(--muted); }
+    .kicker { color: var(--accent); font-size: 13px; font-weight: 780; letter-spacing: .08em; text-transform: uppercase; }
+
+    .taxonomy { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .tax-card { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); }
+    .tax-card code { color: var(--accent); font-weight: 750; }
+    .tax-card p { margin: 7px 0 0; color: var(--muted); font-size: 14px; }
+
+    .callout { padding: 20px 22px; border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line)); border-left: 5px solid var(--accent); border-radius: 15px; background: var(--accent-soft); }
+    .callout strong { display: block; margin-bottom: 4px; }
+    .callout p { margin: 0; color: var(--muted); }
+    .callout.warning { border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); border-left-color: var(--warn); background: var(--warn-soft); }
+
+    .explorer {
+      border: 1px solid var(--line); border-radius: 24px; overflow: hidden; background: var(--card); box-shadow: var(--shadow);
+    }
+    .filters { padding: 18px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--accent-soft) 28%, var(--card)); }
+    .filter-grid { display: grid; grid-template-columns: minmax(220px, 2fr) repeat(3, minmax(140px, 1fr)); gap: 10px; }
+    .field label { display: block; margin: 0 0 5px; color: var(--muted); font-size: 12px; font-weight: 720; }
+    .field input, .field select {
+      width: 100%; min-height: 44px; padding: 8px 11px; color: var(--ink); background: var(--card-strong);
+      border: 1px solid var(--line-strong); border-radius: 11px;
+    }
+    .filter-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; margin-top: 12px; }
+    .count { margin-right: auto; color: var(--muted); font-size: 14px; }
+    .count strong { color: var(--ink); }
+    .small-btn {
+      min-height: 44px; padding: 6px 11px; color: var(--ink); background: var(--card);
+      border: 1px solid var(--line); border-radius: 10px; font-weight: 680; font-size: 13px;
+    }
+    .small-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .shortcut { color: var(--muted); font-size: 12px; }
+    kbd { padding: 1px 6px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 5px; background: var(--card-strong); font-family: inherit; }
+
+    .dep-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; padding: 16px; }
+    .dep-card { border: 1px solid var(--line); border-radius: 15px; background: var(--card-strong); overflow: clip; }
+    .dep-card[hidden] { display: none; }
+    .dep-card summary { list-style: none; cursor: pointer; padding: 17px; }
+    .dep-card summary::-webkit-details-marker { display: none; }
+    .dep-summary { display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; }
+    .dep-title { font-weight: 780; letter-spacing: -.01em; }
+    .dep-sub { margin-top: 4px; color: var(--muted); font-size: 13px; }
+    .chevron { display: inline-grid; place-items: center; width: 27px; height: 27px; border-radius: 8px; color: var(--accent); background: var(--accent-soft); transition: transform .18s ease; }
+    details[open] .chevron { transform: rotate(45deg); }
+    .dep-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+    .tag { min-height: 24px; padding: 2px 8px; font-size: 11px; }
+    .tag.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 32%, var(--line)); background: var(--ok-soft); }
+    .tag.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); background: var(--warn-soft); }
+    .tag.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 32%, var(--line)); background: var(--danger-soft); }
+    .dep-body { padding: 0 17px 17px; border-top: 1px solid var(--line); }
+    .dep-body dl { display: grid; grid-template-columns: 110px 1fr; gap: 7px 12px; margin: 15px 0 0; font-size: 14px; }
+    .dep-body dt { color: var(--muted); }
+    .dep-body dd { margin: 0; }
+    .dep-body code { color: var(--accent); }
+    .empty { display: none; padding: 42px 20px; text-align: center; color: var(--muted); }
+    .empty.show { display: block; }
+
+    .schema-layout { display: grid; grid-template-columns: minmax(0, 1.18fr) minmax(300px, .82fr); gap: 16px; }
+    .code-card, .info-card { border: 1px solid var(--line); border-radius: 18px; background: var(--card); overflow: hidden; }
+    .card-head { display: flex; justify-content: space-between; align-items: center; padding: 13px 16px; border-bottom: 1px solid var(--line); font-weight: 730; }
+    pre { margin: 0; padding: 18px; overflow: auto; color: var(--ink); background: color-mix(in srgb, var(--blue-soft) 38%, var(--card)); font: 12.5px/1.65 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; tab-size: 2; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .info-card { padding: 18px; }
+    .info-card h3 { margin: 0 0 10px; font-size: 18px; }
+    .info-card ul { margin: 0; padding-left: 20px; color: var(--muted); }
+    .info-card li + li { margin-top: 7px; }
+    .state-list { display: grid; gap: 8px; margin-top: 15px; }
+    .state-row { display: grid; grid-template-columns: 120px 1fr; gap: 10px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+    .state-row code { color: var(--accent); font-weight: 750; }
+    .state-row span { color: var(--muted); }
+
+    .flow { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; align-items: stretch; }
+    .flow-step { position: relative; padding: 16px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--card); text-align: center; font-size: 13px; }
+    .flow-step b { display: block; margin-bottom: 3px; color: var(--accent); }
+    .flow-step:not(:last-child)::after { content: "→"; position: absolute; right: -10px; top: 50%; z-index: 2; transform: translateY(-50%); color: var(--accent); font-weight: 800; }
+
+    .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 18px; background: var(--card); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 13px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { color: var(--muted); background: color-mix(in srgb, var(--accent-soft) 32%, var(--card)); font-size: 12px; letter-spacing: .025em; }
+    tr:last-child td { border-bottom: 0; }
+
+    .gates { display: grid; grid-template-columns: repeat(3, 1fr); gap: 11px; }
+    .gate { padding: 17px; border: 1px solid var(--line); border-radius: 15px; background: var(--card); }
+    .gate-num { display: inline-grid; place-items: center; width: 34px; height: 26px; margin-bottom: 10px; color: var(--accent); background: var(--accent-soft); border-radius: 8px; font-weight: 800; font-size: 12px; }
+    .gate b { display: block; }
+    .gate p { margin: 5px 0 0; color: var(--muted); font-size: 13px; }
+
+    .ownership { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .ownership article { padding: 21px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); }
+    .ownership h3 { margin: 0 0 9px; }
+    .ownership ul { margin: 0; padding-left: 20px; color: var(--muted); }
+
+    .source-list { columns: 2; column-gap: 28px; margin: 0; padding-left: 20px; color: var(--muted); }
+    .source-list li { break-inside: avoid; margin-bottom: 8px; }
+    .source-list code { color: var(--ink); overflow-wrap: anywhere; word-break: break-word; }
+    footer { margin-top: 70px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+
+    @media (max-width: 900px) {
+      .topbar-inner { flex-wrap: wrap; padding: 10px 0; }
+      .doc-nav { order: 3; width: 100%; overflow-x: auto; margin: 0; }
+      .top-actions { margin-left: auto; }
+      .principles, .taxonomy { grid-template-columns: repeat(2, 1fr); }
+      .filter-grid { grid-template-columns: 1fr 1fr; }
+      .schema-layout { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: repeat(3, 1fr); }
+      .flow-step:nth-child(3)::after { display: none; }
+      .gates { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 620px) {
+      main { width: min(100% - 20px, var(--max)); padding-top: 25px; }
+      .topbar-inner { width: min(100% - 20px, var(--max)); }
+      .hero { padding: 27px 20px; border-radius: 22px; }
+      .principles, .taxonomy, .filter-grid, .dep-grid, .ownership, .gates { grid-template-columns: 1fr; }
+      .dep-grid { padding: 10px; }
+      .flow { grid-template-columns: 1fr; }
+      .flow-step::after { display: none !important; }
+      .section { margin-top: 44px; }
+      .section-head { display: block; }
+      .source-list { columns: 1; }
+      .dep-body dl { grid-template-columns: 1fr; gap: 2px; }
+      .dep-body dd { margin-bottom: 8px; }
+      .shortcut { display: none; }
+    }
+
+    @media print {
+      :root, :root[data-theme="dark"] {
+        --bg: #fff; --card: #fff; --card-strong: #fff; --ink: #111; --muted: #444;
+        --line: #bbb; --line-strong: #999; --accent: #006f6a; --accent-soft: #eef8f6;
+        --blue-soft: #f2f7f9; --warn-soft: #fff7e8; --danger-soft: #fff0ed; --ok-soft: #edf8f1;
+      }
+      body { background: #fff; font-size: 10.5pt; }
+      .topbar, .filters, .top-actions, .skip-link, .shortcut, footer .no-print { display: none !important; }
+      main { width: 100%; padding: 0; }
+      .hero, .explorer, .code-card, .info-card { box-shadow: none; }
+      .hero { padding: 22px; border-radius: 12px; }
+      h1 { font-size: 34pt; }
+      .section { margin-top: 28px; break-inside: avoid; }
+      .dep-grid { grid-template-columns: 1fr 1fr; padding: 8px; }
+      .dep-card { break-inside: avoid; }
+      .dep-card[hidden] { display: block; }
+      details:not([open]) > .dep-body { display: block !important; }
+      .chevron { display: none; }
+      .gates { grid-template-columns: repeat(3, 1fr); }
+      a { color: inherit; text-decoration: none; }
+      pre { white-space: pre-wrap; }
+    }
+  </style>
+</head>
+<body>
+<div style="position:sticky;top:0;z-index:9999;background:#b45309;color:#fff;padding:10px 16px;font:600 14px/1.5 system-ui;">本页是手工维护的交互快照，内容可能落后于同名 .md——平台合同一律以 Markdown 版为准（横幅添加于 2026-08-13，当时已知本页未同步 http.fetch@1 等 1.2 内容）。</div>
+
+  <a class="skip-link" href="#main">跳到正文</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">R</span>App Platform v1.1</a>
+      <nav class="doc-nav" aria-label="App Platform v1.1 文档">
+        <a href="app-development-guide-v1.html">开发指南</a>
+        <a href="distribution-policy-v1.html">发行渠道</a>
+        <a href="runtime-dependencies-v1.html" aria-current="page">运行依赖</a>
+        <a href="network-billing-policy-v1.html">网络与计费</a>
+      </nav>
+      <div class="top-actions">
+        <button class="icon-btn" id="themeToggle" type="button" aria-label="切换浅色或深色主题" aria-pressed="false" title="切换主题"><span aria-hidden="true">◐</span></button>
+        <button class="icon-btn" id="printButton" type="button" aria-label="⌘P 打印本文档" title="打印"><span aria-hidden="true">⌘P</span></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" id="top" aria-labelledby="page-title">
+      <p class="eyebrow">ReAI App Platform · 已锁定的产品基线，实现目标</p>
+      <h1 id="page-title">运行依赖规范</h1>
+      <p class="hero-lead"><strong>主程序必须在干净系统中正常启动。</strong>硬件通过独立 SDK/Host Provider 接入，App 由可组合 Component 构成；缺少 Node、Python、外部 CLI、设备或网络时，只降级关联组件和功能。</p>
+      <div class="meta-row" aria-label="文档元信息">
+        <span class="meta-pill locked">● v1.1 已锁定</span>
+        <span class="meta-pill">2026-08-01</span>
+        <span class="meta-pill">macOS + Windows</span>
+        <a class="meta-pill" href="runtime-dependencies-v1.md">阅读 Markdown</a>
+      </div>
+      <div class="principles" aria-label="四项核心原则">
+        <div class="principle"><b>零隐性依赖</b><span>开发工具不进入用户运行环境。</span></div>
+        <div class="principle"><b>硬件服务解耦</b><span>AI Board 01 是首个 Provider，不是平台本身。</span></div>
+        <div class="principle"><b>组件独立降级</b><span>依赖只影响 componentId + requiredFor。</span></div>
+        <div class="principle"><b>失败必须可解释</b><span>探测、授权、修复和 fallback 完整。</span></div>
+      </div>
+    </section>
+
+    <section class="section" id="taxonomy" aria-labelledby="taxonomy-title">
+      <div class="section-head">
+        <div><span class="kicker">01 · Classification</span><h2 id="taxonomy-title">八种依赖，一项只能选一个主分类</h2></div>
+      </div>
+      <div class="taxonomy">
+        <article class="tax-card"><code>build_time</code><p>只在编译、测试、签名和发布时使用。例：Bun、Rust、Cargo。</p></article>
+        <article class="tax-card"><code>bundled</code><p>编译进二进制或随安装包交付。用户不需要准备。</p></article>
+        <article class="tax-card"><code>os_capability</code><p>操作系统自带能力或用户授权。例：WebKit、TCC、Shell。</p></article>
+        <article class="tax-card"><code>installer_managed</code><p>由商店或 ReAI 安装器安装和修复。例：WebView2。</p></article>
+        <article class="tax-card"><code>optional_external_tool</code><p>用户主动选择的外部软件，只影响对应功能。</p></article>
+        <article class="tax-card"><code>downloaded_content</code><p>Host 下载、校验的非执行内容。例：STT 模型。</p></article>
+        <article class="tax-card"><code>remote_service</code><p>外部网络服务。必须定义离线和暂时不可用状态。</p></article>
+        <article class="tax-card"><code>hardware</code><p>物理设备与系统驱动栈。必须支持未连接和热插拔。</p></article>
+      </div>
+      <div class="callout warning" style="margin-top:14px">
+        <strong>不能把可执行代码伪装成内容下载</strong>
+        <p>下载后会执行的代码不属于 <code>downloaded_content</code>，必须回到发行策略中按可执行插件代码审核和交付。</p>
+      </div>
+    </section>
+
+    <section class="section" id="architecture" aria-labelledby="architecture-title">
+      <div class="section-head">
+        <div><span class="kicker">02 · Runtime Architecture</span><h2 id="architecture-title">组件可组合，硬件按服务接入</h2><p class="section-intro">v1.1 不再假设一个 App 只有一种运行形态，也不把 AI Board 01 写成平台级前提。</p></div>
+      </div>
+      <div class="taxonomy" aria-label="Runtime Component 类型">
+        <article class="tax-card"><code>web-surface</code><p>协议 <code>web-surface@1</code>。隔离 UI renderer；不能访问 Host DOM、原生命令或直通网络，固定非 headless。</p></article>
+        <article class="tax-card"><code>wasm-component</code><p>协议 <code>wasm-component@1</code>。Host 沙箱内的业务或后台逻辑；可 headless，限制资源和导入能力。</p></article>
+        <article class="tax-card"><code>remote-service</code><p>协议 <code>remote-service@1</code>。通过 Network Broker 连接云服务；远端响应只能当数据。</p></article>
+        <article class="tax-card"><code>native-companion</code><p>协议 <code>native-companion@1</code>。随包审核和签名；默认仅 direct，生命周期由 Supervisor 管理。</p></article>
+      </div>
+      <div class="ownership" style="margin-top:14px">
+        <article>
+          <h3><code>runtime.components[]</code></h3>
+          <ul><li>每项至少声明 <code>id / kind / protocol / required / entry|serviceRef / headless / activation</code>。</li><li><code>protocol</code> 必须与 kind 匹配并版本化；Host 不认识时 fail closed。</li><li>Package 代码使用 <code>entry</code>，remote-service 使用 <code>serviceRef</code>，两者不得并存；web-surface entry 固定为 ESM。</li><li><code>platforms</code> 只能是顶层 targets 子集；<code>dependsOn</code> 省略等价于空数组。</li><li>本地代码通过 <code>lifecycle.activate / deactivate</code> 映射审核 Hook；远端组件没有本地 Hook，停用只撤销 Broker 会话。</li><li>Surface、Command、后台任务、文件处理器必须用 <code>componentId</code> 引用执行组件。</li></ul>
+          <p><strong>状态正交：</strong><code>activation=active</code> 只表示用户允许 Host 运行 App；<code>on-demand</code> Component 仍可以是 <code>stopped</code>。required Component 失败聚合为 <code>health=unhealthy</code>，optional Component 失败聚合为 <code>health=degraded</code>，都只阻断引用它的 Contribution。只有用户停用、更新切换、卸载或明确安全策略才进入 <code>stopping → disabled</code>。</p>
+        </article>
+        <article>
+          <h3>Headless</h3>
+          <ul><li>App 可以没有 UI，但必须显式披露和启用后台能力。</li><li><code>app-enabled</code> 或 <code>system-event</code> 必须声明 <code>backgroundPolicy</code>：版本化 <code>triggers</code>、不可省略的 <code>stop</code>、<code>resourceClass</code> 与 <code>restartLimit</code>。</li><li><code>on-demand</code> 不需要 backgroundPolicy，调用结束后由 Host 按协议回收。</li><li>用户始终能在 <code>Extensions → Installed</code> 查看、停止、禁用和诊断。</li><li>禁用或卸载 App 必须停止全部 Component；headless 仍分别经过 SDK、Network Broker 与渠道门禁。</li></ul>
+          <p><code>{ "backgroundPolicy": { "triggers": ["app-enabled@1"], "stop": ["app-disabled@1", "host-exit@1"], "resourceClass": "background-standard@1", "restartLimit": 3 } }</code></p>
+        </article>
+      </div>
+      <div class="callout" style="margin-top:14px">
+        <strong>AI Board 01 是首个 Hardware Service Provider，不是平台启动条件</strong>
+        <p>App 使用 <code>requires.hardwareServices[]</code> 声明 <code>id / sdkApi / capabilities / purpose / grantDuration / optional / requiredFor</code>。普通 UI、远程 Agent 和非硬件 Command 不得因为 AI Board 01 未连接而失效；Provider 合同以 SDK 版本为准，不以 <code>src-tauri/</code>、<code>driver/</code> 或磁盘目录为准。</p>
+      </div>
+      <div class="table-wrap" style="margin-top:14px">
+        <table>
+          <thead><tr><th>Hardware Service 字段</th><th>规则</th><th>AI Board 01 示例</th></tr></thead>
+          <tbody>
+            <tr><td><code>id</code></td><td>每种硬件类型独立的稳定 ID</td><td><code>com.reai.hardware.board01</code></td></tr>
+            <tr><td><code>sdkApi</code></td><td>兼容的 Provider SDK SemVer，不依赖实现目录</td><td><code>&gt;=1.0.0 &lt;2.0.0</code></td></tr>
+            <tr><td><code>capabilities</code></td><td>版本化硬件能力；Host 只发放声明且 Provider 支持的能力</td><td><code>controls.events@1</code>、<code>audio.input@1</code></td></tr>
+            <tr><td><code>purpose</code></td><td>安装与授权前展示给用户的必填用途说明</td><td>使用 AI Board 01 的语音键与音频输入</td></tr>
+            <tr><td><code>grantDuration</code></td><td><code>once / session / while_enabled / until_revoked</code>；用户可撤销，Host 不得静默延长</td><td><code>while_enabled</code></td></tr>
+            <tr><td><code>optional</code></td><td>普通 App 默认 true；false 仅用于本质上的硬件专用 App</td><td><code>true</code></td></tr>
+            <tr><td><code>requiredFor</code></td><td>只列硬件专属 Contribution，统一使用 kind:id</td><td><code>binding:board01-new-task</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap" style="margin-top:14px">
+        <table>
+          <thead><tr><th>系统技术</th><th>分类</th><th>打包规则</th></tr></thead>
+          <tbody>
+            <tr><td>Node / Python（构建）</td><td><code>build_time</code></td><td>不进入用户 requirements，正式包只带构建产物</td></tr>
+            <tr><td>Node / Python（随包运行时）</td><td><code>bundled</code></td><td>绑定 native-companion，锁版本、随包签名并检查许可证</td></tr>
+            <tr><td>Node / Python（用户全局环境）</td><td><code>optional_external_tool</code></td><td>绑定 componentId + requiredFor，默认仅 direct，不能阻断 Host 或普通 UI</td></tr>
+            <tr><td>AppleScript / osascript</td><td><code>os_capability</code></td><td>脚本随包审核；声明目标 App 与 Automation 权限，禁止远端下发脚本</td></tr>
+            <tr><td>系统 Shell / PowerShell</td><td><code>os_capability</code></td><td>脚本随包、参数结构化；商店 Profile 默认关闭高权限路径</td></tr>
+            <tr><td>Claude / Codex / Kimi CLI</td><td><code>optional_external_tool</code></td><td>用户安装登录，只影响对应 adapter；不是 native-companion</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="section" id="matrix" aria-labelledby="matrix-title">
+      <div class="section-head">
+        <div><span class="kicker">03 · Current Reality</span><h2 id="matrix-title">当前依赖矩阵</h2><p class="section-intro">以下是截至 2026-08-01 对当前代码的只读核对。使用搜索和筛选快速判断某项依赖属于谁、缺失影响什么。</p></div>
+      </div>
+      <div class="explorer">
+        <div class="filters" role="search" aria-label="筛选依赖矩阵">
+          <div class="filter-grid">
+            <div class="field"><label for="search">搜索依赖或影响</label><input id="search" type="search" placeholder="例如 Node、WebView2、语音、Chrome…" autocomplete="off"></div>
+            <div class="field"><label for="platformFilter">平台</label><select id="platformFilter"><option value="all">全部平台</option><option value="macos">macOS</option><option value="windows">Windows</option></select></div>
+            <div class="field"><label for="channelFilter">渠道</label><select id="channelFilter"><option value="all">全部渠道</option><option value="mac_app_store">Mac App Store</option><option value="microsoft_store">Microsoft Store</option><option value="direct">官网下载</option></select></div>
+            <div class="field"><label for="kindFilter">依赖类型</label><select id="kindFilter"><option value="all">全部类型</option><option value="build_time">构建时</option><option value="bundled">随包</option><option value="os_capability">系统能力</option><option value="installer_managed">安装器管理</option><option value="optional_external_tool">可选外部工具</option><option value="downloaded_content">下载内容</option><option value="remote_service">远程服务</option><option value="hardware">硬件</option></select></div>
+          </div>
+          <div class="filter-footer">
+            <div class="count" aria-live="polite"><strong id="visibleCount">0</strong> / <span id="totalCount">0</span> 项符合</div>
+            <span class="shortcut"><kbd>/</kbd> 搜索 · <kbd>Esc</kbd> 清空</span>
+            <button class="small-btn" id="expandAll" type="button">展开结果</button>
+            <button class="small-btn" id="resetFilters" type="button">重置筛选</button>
+          </div>
+        </div>
+
+        <div class="dep-grid" id="depGrid">
+          <details class="dep-card" data-kind="build_time" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="bun rust cargo 编译 构建 签名 ci 开发环境">
+            <summary><div class="dep-summary"><div><div class="dep-title">Bun / Rust / Cargo / 编译器</div><div class="dep-sub">只属于构建机器，不属于用户电脑</div><div class="dep-tags"><span class="tag">build_time</span><span class="tag ok">合规</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>用于 Vue 前端和 Tauri/Rust 构建、测试、签名。</dd><dt>缺失影响</dt><dd>不应出现在用户运行时。</dd><dt>规范动作</dt><dd>保持与安装包 <code>requirements</code> 隔离。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="bundled" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="sqlite rusqlite database 数据库 bundled">
+            <summary><div class="dep-summary"><div><div class="dep-title">SQLite</div><div class="dep-sub">rusqlite 使用 bundled feature</div><div class="dep-tags"><span class="tag">bundled</span><span class="tag ok">已随包</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd><code>rusqlite</code> 启用 <code>bundled</code>，不借用系统 SQLite。</dd><dt>缺失影响</dt><dd>产物构建即应失败，不转嫁给用户。</dd><dt>规范动作</dt><dd>进入 bundled 完整性 Gate。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="os_capability" data-platform="macos" data-channel="mac_app_store direct" data-search="webkit wkwebview macos webview 前端 渲染 14.0 apple silicon">
+            <summary><div class="dep-summary"><div><div class="dep-title">macOS WebKit / WKWebView</div><div class="dep-sub">系统自带的 Host 渲染能力</div><div class="dep-tags"><span class="tag">os_capability</span><span class="tag ok">系统提供</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>Tauri 使用系统 WebKit/WKWebView；配置最低 macOS 14.0（2026-09-26 拍板，仅支持 Apple Silicon M1+；按账户持久隔离的 WebView 存储要 14，托管 Chromium 要 13）。</dd><dt>缺失影响</dt><dd>Host 无法渲染，属于真正的启动级依赖。</dd><dt>规范动作</dt><dd>在最低支持系统真机执行打包验收。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="installer_managed" data-platform="windows" data-channel="microsoft_store direct" data-search="windows webview2 bootstrapper online offline 安装器 离线">
+            <summary><div class="dep-summary"><div><div class="dep-title">Windows WebView2 Runtime</div><div class="dep-sub">当前使用在线 downloadBootstrapper</div><div class="dep-tags"><span class="tag">installer_managed</span><span class="tag danger">发布缺口</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd><code>webviewInstallMode.type = downloadBootstrapper</code>。</dd><dt>缺失影响</dt><dd>系统未安装 WebView2 且安装时离线，Host 可能无法完成安装或渲染。</dd><dt>规范动作</dt><dd>分别确定 Microsoft Store 与 direct 的交付方式，补离线首次安装测试。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="bundled" data-platform="macos windows" data-channel="direct" data-search="terminal pty portable-pty 终端 官网 direct 商店编译关闭">
+            <summary><div class="dep-summary"><div><div class="dep-title">内置终端 PTY</div><div class="dep-sub">portable-pty 编译进 Host</div><div class="dep-tags"><span class="tag">bundled</span><span class="tag ok">已随包</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>PTY 由 Rust <code>portable-pty</code> 提供。</dd><dt>缺失影响</dt><dd>只应在构建或打包 Gate 暴露。</dd><dt>规范动作</dt><dd>v1.1 仅 direct 提供；Store 构建关闭 Capability。Terminal 不得因此依赖 Node、Python 或 Agent CLI。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="os_capability" data-platform="macos windows" data-channel="direct" data-search="shell zsh powershell terminal 终端 系统命令 官网 direct 商店编译关闭">
+            <summary><div class="dep-summary"><div><div class="dep-title">系统 Shell</div><div class="dep-sub">macOS zsh / 用户 Shell；Windows PowerShell</div><div class="dep-tags"><span class="tag">os_capability</span><span class="tag ok">功能级依赖</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>macOS 校验绝对路径后读取 <code>$SHELL</code>，兜底 <code>/bin/zsh</code>；Windows 使用系统 PowerShell。</dd><dt>缺失影响</dt><dd>只阻断 Terminal。</dd><dt>规范动作</dt><dd>仅 direct 探测系统 Shell；Store 构建不暴露该能力，也不自动安装替代解释器。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="bundled" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="sherpa onnx stt speech transcription 本地语音识别">
+            <summary><div class="dep-summary"><div><div class="dep-title">sherpa-onnx 本地 STT</div><div class="dep-sub">正式完整包通过 sherpa feature 编译</div><div class="dep-tags"><span class="tag">bundled</span><span class="tag ok">已随包</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>正式功能包启用 <code>sherpa</code>，原生库进入应用产物。</dd><dt>缺失影响</dt><dd>只影响本地语音识别。</dd><dt>规范动作</dt><dd>验证 macOS/Windows 与 CPU 架构产物完整性。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="bundled" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="silero vad voice activity model 模型 语音分段">
+            <summary><div class="dep-summary"><div><div class="dep-title">Silero VAD 模型</div><div class="dep-sub">随 assets 打包，首次启动复制</div><div class="dep-tags"><span class="tag">bundled</span><span class="tag ok">可降级</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd><code>silero_vad.onnx</code> 在 bundle 中，首次启动复制到 models 目录。</dd><dt>缺失影响</dt><dd>VAD 不可用，STT 可回退为整段识别。</dd><dt>规范动作</dt><dd>状态为 <code>degraded</code>，不得阻断 Host 或整个 STT。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="downloaded_content" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="sensevoice stt model 下载 语音 模型 sha256">
+            <summary><div class="dep-summary"><div><div class="dep-title">默认 SenseVoice STT 模型</div><div class="dep-sub">后台下载，有大小与 SHA-256</div><div class="dep-tags"><span class="tag">downloaded_content</span><span class="tag ok">已有校验</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>启动后台准备默认 <code>sensevoice-small-int8</code>，模型清单声明大小和 SHA-256。</dd><dt>缺失影响</dt><dd>本地 STT 暂不可用，其他功能可用。</dd><dt>规范动作</dt><dd>统一映射为 <code>needs_action + download_required</code>，展示进度、来源与磁盘空间。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="downloaded_content" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="punctuation punct 标点 模型 下载 sha256 github cdn">
+            <summary><div class="dep-summary"><div><div class="dep-title">标点恢复模型</div><div class="dep-sub">CDN / GitHub fallback，有固定哈希</div><div class="dep-tags"><span class="tag">downloaded_content</span><span class="tag ok">已有校验</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>下载 tar.bz2，校验固定大小与 SHA-256 后解压。</dd><dt>缺失影响</dt><dd>识别仍可用，标点能力降级。</dd><dt>规范动作</dt><dd>统一上报 <code>degraded</code>，不显示为 STT 整体失败。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="none" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="ffmpeg msbc ble rust audio 解码 不再依赖">
+            <summary><div class="dep-summary"><div><div class="dep-title">ffmpeg</div><div class="dep-sub">已经退出运行路径</div><div class="dep-tags"><span class="tag">不是依赖</span><span class="tag ok">纯 Rust 替代</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>BLE mSBC 使用纯 Rust 解码；前端仅剩注释掉的旧状态代码。</dd><dt>缺失影响</dt><dd>没有影响。</dd><dt>规范动作</dt><dd>明确禁止重新上浮为主程序外部依赖。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="none" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="python 解释器 不依赖 runtime">
+            <summary><div class="dep-summary"><div><div class="dep-title">Python</div><div class="dep-sub">当前桌面运行路径没有调用</div><div class="dep-tags"><span class="tag">不是运行依赖</span><span class="tag ok">无影响</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>桌面 Host 运行路径未调用 Python。</dd><dt>缺失影响</dt><dd>没有影响。</dd><dt>规范动作</dt><dd>未来 App 若需要 Python：随包运行时归 bundled + native-companion；借用全局环境归 optional_external_tool，并绑定 componentId + requiredFor。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="os_capability" data-platform="macos" data-channel="mac_app_store direct" data-search="applescript osascript automation keyboard setup assistant script macos 系统脚本">
+            <summary><div class="dep-summary"><div><div class="dep-title">AppleScript / osascript</div><div class="dep-sub">系统能力，脚本本身仍属于受审核代码</div><div class="dep-tags"><span class="tag">os_capability</span><span class="tag warn">精确授权</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>macOS Provider 用固定脚本关闭 Keyboard Setup Assistant；Action schema 预留 appleScript 类型，但核心模块未形成任意脚本执行通道。</dd><dt>缺失影响</dt><dd>只影响对应 macOS 辅助动作。</dd><dt>规范动作</dt><dd>脚本随包审核，声明目标 App 与 Automation 权限；禁止远端下发新脚本或作为插件任意执行后门。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="os_capability" data-platform="macos" data-channel="mac_app_store direct" data-search="macos tcc accessibility input monitoring microphone 麦克风 辅助功能 输入监听 权限">
+            <summary><div class="dep-summary"><div><div class="dep-title">macOS 三项 TCC 权限</div><div class="dep-sub">输入监听、辅助功能、麦克风</div><div class="dep-tags"><span class="tag">os_capability</span><span class="tag warn">用户授权</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>已有系统 API 检查/请求；不需要 sudo。</dd><dt>缺失影响</dt><dd>分别影响 HID 监听、文字注入和录音。</dd><dt>规范动作</dt><dd>状态使用 <code>needs_action</code>，以 <code>permission_required</code> 区分具体原因。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="optional_external_tool" data-platform="macos windows" data-channel="direct" data-search="claude code cli npm agent shell optional install script">
+            <summary><div class="dep-summary"><div><div class="dep-title">Claude Code CLI</div><div class="dep-sub">Agent Shell 的可选本地适配器</div><div class="dep-tags"><span class="tag">optional_external_tool</span><span class="tag warn">用户选择</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd><code>claude --version</code> 探测；官方脚本优先，npm 镜像为 fallback。</dd><dt>缺失影响</dt><dd>只阻断 Claude local-cli；Terminal、Host 与其他 Agent 仍可用。</dd><dt>规范动作</dt><dd>归 <code>reai.agent-shell</code>，安装必须用户触发并适配渠道。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="optional_external_tool" data-platform="macos windows" data-channel="direct" data-search="codex cli npm node agent shell openai optional">
+            <summary><div class="dep-summary"><div><div class="dep-title">Codex CLI</div><div class="dep-sub">当前安装路径使用 npm</div><div class="dep-tags"><span class="tag">optional_external_tool</span><span class="tag warn">安装路径待规范</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd><code>codex --version</code> 探测；安装脚本当前执行 <code>npm install -g @openai/codex</code>。</dd><dt>缺失影响</dt><dd>只阻断 Codex local-cli。</dd><dt>规范动作</dt><dd>Node/npm 只属于当前安装路径，绝不能成为 Host 启动依赖。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="optional_external_tool" data-platform="macos windows" data-channel="direct" data-search="kimi moonshot cli agent shell install script optional">
+            <summary><div class="dep-summary"><div><div class="dep-title">Kimi CLI</div><div class="dep-sub">发布方安装脚本，用户主动执行</div><div class="dep-tags"><span class="tag">optional_external_tool</span><span class="tag warn">用户选择</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd><code>kimi --version</code> 探测，使用 Kimi 发布方安装脚本。</dd><dt>缺失影响</dt><dd>只阻断 Kimi local-cli。</dd><dt>规范动作</dt><dd>不得静默下载或执行远程脚本。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="optional_external_tool" data-platform="macos" data-channel="direct" data-search="legacy hook node jq claude mode 模式校正 技术债">
+            <summary><div class="dep-summary"><div><div class="dep-title">旧 Claude mode hook</div><div class="dep-sub">JSON 解析依赖 node，fallback 到 jq</div><div class="dep-tags"><span class="tag">附属能力</span><span class="tag danger">技术债</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd><code>write-mode.sh</code> 与 <code>clear-mode.sh</code> 优先 node，失败后使用 jq。</dd><dt>缺失影响</dt><dd>两者都缺少时模式校正静默失效，Host 不应失败。</dd><dt>规范动作</dt><dd>迁移到无 Node/jq 的 Host relay 或随包解析器，并显示 degraded 状态。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="optional_external_tool" data-platform="macos windows" data-channel="direct" data-search="chrome browser extension native messaging 浏览器 扩展 web adapter 官网 direct 商店编译关闭">
+            <summary><div class="dep-summary"><div><div class="dep-title">Chrome + ReAI 扩展</div><div class="dep-sub">网页适配器的组合依赖</div><div class="dep-tags"><span class="tag">optional_external_tool</span><span class="tag warn">三段依赖</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>Chrome、扩展与 Native Messaging 缺一不可；Host 只修复已经安装的 manifest，不主动替用户安装扩展。</dd><dt>缺失影响</dt><dd>只影响 Chrome 网页适配器。</dd><dt>规范动作</dt><dd>仅 direct 开放；分别上报浏览器、扩展、native host 状态，Store 构建关闭 Native Messaging。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="remote_service" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="oauth client config ota cdn model remote service network offline 远程 网络 更新">
+            <summary><div class="dep-summary"><div><div class="dep-title">OAuth / 客户端配置 / OTA / CDN</div><div class="dep-sub">Host 发起的远程服务依赖</div><div class="dep-tags"><span class="tag">remote_service</span><span class="tag warn">离线降级</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>网络请求由 Rust Host 发起；部分路径有 last-known-good 或编译期 fallback。</dd><dt>缺失影响</dt><dd>在线登录、更新或下载暂不可用，Host 继续启动。</dd><dt>规范动作</dt><dd>结合网络策略声明域名、用途、缓存和离线行为。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="hardware" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="board01 usb ble hardware service provider sdk hid keyboard 硬件 驱动">
+            <summary><div class="dep-summary"><div><div class="dep-title">AI Board 01 / USB / BLE</div><div class="dep-sub">当前是 Host 内部实现，目标为首个独立 Provider</div><div class="dep-tags"><span class="tag">hardware</span><span class="tag danger">Provider 待实现</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>HID、Audio 与 platform 模块直接使用 hidapi 和系统栈，尚无公开 Hardware Service SDK/Provider 注册表。</dd><dt>缺失影响</dt><dd>只应影响 AI Board 01 专属功能。</dd><dt>规范动作</dt><dd>迁移为 <code>com.reai.hardware.board01</code> Provider；合同基于 <code>id + sdkApi</code>，不得让 App 依赖当前目录。</dd></dl></div>
+          </details>
+
+          <details class="dep-card" data-kind="hardware" data-platform="macos windows" data-channel="mac_app_store microsoft_store direct" data-search="microphone audio input cpal audio session 麦克风 音频输入 hardware provider media">
+            <summary><div class="dep-summary"><div><div class="dep-title">麦克风与音频输入设备</div><div class="dep-sub">应与 AI Board 01 Provider 分层</div><div class="dep-tags"><span class="tag">hardware</span><span class="tag warn">服务边界待拆分</span></div></div><span class="chevron" aria-hidden="true">＋</span></div></summary>
+            <div class="dep-body"><dl><dt>当前事实</dt><dd>cpal 与 AudioSession 处理音频，来源既可能是 AI Board 01，也可能是其他系统设备。</dd><dt>缺失影响</dt><dd>录音或语音输入不可用，其他 App 功能继续。</dd><dt>规范动作</dt><dd>音频输入服务与 AI Board 01 Provider 分层，不得把“录音”永久等同于“连接 AI Board 01”。</dd></dl></div>
+          </details>
+        </div>
+        <div class="empty" id="emptyState">没有符合当前条件的依赖。请清空搜索或重置筛选。</div>
+      </div>
+    </section>
+
+    <section class="section" id="contract" aria-labelledby="contract-title">
+      <div class="section-head"><div><span class="kicker">04 · Machine-readable Contract</span><h2 id="contract-title">Runtime、硬件与 requirements 合同</h2><p class="section-intro">Component 回答“哪段代码需要它”，requiredFor 回答“用户看到哪些功能受影响”。二者必须分层。</p></div></div>
+      <div class="callout" style="margin-bottom:14px">
+        <strong>嵌入 App Manifest 时不重复写 owner</strong>
+        <p>独立 requirements 文件必须填写 <code>owner.scope</code> 与 <code>owner.id</code>；嵌入含稳定 <code>appId</code> 的 App Manifest 时，scope 固定继承为 <code>app</code>、id 继承 <code>appId</code>，避免两份所有者信息漂移。</p>
+      </div>
+      <div class="schema-layout">
+        <div class="code-card">
+          <div class="card-head"><span>可组合 Agent Shell 示例</span><button type="button" class="small-btn copy-btn" data-copy="schemaCode">复制 JSON</button></div>
+          <pre id="schemaCode"><code>{
+  "appId": "reai.agent-shell",
+  "requires": {
+    "hostCapabilities": [
+      "surface.main@1", "commands@1", "hardware.service@1"
+    ],
+    "hardwareServices": [{
+      "id": "com.reai.hardware.board01",
+      "sdkApi": "&gt;=1.0.0 &lt;2.0.0",
+      "capabilities": ["controls.binding@1"],
+      "purpose": "允许用户为 AI Board 01 配置 Agent 快捷键",
+      "grantDuration": "while_enabled",
+      "optional": true,
+      "requiredFor": ["binding:board01-new-task"]
+    }]
+  },
+  "runtime": {
+    "components": [
+      {
+        "id": "main-ui",
+        "kind": "web-surface",
+        "protocol": "web-surface@1",
+        "required": true,
+        "entry": "dist/app.js",
+        "headless": false,
+        "activation": "on-demand",
+        "lifecycle": {
+          "activate": "default.activate",
+          "deactivate": "default.deactivate"
+        }
+      },
+      {
+        "id": "local-agent",
+        "kind": "wasm-component",
+        "protocol": "wasm-component@1",
+        "required": false,
+        "entry": "runtime/local-agent.wasm",
+        "headless": true,
+        "activation": "on-demand",
+        "lifecycle": {
+          "activate": "exports.activate",
+          "deactivate": "exports.deactivate"
+        }
+      },
+      {
+        "id": "publisher-agent",
+        "kind": "remote-service",
+        "protocol": "remote-service@1",
+        "required": false,
+        "serviceRef": "network:endpoint.agent-api",
+        "headless": true,
+        "activation": "on-demand"
+      }
+    ]
+  },
+  "contributes": {
+    "surfaces": [{ "id": "main", "componentId": "main-ui" }],
+    "commands": [
+      { "id": "ask-local", "componentId": "local-agent" },
+      { "id": "ask-remote", "componentId": "publisher-agent" }
+    ]
+  },
+  "requirementsVersion": "1.1",
+  "requirements": [{
+    "id": "tool.codex-cli",
+    "displayName": "Codex CLI",
+    "kind": "optional_external_tool",
+    "componentId": "local-agent",
+    "required": false,
+    "requiredFor": ["command:ask-local"],
+    "platforms": ["macos", "windows"],
+    "channels": ["direct"],
+    "version": { "constraint": "&gt;=0.1.0" },
+    "probe": {
+      "type": "command_version",
+      "target": "codex",
+      "args": ["--version"],
+      "timeoutMs": 3000,
+      "sideEffectFree": true
+    },
+    "provision": {
+      "mode": "user_initiated",
+      "source": "publisher",
+      "requiresConsent": true
+    },
+    "failure": {
+      "componentState": "degraded",
+      "featureState": "blocked",
+      "hostState": "satisfied",
+      "fallbackComponentId": "publisher-agent"
+    },
+    "remediation": {
+      "action": "open_dependency_setup",
+      "label": "安装或连接 Codex",
+      "restartRequired": false
+    }
+  }]
+}</code></pre>
+        </div>
+        <div class="info-card">
+          <h3>依赖解析结果只保留 5 种</h3>
+          <p style="color:var(--muted);margin-top:0">它们不是 App 的单一总体 status。安装中、缺少权限等具体原因放入稳定 <code>detailCode</code>，再映射到六维 Local State。</p>
+          <div class="state-list">
+            <div class="state-row"><code>satisfied</code><span>版本、权限、连接和完整性满足要求</span></div>
+            <div class="state-row"><code>needs_action</code><span>依赖项需要授权、安装、下载、连接硬件、升级或重试；Host 再映射到六维 Local State</span></div>
+            <div class="state-row"><code>degraded</code><span>有降级路径，核心流程仍可用</span></div>
+            <div class="state-row"><code>blocked</code><span>声明中的具体功能不可用</span></div>
+            <div class="state-row"><code>unsupported</code><span>平台或渠道不支持</span></div>
+          </div>
+          <h3 style="margin-top:20px">Component 统一值</h3>
+          <ul>
+            <li><code>web-surface</code></li>
+            <li><code>wasm-component</code></li>
+            <li><code>remote-service</code></li>
+            <li><code>native-companion</code></li>
+          </ul>
+          <h3 style="margin-top:20px">影响链</h3>
+          <p style="color:var(--muted)"><code>Requirement → componentId → requiredFor → App</code>。缺少必需项映射为 <code>dependencies=missing_required</code>；有 fallback 时映射为 <code>dependencies=missing_optional</code> 与 <code>health=degraded</code>。用户的 <code>activation</code> 选择保持不变。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="resolution" aria-labelledby="resolution-title">
+      <div class="section-head"><div><span class="kicker">05 · Resolution</span><h2 id="resolution-title">探测、修复、逐组件降级</h2></div></div>
+      <div class="flow" aria-label="依赖解析流程">
+        <div class="flow-step"><b>1</b>读取静态声明</div>
+        <div class="flow-step"><b>2</b>解析组件与 Provider</div>
+        <div class="flow-step"><b>3</b>逐项无副作用探测</div>
+        <div class="flow-step"><b>4</b>按 componentId 汇总</div>
+        <div class="flow-step"><b>5</b>用户触发修复</div>
+        <div class="flow-step"><b>6</b>刷新 requiredFor</div>
+      </div>
+      <div class="ownership" style="margin-top:14px">
+        <article><h3>探测要求</h3><ul><li>命令探测默认 3 秒超时，不得进入交互模式。</li><li>文件探测校验路径、版本、签名或哈希，不扫描整盘。</li><li>Provider 先验证 id + sdkApi，再区分未安装、未连接、权限不足和驱动异常。</li><li>headless 健康不能只看“进程还在”，必须有心跳、超时或功能探针。</li></ul></article>
+        <article><h3>修复要求</h3><ul><li>安装和下载由 Host 统一编排，用户明确触发。</li><li>执行前展示发布者、来源、版本、体积、权限和卸载方式。</li><li>临时目录下载，完整校验后原子替换。</li><li>失败不污染已有版本，并保留重试与手动说明。</li></ul></article>
+      </div>
+    </section>
+
+    <section class="section" id="profiles" aria-labelledby="profiles-title">
+      <div class="section-head"><div><span class="kicker">06 · Profiles</span><h2 id="profiles-title">平台 × 渠道能力分离</h2></div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Profile</th><th>系统运行时</th><th>可选依赖交付</th><th>v1.1 约束</th></tr></thead>
+          <tbody>
+            <tr><td><code>macos + mac_app_store</code></td><td>系统 WebKit；TCC 用户授权</td><td>可执行能力随审核包</td><td>不依赖 Homebrew/npm；新增代码随主程序审核升级</td></tr>
+            <tr><td><code>macos + direct</code></td><td>系统 WebKit；TCC 用户授权</td><td>ReAI 签名下载器；用户触发外部工具</td><td>可执行物必须签名/校验；插件失败不阻断 Host</td></tr>
+            <tr><td><code>windows + microsoft_store</code></td><td>WebView2 由包或认可机制处理</td><td>遵守 Store 扩展、驱动和服务规则</td><td>不得假设系统预装开发环境</td></tr>
+            <tr><td><code>windows + direct</code></td><td>ReAI 安装器管理 WebView2</td><td>可以用户触发安装外部工具</td><td>必须明确离线策略；当前在线 bootstrapper 是缺口</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="table-wrap" style="margin-top:14px">
+        <table>
+          <thead><tr><th>高权限能力</th><th>Mac Store</th><th>Microsoft Store</th><th>direct</th></tr></thead>
+          <tbody>
+            <tr><td>Terminal / PTY / Shell</td><td>编译关闭</td><td>编译关闭</td><td>Host 托管</td></tr>
+            <tr><td>Agent local_cli</td><td>编译关闭</td><td>编译关闭</td><td>可选外部工具</td></tr>
+            <tr><td>Agent remote_api</td><td>可用</td><td>可用</td><td>可用</td></tr>
+            <tr><td>Chrome Native Messaging</td><td>编译关闭</td><td>编译关闭</td><td>分别探测三段依赖</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout" style="margin-top:14px"><strong>同一依赖可以有不同交付方式</strong><p>商店版随包交付，官网下载版签名后按需下载是允许的；前提是分别声明 Profile，不能为了复用实现绕过渠道边界。</p></div>
+    </section>
+
+    <section class="section" id="gates" aria-labelledby="gates-title">
+      <div class="section-head"><div><span class="kicker">07 · Release Gates</span><h2 id="gates-title">发布前十一道门</h2></div></div>
+      <div class="gates">
+        <article class="gate"><span class="gate-num">G1</span><b>声明完整性</b><p>Component、Contribution 引用、Provider、进程、权限与网络全部入表。</p></article>
+        <article class="gate"><span class="gate-num">G2</span><b>干净系统启动</b><p>无开发环境、CLI、Chrome、硬件和网络仍能启动。</p></article>
+        <article class="gate"><span class="gate-num">G3</span><b>Bundled 完整性</b><p>资源真实进入产物，签名、哈希与架构正确。</p></article>
+        <article class="gate"><span class="gate-num">G4</span><b>安装器先决条件</b><p>WebView 等可安装、探测、修复，离线行为明确。</p></article>
+        <article class="gate"><span class="gate-num">G5</span><b>降级隔离</b><p>移除依赖或停止组件只影响 componentId + requiredFor。</p></article>
+        <article class="gate"><span class="gate-num">G6</span><b>权限路径</b><p>拒绝、稍后、撤销和再次授权均经真机验证。</p></article>
+        <article class="gate"><span class="gate-num">G7</span><b>下载内容</b><p>校验、取消、断网、空间不足和损坏回滚通过。</p></article>
+        <article class="gate"><span class="gate-num">G8</span><b>渠道一致性</b><p>Store 与 direct 的目录、签名和更新源不串用。</p></article>
+        <article class="gate"><span class="gate-num">G9</span><b>升级与卸载</b><p>不留下运行进程、失效自启动项或不可解释数据。</p></article>
+        <article class="gate"><span class="gate-num">G10</span><b>Hardware Provider</b><p>API 兼容、未安装、未连接、热插拔和多设备状态通过合同测试。</p></article>
+        <article class="gate"><span class="gate-num">G11</span><b>Headless 生命周期</b><p>后台启用、预算、退避、停止、升级和卸载由 Supervisor 收敛。</p></article>
+      </div>
+    </section>
+
+    <section class="section" id="ownership" aria-labelledby="ownership-title">
+      <div class="section-head"><div><span class="kicker">08 · Ownership</span><h2 id="ownership-title">Terminal、Agent Shell 与 Hardware Provider</h2></div></div>
+      <div class="ownership">
+        <article><h3>Terminal</h3><ul><li><code>terminal-ui</code> 是 web-surface；PTY 是 Host Capability。</li><li>系统 Shell 是 Terminal 的 os_capability。</li><li>Terminal 本身不依赖 Node、Python 或 Agent CLI。</li><li>v1.1 仅 direct；Store 构建从产物层关闭 Capability。</li></ul></article>
+        <article><h3>Agent Shell</h3><ul><li>可组合 main-ui、Wasm 本地协调和 remote-service。</li><li>每个 Contribution 引用实际 componentId。</li><li>local-cli 是可选外部工具，不是假装成 native-companion。</li><li>一个 adapter 失败，仍可切换 fallback Component。</li></ul></article>
+        <article><h3>Hardware Provider</h3><ul><li><code>com.reai.hardware.board01</code> 是首个服务，不是 App 默认启动依赖。</li><li>App 只通过 SDK Bridge 使用硬件，不依赖 Host 内部目录。</li><li>其他键盘、麦克风或设备分别注册自己的 Provider。</li><li>一个 Provider 故障不得影响另一个 Provider 或普通功能。</li></ul></article>
+      </div>
+    </section>
+
+    <section class="section" id="gaps" aria-labelledby="gaps-title">
+      <div class="section-head"><div><span class="kicker">09 · Known Gaps</span><h2 id="gaps-title">进入开发计划的七个缺口</h2></div></div>
+      <div class="callout warning">
+        <strong>这份规范是实现目标，不等于当前已经全部实现</strong>
+        <p>当前还缺 components + requirements 解析器、Hardware Service SDK/Provider 注册表、Component Supervisor/headless 生命周期、Windows WebView2 离线方案、无 Node/jq 的旧 hook 替代、外部 CLI 统一合同，以及统一依赖中心。当前 AI Board 01 目录结构只是实现证据，不是未来公开 SDK。</p>
+      </div>
+    </section>
+
+    <section class="section" id="evidence" aria-labelledby="evidence-title">
+      <div class="section-head"><div><span class="kicker">10 · Evidence</span><h2 id="evidence-title">当前代码证据索引</h2></div></div>
+      <ul class="source-list">
+        <li><code>CLAUDE.md</code> — 架构、构建 feature、权限与适配器边界</li>
+        <li><code>src-tauri/Cargo.toml</code> — PTY、SQLite bundled、sherpa 与平台依赖</li>
+        <li><code>src-tauri/tauri.conf.json</code> — assets、最低系统与 WebView2 bootstrapper</li>
+        <li><code>src-tauri/src/commands/terminal.rs</code> — 系统 Shell 和 PTY</li>
+        <li><code>src-tauri/src/core/config/mod.rs</code> — Agent CLI probe 与安装脚本</li>
+        <li><code>integrations/claude-code/app-generated/hooks/*.sh</code> — Node → jq fallback</li>
+        <li><code>src-tauri/src/core/audio/msbc.rs</code> — 纯 Rust mSBC</li>
+        <li><code>src-tauri/src/core/env/{vad,punct}.rs</code> — 模型交付</li>
+        <li><code>src-tauri/src/core/stt/downloader.rs</code> — 大小与 SHA-256 校验</li>
+        <li><code>src-tauri/src/commands/permissions.rs</code> — macOS 权限</li>
+        <li><code>src-tauri/src/core/browser_adapter/install.rs</code> — Chrome Native Messaging</li>
+        <li><code>src-tauri/src/platform/macos/mod.rs</code> — 当前固定 AppleScript 系统调用</li>
+      </ul>
+      <div class="callout warning" style="margin-top:14px"><strong>证据路径不是公开 SDK</strong><p>这些目录只说明 2026-08-01 的当前实现。v1.1 App 与 Hardware Provider 只能依赖版本化合同，不能依赖某个 Rust 模块、Driver 目录或磁盘路径继续存在。</p></div>
+    </section>
+
+    <footer>
+      <p>ReAI App Platform · Runtime Dependencies v1.1 · 2026-08-01</p>
+      <p class="no-print">键盘提示：按 <kbd>/</kbd> 聚焦依赖搜索，按 <kbd>Esc</kbd> 清空搜索。</p>
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const themeButton = document.getElementById('themeToggle');
+      let savedTheme = null;
+      try { savedTheme = localStorage.getItem('reai-doc-theme'); } catch (_) { /* file:// may deny storage */ }
+      if (savedTheme === 'light' || savedTheme === 'dark') root.dataset.theme = savedTheme;
+
+      const effectiveDark = () => root.dataset.theme
+        ? root.dataset.theme === 'dark'
+        : matchMedia('(prefers-color-scheme: dark)').matches;
+      const syncThemeButton = () => {
+        const dark = effectiveDark();
+        themeButton.setAttribute('aria-pressed', String(dark));
+        themeButton.title = dark ? '切换为浅色主题' : '切换为深色主题';
+      };
+      syncThemeButton();
+      themeButton.addEventListener('click', () => {
+        const next = effectiveDark() ? 'light' : 'dark';
+        root.dataset.theme = next;
+        try { localStorage.setItem('reai-doc-theme', next); } catch (_) { /* theme still works for this page */ }
+        syncThemeButton();
+      });
+
+      document.getElementById('printButton').addEventListener('click', () => window.print());
+
+      const search = document.getElementById('search');
+      const platform = document.getElementById('platformFilter');
+      const channel = document.getElementById('channelFilter');
+      const kind = document.getElementById('kindFilter');
+      const cards = [...document.querySelectorAll('.dep-card')];
+      const visibleCount = document.getElementById('visibleCount');
+      const totalCount = document.getElementById('totalCount');
+      const empty = document.getElementById('emptyState');
+      totalCount.textContent = String(cards.length);
+
+      const includesToken = (value, token) => token === 'all' || value.split(/\s+/).includes(token);
+      const applyFilters = () => {
+        const query = search.value.trim().toLocaleLowerCase('zh-CN');
+        let visible = 0;
+        cards.forEach(card => {
+          const text = `${card.dataset.search} ${card.textContent}`.toLocaleLowerCase('zh-CN');
+          const show = (!query || text.includes(query))
+            && includesToken(card.dataset.platform, platform.value)
+            && includesToken(card.dataset.channel, channel.value)
+            && includesToken(card.dataset.kind, kind.value);
+          card.hidden = !show;
+          if (show) visible += 1;
+        });
+        visibleCount.textContent = String(visible);
+        empty.classList.toggle('show', visible === 0);
+      };
+      [search, platform, channel, kind].forEach(control => control.addEventListener('input', applyFilters));
+      applyFilters();
+
+      document.getElementById('resetFilters').addEventListener('click', () => {
+        search.value = '';
+        platform.value = 'all';
+        channel.value = 'all';
+        kind.value = 'all';
+        applyFilters();
+        search.focus();
+      });
+
+      const expandButton = document.getElementById('expandAll');
+      expandButton.addEventListener('click', () => {
+        const visibleCards = cards.filter(card => !card.hidden);
+        const shouldOpen = visibleCards.some(card => !card.open);
+        visibleCards.forEach(card => { card.open = shouldOpen; });
+        expandButton.textContent = shouldOpen ? '收起结果' : '展开结果';
+      });
+
+      document.addEventListener('keydown', event => {
+        const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
+        if (event.key === '/' && !typing) {
+          event.preventDefault();
+          search.focus();
+        } else if (event.key === 'Escape' && document.activeElement === search && search.value) {
+          search.value = '';
+          applyFilters();
+        }
+      });
+
+      document.querySelectorAll('.copy-btn').forEach(button => {
+        button.addEventListener('click', async () => {
+          const target = document.getElementById(button.dataset.copy);
+          try {
+            await navigator.clipboard.writeText(target.innerText);
+            const old = button.textContent;
+            button.textContent = '已复制';
+            setTimeout(() => { button.textContent = old; }, 1300);
+          } catch (_) {
+            button.textContent = '请手动复制';
+          }
+        });
+      });
+
+      let printOpenState = [];
+      addEventListener('beforeprint', () => {
+        printOpenState = cards.map(card => card.open);
+        cards.forEach(card => { card.open = true; });
+      });
+      addEventListener('afterprint', () => cards.forEach((card, index) => { card.open = printOpenState[index]; }));
+    })();
+  </script>
+</body>
+</html>
