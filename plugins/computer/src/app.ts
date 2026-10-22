@@ -11,8 +11,10 @@ import { AppError, defineApp } from "@reai/app-sdk/v1";
 import { computerCall } from "./computer-bridge";
 import type { ComputerState, PermissionsStatus } from "./computer-bridge";
 import { mountComputerHome, type ComputerHome } from "./computer-view";
-import { DEFAULT_VLM_CONFIG, describeError, runComputerTask, type VlmConfig } from "./agent-loop";
+import { DEFAULT_VLM_CONFIG, causeMessage, describeError, runComputerTask, type VlmConfig } from "./agent-loop";
+import { setComputerLocale, t } from "./computer-i18n";
 import { CHANGELOG_TEXT } from "./release-notes";
+import type { StepLike } from "./types";
 import manifest from "../app.manifest.json";
 import "./computer.css";
 
@@ -62,57 +64,73 @@ export default defineApp({
         abortRequested = true;
       };
       abortHooks.add(requestAbort);
+      const subscriptions: Array<() => void> = [];
+      let home: ComputerHome | null = null;
       try {
         root.innerHTML = "";
+        // 先按当前语言设置翻译，再渲染首屏（英文冷启动直接英文，不闪换）。
+        setComputerLocale(ctx.locale?.getSnapshot().locale ?? "zh");
         const store = ctx.storage.private("state");
-        let vlm = await loadVlmConfig(store);
+        // 首屏同步挂载：配置读取与状态查询都在后台进行，卸载时立即释放，迟到结果一律丢弃。
+        let vlm: VlmConfig = { ...DEFAULT_VLM_CONFIG };
+        let configReady = false;
+        let disposed = false;
         // 状态查询的序号：只采纳最新一次请求的结果，迟到的旧响应不覆盖新状态。
         let permissionsSeq = 0;
         let engineStateSeq = 0;
 
-        const home: ComputerHome = mountComputerHome(root, {
-          onStop: () => {
-            // 与宿主命令同一语义：停引擎并中止所有页面的任务循环，
-            // 避免引擎恢复后旧循环接着跑。
-            abortAllTasks();
-            void refreshAfterAction("computer.stop", {});
+        // 通知归属：只有产生当前通知的那个操作成功后才清除它，无关操作不清掉较新的失败。
+        let noticeOwner: string | null = null;
+        const notifyFailure = (owner: string, key: string, cause: unknown) => {
+          noticeOwner = owner;
+          home?.setNotice({ level: "error", message: { key, raw: describeError(cause) } });
+        };
+        const clearNotice = (owner: string) => {
+          if (noticeOwner !== owner) return;
+          noticeOwner = null;
+          home?.setNotice(null);
+        };
+
+        const view: ComputerHome = mountComputerHome(
+          root,
+          {
+            onStop: async () => {
+              // 与宿主命令同一语义：停引擎并中止所有页面的任务循环，
+              // 避免引擎恢复后旧循环接着跑。
+              abortAllTasks();
+              await refreshAfterAction("computer.stop");
+            },
+            onResume: () => refreshAfterAction("computer.resume"),
+            onRequestAccessibility: () => refreshAfterAction("computer.permissions.request_accessibility"),
+            onOpenScreenSettings: async () => {
+              try {
+                await computerCall("computer.permissions.open_screen_settings", {});
+                clearNotice("computer.permissions.open_screen_settings");
+              } catch (cause) {
+                notifyFailure("computer.permissions.open_screen_settings", "notice.openSettingsFailed", cause);
+              }
+            },
+            onRefreshPermissions: () => refreshPermissions(),
+            onStartTask: (task) => void startTask(task),
+            onAbortTask: requestAbort,
+            onSaveVlm: async (modelAlias) => {
+              // 先写存储，成功后才切换运行配置；失败时运行配置保持旧值，视图负责回滚显示。
+              await store.set(VLM_CONFIG_KEY, { modelAlias } satisfies StoredVlmConfig);
+              vlm = { modelAlias };
+            },
+            onRefreshTrace: () => refreshEngineState(),
           },
-          onResume: () => void refreshAfterAction("computer.resume", {}),
-          onRequestAccessibility: () =>
-            void refreshAfterAction("computer.permissions.request_accessibility", {}),
-          onOpenScreenSettings: () =>
-            void computerCall("computer.permissions.open_screen_settings", {}).catch(
-              (cause) => home.setNotice(`打开系统设置失败：${String(cause)}`),
-            ),
-          onRefreshPermissions: () => void refreshPermissions(),
-          onStartTask: (task) => void startTask(task),
-          onAbortTask: requestAbort,
-          onSaveVlm: (modelAlias) => {
-            vlm = { modelAlias };
-            void store
-              .set(VLM_CONFIG_KEY, { modelAlias } satisfies StoredVlmConfig)
-              .then(() => home.setNotice("模型档位已保存"))
-              .catch((cause) => home.setNotice(`保存失败：${describeError(cause)}`));
-          },
-          onRefreshTrace: () => void refreshEngineState(),
-        }, {
-          appId: manifest.appId,
-          name: manifest.name,
-          version: manifest.version,
-          changelogText: CHANGELOG_TEXT,
-        });
-        home.setVlmDraft(vlm.modelAlias);
+          { appId: manifest.appId, version: manifest.version, changelogText: CHANGELOG_TEXT },
+        );
+        home = view;
 
         async function refreshPermissions() {
           const seq = ++permissionsSeq;
           try {
-            const status = await computerCall<PermissionsStatus>(
-              "computer.permissions.status",
-              {},
-            );
-            if (seq === permissionsSeq) home.setPermissions(status);
+            const status = await computerCall<PermissionsStatus>("computer.permissions.status", {});
+            if (!disposed && seq === permissionsSeq) view.setPermissions(status);
           } catch (cause) {
-            if (seq === permissionsSeq) home.setPermissions(null, describeError(cause));
+            if (!disposed && seq === permissionsSeq) view.setPermissions(null, describeError(cause));
           }
         }
 
@@ -120,89 +138,113 @@ export default defineApp({
           const seq = ++engineStateSeq;
           try {
             const state = await computerCall<ComputerState>("computer.state", {});
-            if (seq === engineStateSeq) home.setEngineState(state);
+            if (!disposed && seq === engineStateSeq) view.setEngineState(state);
           } catch (cause) {
-            if (seq === engineStateSeq) home.setEngineState(null, describeError(cause));
+            if (!disposed && seq === engineStateSeq) view.setEngineState(null, describeError(cause));
           }
         }
 
-        async function refreshAfterAction(
-          method: Parameters<typeof computerCall>[0],
-          params: unknown,
-        ) {
+        async function refreshAfterAction(method: Parameters<typeof computerCall>[0]) {
           try {
-            await computerCall(method, params);
+            await computerCall(method, {});
+            clearNotice(method);
           } catch (cause) {
-            home.setNotice(describeError(cause));
+            notifyFailure(method, causeMessage(cause, "computer").key, cause);
           }
           await Promise.all([refreshPermissions(), refreshEngineState()]);
         }
 
         async function startTask(task: string) {
+          if (!configReady) return; // 视图已禁用按钮，这里再守一道
           abortRequested = false;
-          home.clearSteps();
-          home.setTaskRunning(true);
-          home.setNotice("");
+          view.clearSteps();
+          view.setTaskRunning(true);
           try {
             const result = await runComputerTask(vlm, task, {
               shouldAbort: () => abortRequested,
-              onStep: (report) =>
-                home.appendStep({
+              onStep: (report) => {
+                view.setTaskProgress(report.step);
+                view.appendStep({
                   step: report.step,
-                  thought: report.thought,
-                  action: report.action as unknown as {
-                    action: string;
-                    x?: number;
-                    y?: number;
-                    text?: string;
-                    key?: string;
-                    dy?: number;
-                    detail?: string;
-                  },
+                  ...(report.thought ? { thought: report.thought } : {}),
+                  action: report.action as unknown as StepLike["action"],
                   ok: report.ok,
-                  error: report.error,
-                }),
+                  ...(report.error ? { error: report.error } : {}),
+                });
+              },
             });
-            const okText =
-              result.status === "done"
-                ? `✅ 任务完成（${result.steps} 步）：${result.detail ?? ""}`
-                : result.status === "aborted"
-                  ? "⏹ 任务已手动中止"
-                  : result.status === "fail"
-                    ? `⚠️ 模型报告无法完成：${result.detail ?? ""}`
-                    : `❌ 任务出错：${result.detail ?? ""}`;
-            home.setTaskResult(okText, result.status === "done");
+            view.setTaskResult(result.message, result.status === "done");
           } catch (cause) {
-            home.setTaskResult(`❌ 任务异常终止：${describeError(cause)}`, false);
+            view.setTaskResult({ key: "result.crashed", raw: describeError(cause) }, false);
           } finally {
-            home.setTaskRunning(false);
+            view.setTaskRunning(false);
             void refreshEngineState();
           }
         }
 
-        await Promise.all([refreshPermissions(), refreshEngineState()]);
+        // 语言切换：原位更新文字，不重建 Surface、不重复任何业务调用。
+        const stopLocale = ctx.locale?.onChange(({ locale }) => {
+          setComputerLocale(locale);
+          view.applyLocale();
+        });
+        if (stopLocale) subscriptions.push(stopLocale);
+        // 开发者模式：只在开启时展示脱敏后的原始错误，关闭立即清空。
+        let environmentRevision = 0;
+        subscriptions.push(
+          ctx.environment.onChange((value) => {
+            environmentRevision += 1;
+            view.setDeveloperMode(value.developerMode);
+          }),
+        );
+        const revision = environmentRevision;
+        // 迟到的查询结果（成功或失败）都不能覆盖之后的 onChange，也不触达已卸载页面。
+        void ctx.environment
+          .get()
+          .then((value) => {
+            if (!disposed && revision === environmentRevision) view.setDeveloperMode(value.developerMode);
+          })
+          .catch(() => {
+            if (!disposed && revision === environmentRevision) view.setDeveloperMode(false);
+          });
+
+        // 后台读取已保存的模型档位；读回前下拉禁用，因此不会与用户保存竞态。
+        void loadVlmConfig(store).then((stored) => {
+          if (disposed) return;
+          vlm = stored;
+          configReady = true;
+          view.setVlmReady(stored.modelAlias);
+        });
+        // 首次状态查询在后台进行，期间权限显示「检测中」。
+        void refreshPermissions();
+        void refreshEngineState();
         surface.ready();
         return () => {
           // 卸载时只请求中止本插件发起的任务循环（下一步生效）。**不动引擎停止位**，
-          // 停止和恢复都不调用
-          // （PR 审查 P1：切换插件页面即触发本 cleanup，无条件 stop 会让 Agent
-          // 工具桥的 computer_* 「用一次就卡死」——pi/DSH 没有 resume 工具，停止位
-          // 是用户主权语义，只能由用户在插件页或 com.reai.computer.stop 命令触发）。
+          // 停止和恢复都不调用（PR 审查 P1：切换插件页面即触发本 cleanup，无条件 stop
+          // 会让 Agent 工具桥的 computer_* 「用一次就卡死」——pi/DSH 没有 resume 工具，
+          // 停止位是用户主权语义，只能由用户在插件页或 com.reai.computer.stop 命令触发）。
+          disposed = true;
           requestAbort();
           abortHooks.delete(requestAbort);
+          for (const stop of subscriptions.splice(0)) stop();
+          view.dispose();
           root.replaceChildren();
         };
       } catch (cause) {
+        // 错误出口按最新语言生成消息（初始化期间可能已切换语言）。
+        setComputerLocale(ctx.locale?.getSnapshot().locale ?? "zh");
         surface.fail(
           new AppError({
             code: "com.reai.computer/HOME_MOUNT_FAILED",
-            userMessage: "电脑操控主页初始化失败",
+            userMessage: t("errors.homeMountFailed"),
             retryable: true,
             cause,
           }),
         );
         // fail 之后 cleanup 仍要返回，保证 unmount 不留残余。
         abortHooks.delete(requestAbort);
+        for (const stop of subscriptions.splice(0)) stop();
+        home?.dispose();
         return () => root.replaceChildren();
       }
     });

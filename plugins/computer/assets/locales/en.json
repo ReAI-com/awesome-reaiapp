@@ -1,0 +1,121 @@
+{
+  "common": {
+    "retry": "Retry",
+    "close": "Close"
+  },
+  "metadata": {
+    "name": "Computer Control",
+    "description": "Computer Use: once authorized, the agent can see the screen, move the mouse, click, and type. Includes permission guidance, an emergency stop, and a full action audit; visual decisions go through the cloud model gateway of your signed-in account.",
+    "sidebar": "Computer Control",
+    "main": "Computer Control",
+    "stopCommand": "Emergency stop computer control"
+  },
+  "stop": {
+    "button": "Emergency stop",
+    "pending": "Stopping…",
+    "hint": "After stopping, all input is rejected immediately and held mouse buttons are released",
+    "banner": "Emergency stopped: input is blocked",
+    "resume": "Resume control",
+    "resumePending": "Resuming…"
+  },
+  "permissions": {
+    "title": "System permissions",
+    "accessibility": "Accessibility (required for mouse and keyboard input)",
+    "accessibilityAction": "Grant",
+    "screen": "Screen Recording (required for screenshots and the pointer guard; restart the app after granting)",
+    "screenAction": "Open settings",
+    "refresh": "Refresh permission status",
+    "pending": "Working…",
+    "checking": "Checking…",
+    "unknown": "Unknown",
+    "granted": "Granted",
+    "denied": "Not granted",
+    "queryFailed": "Couldn't read the status. Click Refresh to try again."
+  },
+  "console": {
+    "title": "Task console",
+    "intro": "Describe a task in plain language, for example: open WeChat and send a message to File Transfer. Every step is visible and you can stop at any time.",
+    "placeholder": "Describe what the agent should do…",
+    "inputLabel": "Task description",
+    "start": "Start task",
+    "abort": "Abort task",
+    "egress": "Once started, each step sends a screenshot and the task description to the cloud vision model. Don't use the mouse or keyboard while it runs, and keep anything you don't want sent off the screen.",
+    "running": "Running step {step}, {seconds}s elapsed",
+    "starting": "Preparing, {seconds}s elapsed",
+    "stepsLabel": "Steps"
+  },
+  "result": {
+    "done": "Task completed ({steps} steps)",
+    "aborted": "Task aborted",
+    "fail": "The model reported it could not finish",
+    "error": "Task failed",
+    "crashed": "Task terminated unexpectedly",
+    "invalidReply": "The model reply is not a valid action JSON",
+    "stepLimit": "Reached the {max}-step limit without finishing",
+    "emptyReply": "The cloud vision model returned no text"
+  },
+  "action": {
+    "click": "Click ({x}, {y})",
+    "type": "Type {text}",
+    "press": "Press {key}",
+    "scroll": "Scroll dx={dx} dy={dy}",
+    "done": "Task completed",
+    "fail": "Model gave up",
+    "unknown": "Unknown action {name}"
+  },
+  "model": {
+    "title": "Vision model (via your account's cloud gateway)",
+    "intro": "Screenshots and instructions go through the Host cloud channel (credentials belong to your account; no API key needed). The quality tier is recommended for visual targeting.",
+    "label": "Model tier",
+    "quality": "High-quality text (recommended)",
+    "default": "General text (faster)",
+    "saving": "Saving…",
+    "saved": "Model tier saved",
+    "saveFailed": "Save failed; still using {previous}"
+  },
+  "trace": {
+    "title": "Action audit",
+    "refresh": "Refresh",
+    "empty": "No actions yet",
+    "unavailable": "Engine state unavailable",
+    "pending": "Refreshing…",
+    "queryFailed": "Couldn't read the status. Click Refresh to try again."
+  },
+  "notice": {
+    "actionFailed": "Action did not complete",
+    "openSettingsFailed": "Couldn't open System Settings",
+    "detailsHint": "Turn on Host developer mode to see the original error details",
+    "details": "Original error (developer mode)"
+  },
+  "settings": {
+    "version": "Version {version}",
+    "versionLabel": "View the release notes for version {version}",
+    "about": "About this plugin",
+    "aboutLabel": "About {name}",
+    "collapse": "Collapse",
+    "changelogTitle": "Release notes for version {version}",
+    "changelogMissing": "Release notes for this version ({version}) have not been published yet.",
+    "changelogLanguageNote": "The release notes are written in Chinese.",
+    "aboutTitle": "About {name}",
+    "aboutPlugin": "Plugin",
+    "aboutVersion": "Version",
+    "aboutVersionValue": "{version} · local source candidate, not published",
+    "aboutAppId": "App ID",
+    "aboutDetail": "Public app page",
+    "aboutBlocked": "Opening external pages from a plugin isn't supported yet. Copy the address and open it in your browser."
+  },
+  "errors": {
+    "homeMountFailed": "Couldn't initialize the Computer Control home page",
+    "bridgeMissing": "Computer control bridge is not available (not in a plugin surface)",
+    "aiBridgeMissing": "Cloud AI bridge is not available (not in a plugin surface)"
+  },
+  "cause": {
+    "permissionMissing": "A system permission is missing. Grant it under System permissions, then try again.",
+    "stopped": "Computer control is emergency stopped. Click Resume control, then try again.",
+    "rateLimited": "Too many actions too quickly. The engine is rate limiting; try again shortly.",
+    "targetRejected": "The target is a protected window (a password manager or this app), so the action was refused.",
+    "engineRejected": "The engine refused this step. Check the screen and try again.",
+    "model": "The cloud vision model call failed. Make sure you are signed in to the app and try again.",
+    "unknown": "The action did not complete. Try again shortly."
+  }
+}

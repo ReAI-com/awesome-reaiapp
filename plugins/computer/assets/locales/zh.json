@@ -1,0 +1,121 @@
+{
+  "common": {
+    "retry": "重试",
+    "close": "关闭"
+  },
+  "metadata": {
+    "name": "电脑操控",
+    "description": "Computer Use：授权后 Agent 可以看屏幕、移动鼠标、点击与输入，插件内建权限引导、紧急停止与全程操作审计；视觉决策走登录账号的云端模型网关",
+    "sidebar": "电脑操控",
+    "main": "电脑操控",
+    "stopCommand": "紧急停止电脑操控"
+  },
+  "stop": {
+    "button": "紧急停止",
+    "pending": "正在停止…",
+    "hint": "停止后所有注入立即拒绝，按住的鼠标按键会被强制抬起",
+    "banner": "已紧急停止：注入通道关闭中",
+    "resume": "恢复操控",
+    "resumePending": "正在恢复…"
+  },
+  "permissions": {
+    "title": "系统权限",
+    "accessibility": "辅助功能（鼠标键盘注入必需）",
+    "accessibilityAction": "去授权",
+    "screen": "屏幕录制（截图与鼠标坐标护栏必需，授权后需重启应用生效）",
+    "screenAction": "引导授权",
+    "refresh": "刷新权限状态",
+    "pending": "处理中…",
+    "checking": "检测中…",
+    "unknown": "状态未知",
+    "granted": "已授权",
+    "denied": "未授权",
+    "queryFailed": "状态查询失败，点「刷新」重试"
+  },
+  "console": {
+    "title": "任务控制台",
+    "intro": "用自然语言描述任务，例如：打开微信，给文件传输助手发一条消息。执行全程可见，随时紧急停止。",
+    "placeholder": "描述要让 Agent 做的事……",
+    "inputLabel": "任务描述",
+    "start": "开始任务",
+    "abort": "中止任务",
+    "egress": "开始后，每一步的屏幕截图与任务描述会发送到云端视觉模型。运行期间请勿操作鼠标键盘，也不要让屏幕显示不希望外发的内容。",
+    "running": "正在执行第 {step} 步，已用 {seconds} 秒",
+    "starting": "正在准备，已用 {seconds} 秒",
+    "stepsLabel": "执行步骤"
+  },
+  "result": {
+    "done": "任务完成（{steps} 步）",
+    "aborted": "任务已手动中止",
+    "fail": "模型报告无法完成",
+    "error": "任务出错",
+    "crashed": "任务异常终止",
+    "invalidReply": "模型回复不是合法的动作 JSON",
+    "stepLimit": "达到 {max} 步上限仍未完成任务",
+    "emptyReply": "云端视觉模型回复里没有文本内容"
+  },
+  "action": {
+    "click": "点击 ({x}, {y})",
+    "type": "输入 {text}",
+    "press": "按键 {key}",
+    "scroll": "滚动 dx={dx} dy={dy}",
+    "done": "任务完成",
+    "fail": "模型放弃",
+    "unknown": "未知动作 {name}"
+  },
+  "model": {
+    "title": "视觉模型（经登录账号的云端网关）",
+    "intro": "截图与任务指令经 Host 云通道发送（凭据归登录账号，无需填写 API Key）。视觉定位建议用高质量档。",
+    "label": "模型档位",
+    "quality": "高质量文本（推荐）",
+    "default": "通用文本（更快）",
+    "saving": "正在保存…",
+    "saved": "模型档位已保存",
+    "saveFailed": "保存失败，仍使用 {previous}"
+  },
+  "trace": {
+    "title": "操作审计",
+    "refresh": "刷新",
+    "empty": "暂无操作记录",
+    "unavailable": "引擎状态不可用",
+    "pending": "刷新中…",
+    "queryFailed": "状态查询失败，点「刷新」重试"
+  },
+  "notice": {
+    "actionFailed": "操作未完成",
+    "openSettingsFailed": "打开系统设置失败",
+    "detailsHint": "开启 Host 开发者模式可查看原始错误详情",
+    "details": "原始错误（开发者模式）"
+  },
+  "settings": {
+    "version": "版本 {version}",
+    "versionLabel": "查看版本 {version} 的更新日志",
+    "about": "关于插件",
+    "aboutLabel": "关于 {name}",
+    "collapse": "收起",
+    "changelogTitle": "版本 {version} 更新日志",
+    "changelogMissing": "此版本（{version}）的更新日志尚未发布。",
+    "changelogLanguageNote": "更新日志正文以中文撰写。",
+    "aboutTitle": "关于 {name}",
+    "aboutPlugin": "插件",
+    "aboutVersion": "版本",
+    "aboutVersionValue": "{version} · 本地源码候选，尚未公开发布",
+    "aboutAppId": "应用标识",
+    "aboutDetail": "公开应用详情",
+    "aboutBlocked": "当前平台暂不支持从插件内打开外部页面，请复制地址在浏览器中查看。"
+  },
+  "errors": {
+    "homeMountFailed": "电脑操控主页初始化失败",
+    "bridgeMissing": "电脑操控 bridge 未注入（不在插件 surface 上下文里）",
+    "aiBridgeMissing": "云 AI bridge 未注入（不在插件 surface 上下文里）"
+  },
+  "cause": {
+    "permissionMissing": "缺少系统权限：请在「系统权限」中授权后重试",
+    "stopped": "电脑操控已紧急停止：点「恢复操控」后再试",
+    "rateLimited": "操作过快被引擎限速，请稍后重试",
+    "targetRejected": "目标是受保护的窗口（密码管理器或本应用），已拒绝操作",
+    "engineRejected": "引擎拒绝了这一步，请检查屏幕状态后重试",
+    "model": "云端视觉模型调用失败：请确认已登录 App 并稍后重试",
+    "unknown": "操作未完成，请稍后重试"
+  }
+}

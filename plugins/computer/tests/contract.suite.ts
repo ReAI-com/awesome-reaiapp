@@ -11,7 +11,7 @@ import { defineContractSuite } from "@reai/app-test/v1";
  */
 export default defineContractSuite({
   appDirectory: "..",
-  hostApi: "1.5.0",
+  hostApi: "1.25.0",
   expect: {
     surfaces: ["main"],
     commands: ["com.reai.computer.stop"],
