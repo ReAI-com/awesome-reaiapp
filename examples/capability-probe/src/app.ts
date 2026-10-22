@@ -2,7 +2,8 @@ import { AppError, defineApp, type HostTitlebarActionIntent } from "@reai/app-sd
 import { describeError } from "./errors";
 import { createHostPort } from "./port";
 import { PING_KEY } from "./probes";
-import { mountProbeView } from "./view";
+import { readHostVersion } from "./host-version";
+import { mountProbeView, type HostVersion } from "./view";
 import "./styles.css";
 
 type TitlebarPayload = { type: "run-safe" } | { type: "open-settings" };
@@ -35,13 +36,17 @@ export default defineApp({
       return {};
     });
 
+    ctx.commands.register("com.example.capability-probe.open-settings", async () => {
+      activeView?.openSettings();
+      return {};
+    });
+
     ctx.surfaces.register("main", async (surface) => {
       try {
-        // 插件版本来自 Manifest；Driver 版本在挂载时读一次，读不到就保留错误码给开发者模式看。
-        const hostVersion = ctx.systemTasks
-          .getVersionStatus()
-          .then((status) => ({ ok: true as const, version: status.app.currentVersion }))
-          .catch((error: unknown) => ({ ok: false as const, code: describeError(error).code }));
+        // 插件版本来自 Manifest；Driver 版本要等界面真正可见后才能读，所以在 surface.ready() 之后读，
+        // 读不到就保留错误码给开发者模式看。
+        let resolveVersion: (value: HostVersion) => void = () => undefined;
+        const hostVersion = new Promise<HostVersion>((resolve) => { resolveVersion = resolve; });
         const view = mountProbeView(surface.root, {
           port,
           hostVersion,
@@ -49,12 +54,17 @@ export default defineApp({
         });
         activeView = view;
         const offIntent = surface.onIntent((intent) => {
+          // 从权限页点「返回」时 Driver 投递 system-task.return，作为「跳到 Driver 设置页」的确认。
+          if (view.handleIntent(intent)) return;
           const payload = titlebarPayload(intent);
           if (payload?.type === "run-safe") void view.runSafe();
           if (payload?.type === "open-settings") view.openSettings();
         });
         surface.ready();
+        const versionAbort = new AbortController();
+        void readHostVersion(() => ctx.systemTasks.getVersionStatus(), 1000, versionAbort.signal).then(resolveVersion);
         return () => {
+          versionAbort.abort();
           offIntent();
           if (activeView === view) activeView = undefined;
           view.dispose();

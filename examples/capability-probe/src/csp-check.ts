@@ -16,6 +16,8 @@ export interface CspCheckResult {
   violations: string[];
   /** 抛出的错误名称（如 EvalError），没抛为空。 */
   error?: string;
+  /** done = 检查跑完了；timeout / abort = 等加载时超时或被取消，结果不能当作「被拦下」。 */
+  settled: "done" | "timeout" | "abort";
 }
 
 type ProbeWindow = Record<string, unknown>;
@@ -53,8 +55,14 @@ function waitFor(target: EventTarget, events: string[], signal?: AbortSignal): P
     }
     const onAbort = () => finish("abort");
     const timer = setTimeout(() => finish("timeout"), WAIT_MS);
+    // 已经取消的信号不会再触发 abort 事件，直接结束。
+    if (signal?.aborted) return finish("abort");
     signal?.addEventListener("abort", onAbort);
   });
+}
+
+function settledFrom(reason: string): CspCheckResult["settled"] {
+  return reason === "timeout" || reason === "abort" ? reason : "done";
 }
 
 function marker(): string {
@@ -74,7 +82,7 @@ export async function checkInlineScript(doc: Document): Promise<CspCheckResult> 
   await new Promise((resolve) => setTimeout(resolve, 50));
   const executed = win[flag] === true;
   delete win[flag];
-  return { id: "inline", executed, violations: watch.stop() };
+  return { id: "inline", executed, violations: watch.stop(), settled: "done" };
 }
 
 export async function checkEval(doc: Document): Promise<CspCheckResult> {
@@ -83,10 +91,10 @@ export async function checkEval(doc: Document): Promise<CspCheckResult> {
     const run = new Function("return 7;") as () => number;
     const executed = run() === 7;
     await new Promise((resolve) => setTimeout(resolve, 20));
-    return { id: "eval", executed, violations: watch.stop() };
+    return { id: "eval", executed, violations: watch.stop(), settled: "done" };
   } catch (error) {
     await new Promise((resolve) => setTimeout(resolve, 20));
-    return { id: "eval", executed: false, violations: watch.stop(), error: error instanceof Error ? error.name : String(error) };
+    return { id: "eval", executed: false, violations: watch.stop(), error: error instanceof Error ? error.name : String(error), settled: "done" };
   }
 }
 
@@ -108,7 +116,7 @@ export async function checkBlobScript(doc: Document, signal?: AbortSignal): Prom
   }
   const executed = win[flag] === true;
   delete win[flag];
-  return { id: "blob", executed, violations: watch.stop(), ...(reason === "error" ? { error: "load-error" } : {}) };
+  return { id: "blob", executed, violations: watch.stop(), ...(reason === "error" ? { error: "load-error" } : {}), settled: settledFrom(reason) };
 }
 
 export async function checkIframe(doc: Document, signal?: AbortSignal): Promise<CspCheckResult> {
@@ -120,11 +128,12 @@ export async function checkIframe(doc: Document, signal?: AbortSignal): Promise<
   frame.setAttribute("aria-hidden", "true");
   frame.tabIndex = -1;
   let executed = false;
+  let reason = "";
   try {
     const done = waitFor(frame, ["load"], signal);
     frame.src = url;
     doc.body.append(frame);
-    await done;
+    reason = await done;
     try {
       executed = frame.contentDocument?.body?.getAttribute("data-cp") === flag;
     } catch {
@@ -134,5 +143,5 @@ export async function checkIframe(doc: Document, signal?: AbortSignal): Promise<
     frame.remove();
     URL.revokeObjectURL(url);
   }
-  return { id: "iframe", executed, violations: watch.stop() };
+  return { id: "iframe", executed, violations: watch.stop(), settled: settledFrom(reason) };
 }

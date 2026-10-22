@@ -53,3 +53,40 @@ describe("声明式页面 PageSpec v0", () => {
     expect(parse(unknown).ok).toBe(false);
   });
 });
+
+describe("声明式页面刷新合并", () => {
+  test("连续多次刷新只跑最多两轮，旧读取不会盖掉新显示", async () => {
+    const { GlobalRegistrator } = await import("@happy-dom/global-registrator");
+    const owns = typeof document === "undefined";
+    if (owns) GlobalRegistrator.register();
+    try {
+      const { renderPage } = await import("../src/page-renderer");
+      const { DEMO_SPEC, parsePageSpec } = await import("../src/page-spec");
+      const parsed = parsePageSpec(JSON.stringify(DEMO_SPEC), runnable);
+      if (!parsed.ok) throw new Error("示例应通过");
+      let reads = 0;
+      const store = new Map<string, unknown>();
+      const kv = {
+        get: async (key: string) => { reads += 1; await new Promise((resolve) => setTimeout(resolve, 5)); return store.get(key); },
+        set: async (key: string, value: unknown) => { store.set(key, value); },
+        compareAndSet: async () => true,
+        delete: async (key: string) => { store.delete(key); },
+        keys: async () => [...store.keys()],
+      };
+      const container = document.createElement("div");
+      const rendered = renderPage(container, parsed.spec, { kv, developerMode: () => false, runProbe: async () => { throw new Error("x"); }, lastResult: () => undefined, notify: async () => undefined });
+      await rendered.refresh();
+      const start = reads;
+      await rendered.refresh();
+      const perRound = reads - start;
+      expect(perRound).toBeGreaterThan(0);
+      const before = reads;
+      await Promise.all([rendered.refresh(), rendered.refresh(), rendered.refresh(), rendered.refresh()]);
+      // 第一轮 + 合并后的补跑一轮，最多两轮
+      expect(reads - before).toBeLessThanOrEqual(perRound * 2);
+      rendered.dispose();
+    } finally {
+      if (owns) GlobalRegistrator.unregister();
+    }
+  });
+});

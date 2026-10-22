@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { describeError, scrub } from "../src/errors";
 import { createPreviewPort, type PreviewOptions } from "../src/preview-port";
-import { PING_KEY, PROBES, probeById, runProbe, safeProbes, voiceRequestId } from "../src/probes";
+import { acceptanceOrder, NAVIGATE_RETURN_TAG, passed, systemTaskReturnResult, PING_KEY, PROBES, probeById, runnableProbes, runProbe, safeProbes, verdictOf, voiceRequestId } from "../src/probes";
 import { buildReport } from "../src/report";
 
 let ownsDom = false;
@@ -44,6 +44,48 @@ describe("探针清单", () => {
 
   test("关闭的探针说明里不出现内部错误码", () => {
     for (const probe of PROBES.filter((item) => item.disabledReason)) expect(probe.disabledReason).not.toMatch(/[A-Z]{3,}_[A-Z_]+/);
+  });
+});
+
+describe("验收口径", () => {
+  test("成功和「按预期拦下」算通过；没同意、等你操作、出错、与预期不同不算", () => {
+    expect(passed({ outcome: "ok" })).toBe(true);
+    expect(passed({ outcome: "blocked", expected: true })).toBe(true);
+    expect(passed({ outcome: "blocked" })).toBe(false);
+    for (const outcome of ["unexpected", "failed", "waiting"] as const) expect(passed({ outcome })).toBe(false);
+    expect(verdictOf({ outcome: "blocked", expected: true })).toBe("expected");
+    expect(verdictOf({ outcome: "blocked" })).toBe("blocked");
+  });
+
+  test("反例被预期的原因拦下算通过；没同意导致的拦下不算", async () => {
+    const expectedNet = await run("http-undeclared");
+    expect(passed(expectedNet)).toBe(true);
+    const notConsented = await run("http-undeclared", { deniedPermissions: new Set(["http.fetch@1"]) });
+    expect(notConsented.outcome).toBe("blocked");
+    expect(passed(notConsented)).toBe(false);
+  });
+
+  test("「跑完全部」包含全部能运行的探针，安全的在前，跳页面的最后", () => {
+    const order = acceptanceOrder();
+    expect(order.map((probe) => probe.id).sort()).toEqual(runnableProbes().map((probe) => probe.id).sort());
+    expect(order.at(-1)?.id).toBe("system-task-open");
+    expect(order.slice(0, safeProbes().length).every((probe) => probe.risk === "safe")).toBe(true);
+  });
+});
+
+describe("系统通知偶发投递失败", () => {
+  test("第一次 NOTIFICATION_ENQUEUE_FAILED 时重试一次，成功也写明第一次失败；两次都失败算出错", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    let calls = 0;
+    port.notify = async () => { calls += 1; if (calls === 1) throw Object.assign(new Error("enqueue"), { code: "NOTIFICATION_ENQUEUE_FAILED" }); return { queued: true }; };
+    const ok = await runProbe(probeById("notify")!, { port, document, signal: new AbortController().signal });
+    expect(ok.outcome).toBe("ok");
+    expect(ok.summary).toContain("第一次");
+    expect(calls).toBe(2);
+    port.notify = async () => { throw Object.assign(new Error("enqueue"), { code: "NOTIFICATION_ENQUEUE_FAILED" }); };
+    const bad = await runProbe(probeById("notify")!, { port, document, signal: new AbortController().signal });
+    expect(bad.outcome).toBe("failed");
+    expect(bad.summary).toContain("两次");
   });
 });
 
@@ -152,11 +194,11 @@ describe("探针结果（假 Host）", () => {
     expect(notConsented.summary).toContain("没测到");
   });
 
-  test("网络反例遇到宽松网络档时，提示打开严格网络预览", async () => {
+  test("网络反例遇到宽松网络档时，提示更新 Driver", async () => {
     for (const id of ["http-undeclared", "http-insecure"]) {
       const result = await run(id, { lenientNetwork: true });
       expect(result.outcome).toBe("unexpected");
-      expect(result.summary).toContain("严格网络预览");
+      expect(result.summary).toContain("请更新 Driver");
     }
   });
 
@@ -239,9 +281,119 @@ describe("错误与报告", () => {
     expect(withDiagnostics).not.toContain("wno-secret-token");
     expect(withDiagnostics).toContain("X_FAILED");
     const parsed = JSON.parse(withDiagnostics) as { plugin: { version: string }; results: unknown[] };
-    expect(parsed.plugin.version).toBe("0.1.1");
+    expect(parsed.plugin.version).toBe("0.2.0");
     expect(parsed.results).toHaveLength(1);
     const plain = buildReport({ mode: "preview", hostVersion: "1.0.5", developerMode: false, results });
     expect(plain).not.toContain("X_FAILED");
+  });
+});
+
+describe("读取 Driver 版本", () => {
+  test("界面还没可见时重试，读到就返回；别的错误直接返回错误码", async () => {
+    const { readHostVersion } = await import("../src/host-version");
+    let calls = 0;
+    const ok = await readHostVersion(async () => {
+      calls += 1;
+      if (calls < 3) throw Object.assign(new Error("not visible"), { code: "SYSTEM_TASK_VISIBLE_SURFACE_REQUIRED" });
+      return { app: { currentVersion: "1.0.5" } };
+    }, 0);
+    expect(ok).toEqual({ ok: true, version: "1.0.5" });
+    expect(calls).toBe(3);
+    const bad = await readHostVersion(async () => { throw Object.assign(new Error("x"), { code: "SYSTEM_TASK_UNAVAILABLE" }); }, 0);
+    expect(bad).toEqual({ ok: false, code: "SYSTEM_TASK_UNAVAILABLE" });
+  });
+});
+
+describe("跳转确认（Driver 的返回回执）", () => {
+  const now = Date.parse("2026-10-22T12:00:00Z");
+  const at = "2026-10-22T11:59:00Z";
+  const intent = (patch: Record<string, unknown> = {}) => ({ type: "system-task.return", taskId: "t1", target: "app-permissions", outcome: "succeeded", payload: { probe: NAVIGATE_RETURN_TAG, at }, ...patch });
+
+  test("本探针发起的权限页任务返回 succeeded / cancelled 算成功，failed 算出错", () => {
+    expect(systemTaskReturnResult(intent(), now)).toMatchObject({ probeId: "system-task-open", outcome: "ok", startedAt: at, durationMs: 60_000 });
+    expect(systemTaskReturnResult(intent({ outcome: "cancelled" }), now)?.outcome).toBe("ok");
+    expect(systemTaskReturnResult(intent({ outcome: "failed" }), now)?.outcome).toBe("failed");
+  });
+
+  test("别的意图、别的目标、别人发起的任务、未来时间都不认", () => {
+    expect(systemTaskReturnResult({ type: "host.titlebarAction" }, now)).toBeUndefined();
+    expect(systemTaskReturnResult(intent({ target: "keymap" }), now)).toBeUndefined();
+    expect(systemTaskReturnResult(intent({ payload: { probe: "other", at } }), now)).toBeUndefined();
+    expect(systemTaskReturnResult(intent({ payload: undefined }), now)).toBeUndefined();
+    expect(systemTaskReturnResult(intent({ payload: { probe: NAVIGATE_RETURN_TAG, at: "2026-10-22T12:05:00Z" } }), now)).toBeUndefined();
+    expect(systemTaskReturnResult(intent({ outcome: "running" }), now)).toBeUndefined();
+  });
+
+  test("跳转探针把返回信息交给 Driver", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    let returnIntent: unknown;
+    port.openSystemTask = async (_target, value) => { returnIntent = value; return { taskId: "t" }; };
+    const result = await runProbe(probeById("system-task-open")!, { port, document, signal: new AbortController().signal });
+    // 只是被接受、还没回执：不算通过
+    expect(result.outcome).toBe("waiting");
+    expect(passed(result)).toBe(false);
+    expect(returnIntent).toMatchObject({ probe: NAVIGATE_RETURN_TAG });
+  });
+});
+
+describe("结果保存的合并规则", () => {
+  test("同一探针只留更晚的；清空时间之前的结果写不回去", async () => {
+    const { mergeRecord } = await import("../src/saved-results");
+    const base = { outcome: "ok" as const, summary: "", durationMs: 1, host: "1.0.5", plugin: "0.2.0" };
+    const newer = { ...base, probeId: "env", startedAt: "2026-10-22T12:00:00Z" };
+    const older = { ...base, probeId: "env", startedAt: "2026-10-22T11:00:00Z" };
+    const state = mergeRecord({ clearedAt: null, results: [], log: [] }, newer);
+    const after = mergeRecord(state, older);
+    expect(after.results).toEqual([newer]);
+    expect(after.log).toHaveLength(2);
+    const cleared = mergeRecord({ clearedAt: "2026-10-22T11:30:00Z", results: [], log: [] }, older);
+    expect(cleared.results).toEqual([]);
+  });
+
+  test("旧开发版存下的「跳转已接受」过渡状态读回时丢掉", async () => {
+    const { loadSavedResults } = await import("../src/saved-results");
+    const port = createPreviewPort({ delayMs: 0 });
+    const record = { probeId: "system-task-open", outcome: "waiting", summary: "", startedAt: "2026-10-22T11:00:00Z", durationMs: 1, host: "1.0.5", plugin: "0.2.0" };
+    await port.kv.set("probe.savedResults", { clearedAt: null, results: [record], log: [record] });
+    const state = await loadSavedResults(port.kv);
+    expect(state.results).toEqual([]);
+    expect(state.log).toEqual([]);
+  });
+
+  test("旧界面晚到的保存不会盖掉清空：清空后在途的旧结果被丢掉", async () => {
+    const { clearSavedResults, loadSavedResults, saveResult } = await import("../src/saved-results");
+    const port = createPreviewPort({ delayMs: 0 });
+    const base = { outcome: "ok" as const, summary: "", durationMs: 1, host: "1.0.5", plugin: "0.2.0" };
+    await saveResult(port.kv, { ...base, probeId: "env", startedAt: "2026-10-22T11:00:00Z" });
+    await clearSavedResults(port.kv, "2026-10-22T11:30:00Z");
+    await saveResult(port.kv, { ...base, probeId: "kv-oversize", startedAt: "2026-10-22T11:10:00Z" });
+    const state = await loadSavedResults(port.kv);
+    expect(state.results).toEqual([]);
+    expect(state.log).toEqual([]);
+  });
+});
+
+describe("页面脚本自检没测完", () => {
+  test("等加载超时或被取消时不算「按预期拦下」", async () => {
+    const csp = await import("../src/csp-check");
+    const controller = new AbortController();
+    controller.abort();
+    const result = await csp.checkIframe(document, controller.signal);
+    expect(result.settled).toBe("abort");
+    const port = createPreviewPort({ delayMs: 0 });
+    const probe = probeById("csp-iframe")!;
+    const run = await runProbe(probe, { port, document, signal: controller.signal });
+    expect(run.outcome).toBe("waiting");
+    expect(passed(run)).toBe(false);
+  });
+});
+
+describe("脱敏", () => {
+  test("JSON 字段值里有转义引号时整段隐藏，不留凭据尾段", () => {
+    const text = '{"access_token":"abc\\"CANARY-TAIL","ok":1}';
+    const out = scrub(text);
+    expect(out).not.toContain("CANARY-TAIL");
+    expect(out).toContain('"access_token":"[已隐藏]"');
+    expect(out).toContain('"ok":1');
   });
 });

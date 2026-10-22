@@ -82,7 +82,7 @@ export function createPreviewPort(options: PreviewOptions = {}): ProbePort & { s
     kv: kvStore("probe"),
     kvStore,
     async versionStatus() { await delay(); return structuredClone(versionStatus); },
-    async openSystemTask() { await delay(); return { taskId: "preview-task" }; },
+    async openSystemTask(_target: unknown, _returnIntent?: unknown) { await delay(); return { taskId: "preview-task" }; },
     async accountStatus() {
       await delay();
       if (denied("account.status@1")) throw bridgeError("PLUGIN_PERMISSION_DENIED", "用户拒绝了 account.status@1");
