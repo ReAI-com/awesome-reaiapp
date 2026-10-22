@@ -86,24 +86,26 @@ test("语音命令：硬件触发的 triggerRef 同样回传；软件入口没�
   }
 });
 
-test("按住说话：配对操作开始时回传 triggerRef，松开结束不带", async () => {
-  const h = await harness();
-  const bus = h.host as unknown as { dispatch(event: unknown): void; settlements: Map<string, { ok: boolean }> };
-  const invoke = async (correlationId: string, phase: "start" | "end", triggerRef: string) => {
-    bus.dispatch({
-      type: "command.invoke", commandId: "com.reai.voice.toggle-input", correlationId, input: {}, timeoutMs: 3000,
-      operation: { id: "hold-card", phase }, triggerRef,
-    });
-    for (let i = 0; i < 200 && !bus.settlements.has(correlationId); i++) await new Promise(r => setTimeout(r, 5));
-    expect(bus.settlements.get(correlationId)?.ok).toBeTrue();
-  };
-  try {
-    await invoke("hold-start", "start", "tr-card-hold");
-    await invoke("hold-end", "end", "tr-card-release");
-    expect(h.toggles.length).toBe(2);
-    expect(h.toggles[0]!.triggerRef, "按下开始录音回传凭证").toBe("tr-card-hold");
-    expect("triggerRef" in h.toggles[1]!, "松开结束不带凭证").toBeFalse();
-  } finally {
-    await h.dispose();
-  }
-});
+for (const commandId of ["com.reai.voice.toggle-input", "com.reai.voice.toggle-command"]) {
+  test(`按住说话（${commandId}）：配对操作开始时回传 triggerRef，松开结束不带`, async () => {
+    const h = await harness();
+    const bus = h.host as unknown as { dispatch(event: unknown): void; settlements: Map<string, { ok: boolean }> };
+    const invoke = async (correlationId: string, phase: "start" | "end", triggerRef: string) => {
+      bus.dispatch({
+        type: "command.invoke", commandId, correlationId, input: {}, timeoutMs: 3000,
+        operation: { id: "hold-card", phase }, triggerRef,
+      });
+      for (let i = 0; i < 200 && !bus.settlements.has(correlationId); i++) await new Promise(r => setTimeout(r, 5));
+      expect(bus.settlements.get(correlationId)?.ok).toBeTrue();
+    };
+    try {
+      await invoke("hold-start", "start", "tr-card-hold");
+      await invoke("hold-end", "end", "tr-card-release");
+      expect(h.toggles.length).toBe(2);
+      expect(h.toggles[0]!.triggerRef, "按下开始录音回传凭证").toBe("tr-card-hold");
+      expect("triggerRef" in h.toggles[1]!, "松开结束不带凭证").toBeFalse();
+    } finally {
+      await h.dispose();
+    }
+  });
+}
