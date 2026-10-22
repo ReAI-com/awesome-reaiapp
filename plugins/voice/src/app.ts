@@ -2317,6 +2317,8 @@ export default defineApp({
       insertText?: boolean,
       finishSessionId?: string,
       startOnly = false,
+      /** 硬件触发时 Host 签发的一次性来源凭证：开始录音时原样回传，让发起设备的麦优先。 */
+      triggerRef?: string,
     ): Promise<VoiceInputResult> => {
       if (toggleInFlight || serviceOperationActive || state.commandPhase === "processing" || state.activeMode === "command") {
         throw new VoiceAppError({
@@ -2370,6 +2372,8 @@ export default defineApp({
           // 胶囊停到写入成功那一刻再收（旧 Host 忽略此项，照旧 1.2 秒自收）。
           holdOverlayUntilAck: true,
           ...(useCloud ? { retainAudio: true } : {}),
+          // 只在开始录音时回传（凭证一次性；结束不需要）。旧 Host 忽略此项。
+          ...(triggerRef && !completing ? { triggerRef } : {}),
         });
         if (signal?.aborted) {
           if (result.phase === "listening" && result.sessionId) await ctx.voiceInput.cancel(result.sessionId);
@@ -4261,6 +4265,8 @@ export default defineApp({
       conversation?: VoiceAgentConversationRef,
       finishSessionId?: string,
       startOnly = false,
+      /** 同 {@link toggleInput} 的 triggerRef。 */
+      triggerRef?: string,
     ): Promise<VoiceInputResult | { phase: "processing"; transcript: string }> => {
       if (toggleInFlight || serviceOperationActive || state.commandPhase === "processing" || state.activeMode === "input") {
         throw new VoiceAppError({ code: "com.reai.voice/VOICE_BUSY", get userMessage() { return t("app.thePreviousVoiceCommandIsStillProcessing"); }, retryable: true }, undefined, { constantMessage: true });
@@ -4334,6 +4340,8 @@ export default defineApp({
             // 识别只出文本（Host API 1.22）：转文本 / 翻译由插件自己 commit，Agent 永不写回。
             insertText: false,
             ...(useCloud ? { retainAudio: true } : {}),
+            // 只在开始录音时回传（凭证一次性；结束不需要）。旧 Host 忽略此项。
+            ...(triggerRef && !completing ? { triggerRef } : {}),
           });
         } finally {
           if (commandPrepareStartedAt !== undefined) {
@@ -4509,9 +4517,10 @@ export default defineApp({
       failed: cause => publish({ get error() { return readableError(cause); }, errorDetail: errorDetailFrom("capture", cause) }),
     });
 
-    ctx.commands.register("com.reai.voice.toggle-input", guardCommand(async ({ signal, operation }) => {
+    ctx.commands.register("com.reai.voice.toggle-input", guardCommand(async ({ signal, operation, triggerRef }) => {
       throwIfAborted(signal);
-      if (operation) return invokeCaptureOperation(operation, signal, () => runVoiceStart(signal, bounded => toggleInput(bounded, undefined, undefined, true)));
+      // triggerRef：硬件按键触发时 Host 签发的一次性来源凭证，开始录音时原样回传（发起设备优先）。
+      if (operation) return invokeCaptureOperation(operation, signal, () => runVoiceStart(signal, bounded => toggleInput(bounded, undefined, undefined, true, triggerRef)));
       const finishing = finishActiveVoiceCapture();
       if (finishing) {
         // 识别可能在慢机器上超过 Command 的 30 秒 deadline。第二次硬件触发只负责
@@ -4523,7 +4532,7 @@ export default defineApp({
       const cancel = () => void ctx.voiceInput.cancel(state.sessionId).catch(() => undefined);
       signal.addEventListener("abort", cancel, { once: true });
       try {
-        return await runVoiceStart(signal, bounded => toggleInput(bounded, undefined, undefined, true));
+        return await runVoiceStart(signal, bounded => toggleInput(bounded, undefined, undefined, true, triggerRef));
       } finally {
         signal.removeEventListener("abort", cancel);
       }
@@ -4536,9 +4545,9 @@ export default defineApp({
      * ——否则用户按下时想的是「翻译」，松手前换了绑定，同一次说话会变成另一件事。
      */
     const registerCommandEvent = (eventId: string, defaultCommandId: VoiceCommandId) => {
-      ctx.commands.register(eventId, guardCommand(async ({ signal, input, operation }) => {
+      ctx.commands.register(eventId, guardCommand(async ({ signal, input, operation, triggerRef }) => {
         throwIfAborted(signal);
-        if (operation) return invokeCaptureOperation(operation, signal, () => runVoiceStart(signal, bounded => toggleCommand(bounded, resolveCommandId(input, defaultCommandId), undefined, undefined, true)));
+        if (operation) return invokeCaptureOperation(operation, signal, () => runVoiceStart(signal, bounded => toggleCommand(bounded, resolveCommandId(input, defaultCommandId), undefined, undefined, true, triggerRef)));
         const finishing = finishActiveVoiceCapture();
         if (finishing) {
           // 与普通输入一致：识别与后续 Agent 不受 Command dispatcher deadline 取消。
@@ -4550,7 +4559,7 @@ export default defineApp({
         const cancel = () => void ctx.voiceInput.cancel(state.sessionId).catch(() => undefined);
         signal.addEventListener("abort", cancel, { once: true });
         try {
-          return await runVoiceStart(signal, bounded => toggleCommand(bounded, commandId, undefined, undefined, true));
+          return await runVoiceStart(signal, bounded => toggleCommand(bounded, commandId, undefined, undefined, true, triggerRef));
         } finally {
           signal.removeEventListener("abort", cancel);
         }
