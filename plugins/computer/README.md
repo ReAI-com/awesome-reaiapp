@@ -4,7 +4,7 @@ ReAI 官方插件源码候选。用途、能力、权限与贡献点以 `app.man
 
 ## 独立仓库构建
 
-稳定 ID：`com.reai.computer`；当前候选版本：`0.1.1-dev.1`；需要 Host API `>=1.25.0 <2.0.0`。本目录依赖 `../../packages/` 中的 SDK 与工具，不依赖 Board Host 源码进行构建。
+稳定 ID：`com.reai.computer`；当前候选版本：`0.1.1-dev.1`；需要 Host API `>=1.25.0 <2.0.0`。本目录依赖 `../../vendor/platform/` 中主项目发布的平台包（SDK、合同、CLI 与语言工具），不依赖 Board Host 源码进行构建。
 
 ```bash
 bun install --frozen-lockfile --ignore-scripts
