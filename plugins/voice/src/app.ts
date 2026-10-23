@@ -2438,6 +2438,8 @@ export default defineApp({
     /** 开录要不要声明 `asyncFinish`：已确认支持，或 Host 是带新切片口径的 1.0.6 起版本。 */
     const asyncFinishCapable = () => hostAsyncFinish || state.captureModel === SPAN_MARKERS_CAPTURE_MODEL;
     const publishFinalizingCount = () => {
+      // 停用后计数已在 disposeAsyncSegments 清零，迟到的变动不再写回去。
+      if (asyncActivation.signal.aborted) return;
       let count = 0;
       for (const segment of asyncSegments.values()) if (segment.ended) count++;
       if ((state.finalizingCount ?? 0) !== count) publish({ finalizingCount: count || undefined });
@@ -2531,6 +2533,8 @@ export default defineApp({
         sessionId, mode, ended: false, watching: false, settling: false, lifecycle: new AbortController(),
       } as AsyncVoiceSegment;
       Object.assign(segment, handlers(segment));
+      // 已停用（开录回执迟到）：不登记、不等终稿。
+      if (asyncActivation.signal.aborted) return segment;
       asyncSegments.set(sessionId, segment);
       // 从开录起就等终稿：Host 自己结束这段（✓ / 录音上限）、终稿早于结束回执都不漏。
       watchAsyncSegment(segment);
@@ -2542,7 +2546,8 @@ export default defineApp({
      */
     const finalizeAsyncSegment = (sessionId: string, register: () => AsyncVoiceSegment) => {
       hostAsyncFinish = true;
-      if (settledAsyncSessions.has(sessionId)) return;
+      // 结束请求在路上时插件已停用：Host 按 owner 清掉了这段，不再登记收尾。
+      if (asyncActivation.signal.aborted || settledAsyncSessions.has(sessionId)) return;
       endAsyncSegment(asyncSegments.get(sessionId) ?? register());
     };
     /** 撤掉一段的登记并中止它的等待者（放弃这段的后台收尾）。 */

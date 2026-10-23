@@ -427,3 +427,18 @@ test("旧 Host：结束回执不带 sessionId 时同步收尾照常复位，下�
     expect(h.starts[1]!.mode).toBe("command");
   } finally { await h.dispose(); }
 });
+
+test("新 Host：结束回执在停用之后才到，不再登记收尾段、不再等终稿", async () => {
+  const h = await harness({ asyncHost: true, finishReceiptDelayMs: 400 });
+  try {
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    void h.host.invokeCommand("com.reai.voice.toggle-input").catch(() => undefined);
+    await until(() => h.sessions.get(h.order[0]!)?.finalizing === true, "结束请求已送达 Host");
+    const waitsBefore = h.statusWaits.length;
+    await h.host.disable();
+    await new Promise(resolve => setTimeout(resolve, 900));
+    expect(h.commits).toHaveLength(0);
+    // 停用后没有新的终稿等待者（迟到的 finalizing 没有重新登记这段）。
+    expect(h.statusWaits.length).toBeLessThanOrEqual(waitsBefore + 1);
+  } finally { await h.dispose().catch(() => undefined); }
+});
