@@ -1171,8 +1171,11 @@ export default defineApp({
     let toggleInFlight = false;
     // 胶囊叠放的后台收尾段（见 toggleInput 上方的说明）；服务预约要看它，所以登记在这里。
     const asyncSegments = new Map<string, AsyncVoiceSegment>();
+    // 本次激活的生命周期：收尾任务都核对它。段收完尾就从表里撤掉，但它发出的呈现请求可能还在路上，
+    // 停用时靠这一层一并中止。
+    const asyncActivation = new AbortController();
     disposeAsyncSegments = () => {
-      for (const segment of asyncSegments.values()) segment.lifecycle.abort();
+      asyncActivation.abort();
       asyncSegments.clear();
       // 等待者随之静默退出、不会再刷新计数：这里直接清掉，重新激活时不留「识别中」。
       if (state.finalizingCount !== undefined) publish({ finalizingCount: undefined });
@@ -2412,7 +2415,7 @@ export default defineApp({
       watching: boolean;
       /** 收尾只跑一次。 */
       settling: boolean;
-      /** 这段收尾的生命周期：插件停用即中止，收尾在写回 / 起跑命令前核对。 */
+      /** 这段等待者的生命周期：放弃这段（drop）或插件停用即中止。收尾本身核对整个激活期的信号。 */
       lifecycle: AbortController;
       /** 用开录时冻结的上下文跑这段的收尾（结果交接之后的全部步骤）。 */
       complete(result: VoiceInputResult): Promise<unknown>;
@@ -2451,7 +2454,9 @@ export default defineApp({
      */
     const pollAsyncOutcome = async (segment: AsyncVoiceSegment): Promise<AsyncSegmentOutcome> => {
       for (let failures = 0; ;) {
-        if (segment.lifecycle.signal.aborted) return { kind: "error", cause: asyncSegmentCancelled() };
+        if (segment.lifecycle.signal.aborted || asyncActivation.signal.aborted) {
+          return { kind: "error", cause: asyncSegmentCancelled() };
+        }
         const askedAt = Date.now();
         let status: VoiceInputStatus;
         try {
@@ -2498,7 +2503,7 @@ export default defineApp({
       void pollAsyncOutcome(segment).then(async (outcome) => {
         segment.watching = false;
         // 插件已停用：Host 按 owner 清掉了这段，不再收尾、不再呈现。
-        if (segment.lifecycle.signal.aborted) return;
+        if (segment.lifecycle.signal.aborted || asyncActivation.signal.aborted) return;
         // 还在录、Host 却不回 pending（旧 Host）：交给结束回执决定（同步结果就地收尾，finalizing 再等一次）。
         if (outcome.kind === "unsupported" && !segment.ended) return;
         await settleAsyncSegment(segment, outcome);
@@ -2796,6 +2801,8 @@ export default defineApp({
       } catch (cause) {
         // asyncFinish 段的结束请求失败：回查 Host。已结束（多半是 Host 先结束了它：胶囊 ✓ / 录音上限）
         // 就交给后台等待者收口、不重复报错；还在录就保持在录，可以再按一次结束。
+        // 后台等待者已经收完尾（段登记已撤）：结果已交付，不再报这次结束请求的失败。
+        if (completingSessionId && settledAsyncSessions.has(completingSessionId)) return cancelledVoiceInputResult();
         const owned = completingSessionId ? asyncSegments.get(completingSessionId) : undefined;
         if (owned) {
           const host = await reconcileFailedFinish(owned);
@@ -2828,7 +2835,7 @@ export default defineApp({
       registerAsyncSegment(sessionId, "input", segment => ({
         complete: async result => {
           try {
-            const lifecycle = segment.lifecycle.signal;
+            const lifecycle = asyncActivation.signal;
             return await completeInputResult(result, session, lifecycle, segment.endedAt ?? Date.now(), { sessionId }, lifecycle);
           } catch (cause) {
             return settleInputFailure(cause, result.sessionId ?? sessionId);
@@ -4987,6 +4994,7 @@ export default defineApp({
         // 收尾自己已经收过口（呈现失败 / 落历史），原样交回调用方。
         if (completionOwned) throw cause;
         // asyncFinish 段的结束请求失败：回查 Host（同听写，见 reconcileFailedFinish）。
+        if (completingSessionId && settledAsyncSessions.has(completingSessionId)) return cancelledVoiceInputResult();
         const owned = completingSessionId ? asyncSegments.get(completingSessionId) : undefined;
         if (owned) {
           const host = await reconcileFailedFinish(owned);
@@ -5017,8 +5025,8 @@ export default defineApp({
     };
 
     const registerCommandSegment = (sessionId: string, session: CommandSessionContext) =>
-      registerAsyncSegment(sessionId, "command", segment => ({
-        complete: result => completeCommandResult(result, session, { sessionId }, sessionId, segment.lifecycle.signal),
+      registerAsyncSegment(sessionId, "command", () => ({
+        complete: result => completeCommandResult(result, session, { sessionId }, sessionId, asyncActivation.signal),
         fail: cause => settleCommandStartFailure(cause, {
           workflowStarted: false,
           resultSessionId: sessionId,
