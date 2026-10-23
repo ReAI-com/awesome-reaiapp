@@ -53,6 +53,8 @@ async function harness(options: {
   transcriptFor?: (index: number) => string;
   /** 前台结果面板按 Host 规则拒绝（VOICE_ANSWER_DEFER_REQUIRED）。 */
   deferAnswers?: boolean;
+  /** 结束回执晚到：终稿当场放出，`finalizing` 回执延后这么久才回。 */
+  finishReceiptDelayMs?: number;
   hook?: (ctx: AppContext) => Promise<void> | void;
 }) {
   document.body.replaceChildren();
@@ -92,6 +94,8 @@ async function harness(options: {
   const tasks: Params[] = [];
   let listening: AsyncSession | undefined;
   let seq = 0;
+  /** 接下来这么多次按 sessionId 读状态抛传输异常（Host 状态不变）。 */
+  let failSessionStatus = 0;
   wire.handleRequest = async (method, params) => {
     if (method === "voice.toggle" && params["action"] === "start") starts.push({ ...params });
     if (method === "voice.acknowledge-result") acks.push(String(params["sessionId"]));
@@ -110,6 +114,10 @@ async function harness(options: {
     if (method === "voice.status") {
       const sessionId = params["sessionId"];
       const entry = typeof sessionId === "string" ? sessions.get(sessionId) : undefined;
+      if (entry && failSessionStatus > 0) {
+        failSessionStatus--;
+        throw { code: "BRIDGE_TIMEOUT", message: "读取状态超时" };
+      }
       if (entry) {
         if (entry.released && entry.error) return { phase: "idle", sessionId, result: null, resultError: entry.error };
         if (entry.released && entry.result) return { phase: "idle", sessionId, result: entry.result };
@@ -140,6 +148,10 @@ async function harness(options: {
         const transcript = options.transcriptFor?.(index);
         entry.result = transcript === undefined ? result : { ...result, transcript };
         entry.finalizing = true;
+        if (options.finishReceiptDelayMs) {
+          entry.released = true;
+          await new Promise(resolve => setTimeout(resolve, options.finishReceiptDelayMs));
+        }
         return { phase: "finalizing", sessionId: entry.sessionId, seq: ++seq, mode: entry.mode };
       }
     }
@@ -156,6 +168,16 @@ async function harness(options: {
     acks,
     answers,
     tasks,
+    failSessionStatus: (count: number) => { failSessionStatus = count; },
+    /** Host 自己结束正在录的那段（胶囊 ✓ / 录音上限），终稿当场放出。 */
+    hostEnd: async () => {
+      const entry = listening;
+      if (!entry) throw new Error("没有正在录的段");
+      listening = undefined;
+      entry.result = await original("voice.toggle", { action: "finish", sessionId: entry.sessionId }) as Record<string, unknown>;
+      entry.finalizing = true;
+      entry.released = true;
+    },
     /** 放出第 index 段（开录先后）的 Host 终稿。 */
     release: (index: number, error?: { code: string; message: string }) => {
       const entry = sessions.get(order[index]!);
@@ -208,10 +230,14 @@ test("新 Host：收尾失败只收这一段，正在录的下一段不受影响
     await until(() => h.sessions.get(h.order[0]!)?.finalizing === true, "第一段进入收尾");
     expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
     await until(() => h.order.length === 2, "第二段开录");
-    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
-    await until(() => h.sessions.get(h.order[1]!)?.finalizing === true, "第二段进入收尾");
+    // 第二段还在录时，第一段的收尾失败。
     h.release(0, { code: "VOICE_CANCELLED", message: "语音输入已取消" });
     await until(() => h.acks.includes(h.order[0]!), "被取消的那段确认消费");
+    await settle();
+    // 第二段的录音槽没被复位：这次按键结束的是第二段，不是另开第三段。
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    await until(() => h.sessions.get(h.order[1]!)?.finalizing === true, "第二段进入收尾");
+    expect(h.order).toHaveLength(2);
     h.release(1);
     await until(() => h.commits.length === 1, "第二段照常写回");
     await settle();
@@ -288,11 +314,69 @@ test("新 Host：Agent 段 3 秒内完成且 Host 允许前台时照旧弹前台
   } finally { await h.dispose(); }
 });
 
-test("新 Host：captureModel 为 span-markers-v1 时不再申请片段增强", async () => {
+test("新 Host：Host 自己结束的段（胶囊 ✓ / 录音上限），终稿先于状态轮询到达也照常写回", async () => {
+  const h = await harness({ asyncHost: true, transcriptFor: () => "Host 结束的这段" });
+  try {
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    await h.hostEnd();
+    await until(() => h.commits.length === 1, "从开录起等着的终稿被收尾");
+    await until(() => h.acks.includes(h.order[0]!), "确认消费");
+    // 本地已让出录音槽：下一次按键开新段，而不是去结束一段 Host 早已结束的录音。
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    await until(() => h.order.length === 2, "下一次按键开出新段");
+  } finally { await h.dispose(); }
+});
+
+test("新 Host：终稿早于结束回执时只收尾一次，不重复写回", async () => {
+  const h = await harness({ asyncHost: true, finishReceiptDelayMs: 600 });
+  try {
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    await until(() => h.commits.length === 1, "写回一次");
+    await new Promise(resolve => setTimeout(resolve, 900));
+    expect(h.commits, "迟到的 finalizing 回执不再重复收尾").toHaveLength(1);
+  } finally { await h.dispose(); }
+});
+
+test("新 Host：录音中读状态连续失败不会把这段当成结束", async () => {
   const h = await harness({ asyncHost: true });
   try {
-    await settle();
-    const clipRequests = h.host.voiceInputRequests.filter(request => request.method.startsWith("audio.clips"));
-    expect(clipRequests).toHaveLength(0);
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    h.failSessionStatus(4);
+    await new Promise(resolve => setTimeout(resolve, 4000));
+    expect(h.acks).toHaveLength(0);
+    // 仍在录：这次按键结束它，而不是另开一段。
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    await until(() => h.sessions.get(h.order[0]!)?.finalizing === true, "按键结束的是原来那段");
+    expect(h.order).toHaveLength(1);
+    h.release(0);
+    await until(() => h.commits.length === 1, "终稿照常写回", 8000);
   } finally { await h.dispose(); }
+}, 20_000);
+
+test("新 Host：命令段终稿是取消时也确认消费，放开后面的写回", async () => {
+  const h = await harness({ asyncHost: true });
+  try {
+    expect((await h.host.invokeCommand("com.reai.voice.command.agent")).ok).toBeTrue();
+    expect((await h.host.invokeCommand("com.reai.voice.command.agent")).ok).toBeTrue();
+    await until(() => h.sessions.get(h.order[0]!)?.finalizing === true, "命令段进入收尾");
+    h.release(0, { code: "VOICE_CANCELLED", message: "语音输入已取消" });
+    await until(() => h.acks.includes(h.order[0]!), "取消的命令段确认消费");
+    await settle();
+    expect(h.answers).toHaveLength(0);
+    expect(h.tasks).toHaveLength(0);
+  } finally { await h.dispose(); }
+});
+
+test("新 Host：插件停用后，后台收尾不再写回", async () => {
+  const h = await harness({ asyncHost: true });
+  try {
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    await until(() => h.sessions.get(h.order[0]!)?.finalizing === true, "进入收尾");
+    await h.host.disable();
+    h.release(0);
+    await new Promise(resolve => setTimeout(resolve, 800));
+    expect(h.commits).toHaveLength(0);
+  } finally { await h.dispose().catch(() => undefined); }
 });

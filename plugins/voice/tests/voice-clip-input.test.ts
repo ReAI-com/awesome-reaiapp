@@ -213,3 +213,16 @@ test("approved Host but settings differ from the clip transcription (language) o
     } finally { await h.dispose(); }
   }
 }, 20_000);
+
+test("Host 切片口径为 span-markers-v1：同样批准了片段能力也不再申请消费者、不做第二次识别", async () => {
+  // 正对照是上面的「approved Host + keyboard continuous capture」：同样的夹具只差 captureModel。
+  const h = await harness({ status: { ...keyboardContinuous, captureModel: "span-markers-v1" } as VoiceInputStatus, approved: true });
+  try {
+    await new Promise(resolve => setTimeout(resolve, 200));
+    await h.toggle();
+    await until(() => h.commits().length === 1, "写回一次");
+    expect(h.commits()).toEqual(["测试语音输入"]);
+    expect(h.methods).not.toContain("audio.consumers.acquire");
+    expect(clipCalls(h.methods)).toEqual([]);
+  } finally { await h.dispose(); }
+}, 15_000);
