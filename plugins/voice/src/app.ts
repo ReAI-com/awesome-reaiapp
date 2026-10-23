@@ -585,11 +585,14 @@ export default defineApp({
      * 胶囊叠放（Host `asyncFinish`）下，上一段还在识别 / 写回时下一段可能已经开录；旧段收尾
      * 发出的「回到 idle」只能落在它自己的字段上：另一段占着录音槽（在准备、在录、或正等结束回执）
      * 时，它的 `phase` / `commandPhase` / `dictationPhase` 连同 `activeMode` / `sessionId` 留给它。
-     * `ownerSessionId` 是发布方自己的录音会话：录音槽此刻正归它（同步收尾）就原样放行，旧 Host
-     * 行为不变。保留 getter（本地化文案随语言切换）。
+     * `owner` 是发布方自己占录音槽时的会话（同步收尾在结束回执那一刻记下 `state.sessionId`，Host
+     * 没回 sessionId 时也认得）：录音槽此刻仍归它就原样放行，旧 Host 行为不变。保留 getter（本地化
+     * 文案随语言切换）。
      */
-    const settledPatch = <P extends Partial<VoiceViewState>>(patch: P, ownerSessionId?: string): P => {
-      if (ownerSessionId !== undefined && state.sessionId === ownerSessionId) return patch;
+    /** 发布方占录音槽时的会话身份（见 settledPatch）。 */
+    type VoiceSlotOwner = { readonly sessionId: string | undefined };
+    const settledPatch = <P extends Partial<VoiceViewState>>(patch: P, owner?: VoiceSlotOwner): P => {
+      if (owner && state.sessionId === owner.sessionId) return patch;
       const inputLive = state.phase === "listening" || state.phase === "recognizing";
       const commandLive = state.commandPhase === "preparing" || state.commandPhase === "listening"
         || state.commandPhase === "recognizing";
@@ -1171,6 +1174,8 @@ export default defineApp({
     disposeAsyncSegments = () => {
       for (const segment of asyncSegments.values()) segment.lifecycle.abort();
       asyncSegments.clear();
+      // 等待者随之静默退出、不会再刷新计数：这里直接清掉，重新激活时不留「识别中」。
+      if (state.finalizingCount !== undefined) publish({ finalizingCount: undefined });
     };
     // 输入坞听写的起跑要经过 configure + toggle 两次 IPC。人在结果回来前离页时，
     // `dictationPhase` 仍是 idle，不能把取消请求当成“无事可做”丢掉；先记下，Host
@@ -1867,6 +1872,7 @@ export default defineApp({
       polish: VoicePolishSetting,
       context: VoiceContextEnvelope | undefined,
       selection: SavedInputSelection | undefined,
+      slotOwner: VoiceSlotOwner,
       lifecycle?: AbortSignal,
     ): Promise<VoiceInputResult> => {
       const transcript = await transcribeCloudRecording(result, audio, selection);
@@ -1875,7 +1881,7 @@ export default defineApp({
         // 云端也可能识别出空文本（整段静音一类）。与本地路径一致：不写回、
         // 不编一条空历史，安静回到 idle——不是失败，只是没听到内容。
         overlayStages.release(result.sessionId);
-        publish(settledPatch({ phase: "idle", activeMode: undefined, sessionId: undefined }, result.sessionId));
+        publish(settledPatch({ phase: "idle", activeMode: undefined, sessionId: undefined }, slotOwner));
         return { ...result, transcript: "", inserted: false };
       }
       void overlayStages.report(result.sessionId, "transcribed");
@@ -1889,6 +1895,7 @@ export default defineApp({
         insertText,
         polish,
         context,
+        slotOwner,
         lifecycle,
       });
     };
@@ -1909,6 +1916,8 @@ export default defineApp({
       insertText: boolean | undefined;
       polish: VoicePolishSetting;
       context?: VoiceContextEnvelope;
+      /** 发布方占录音槽时的会话（见 settledPatch）。 */
+      slotOwner: VoiceSlotOwner;
       /** 后台收尾段的生命周期：插件停用后不再写回、不再落历史。 */
       lifecycle?: AbortSignal;
     }): Promise<VoiceInputResult> => {
@@ -1976,6 +1985,9 @@ export default defineApp({
           }
         }
       }
+
+      // 写回回包期间插件可能已停用：不再弹取回卡、不再落历史。
+      throwIfAborted(input.lifecycle);
 
       // 润色失败的告知优先级低于写回失败：文字**已经**按原话进去了，
       // 那是用户最关心的事；润色没跑成只是「这条不是润色稿」。
@@ -2067,7 +2079,7 @@ export default defineApp({
               errorDetail: errorDetailFrom("polish", undefined, { fields: polishFields!, at: new Date(polishFailure.at) }),
             }
             : {}),
-        }, result.sessionId));
+        }, input.slotOwner));
         // 就地合并只解决“刚录完立即可播”；再追一次 Host 权威值同步过期/配额清理后的下沿。
         if (savedReplayClip(finalResult)) void refreshReplayCache();
       } catch (cause) {
@@ -2077,7 +2089,7 @@ export default defineApp({
           sessionId: undefined,
           get error() { return t("app.recognitionFinishedButHistoryCouldNotBe", { value0: readableError(cause) }); },
           errorDetail: errorDetailFrom("historySave", cause),
-        }, result.sessionId));
+        }, input.slotOwner));
       }
       return finalResult;
     };
@@ -2521,6 +2533,33 @@ export default defineApp({
       if (settledAsyncSessions.has(sessionId)) return;
       endAsyncSegment(asyncSegments.get(sessionId) ?? register());
     };
+    /** 撤掉一段的登记并中止它的等待者（放弃这段的后台收尾）。 */
+    const dropAsyncSegment = (segment: AsyncVoiceSegment) => {
+      segment.lifecycle.abort();
+      if (asyncSegments.get(segment.sessionId) === segment) asyncSegments.delete(segment.sessionId);
+      publishFinalizingCount();
+    };
+    /**
+     * 结束请求失败（传输异常或 Host 已先结束了这段）：回查 Host 再决定。
+     * `ended`：Host 已结束（在收尾 / 已有终稿），交给后台等待者；`listening`：Host 还在录，本地
+     * 保持在录、可以再按一次结束；`unknown`：查不清，放弃这段的后台收尾，按旧版失败收口。
+     */
+    const reconcileFailedFinish = async (segment: AsyncVoiceSegment): Promise<"ended" | "listening" | "unknown"> => {
+      if (segment.ended || segment.settling) return "ended";
+      try {
+        const status = await ctx.voiceInput.getStatus(segment.sessionId);
+        if (status.sessionId === segment.sessionId) {
+          if (status.phase === "listening") return "listening";
+          if (status.phase === "recognizing") return "ended";
+        }
+        // 终稿已出、还没确认：普通状态不带它，按 waitMs 0 再问一次 Host 是否还认得这段。
+        const outcome = await ctx.voiceInput.getStatus(segment.sessionId, { waitMs: 0 });
+        if (outcome.pending || outcome.result || outcome.resultError) return "ended";
+      } catch {
+        // 查不清就按旧版失败收口。
+      }
+      return segment.ended || segment.settling ? "ended" : "unknown";
+    };
 
     /** 一段听写在开录那一刻冻结的收尾上下文：多段并存时下一段开录不会改掉它。 */
     interface InputSessionContext {
@@ -2538,6 +2577,7 @@ export default defineApp({
       session: InputSessionContext,
       signal: AbortSignal | undefined,
       releasedAtMs: number,
+      slotOwner: VoiceSlotOwner,
       /** 后台收尾段的生命周期（插件停用即中止）：写回前核对。同步收尾不传，行为不变。 */
       lifecycle?: AbortSignal,
     ): Promise<VoiceInputResult> => {
@@ -2550,6 +2590,7 @@ export default defineApp({
           session.polish,
           await session.context,
           session.selection,
+          slotOwner,
           lifecycle,
         );
       }
@@ -2578,11 +2619,12 @@ export default defineApp({
           insertText: session.insertText,
           polish: session.polish,
           context: await session.context,
+          slotOwner,
           lifecycle,
         });
       }
       overlayStages.release(result.sessionId);
-      publish(settledPatch({ phase: "idle", activeMode: undefined, sessionId: undefined }, result.sessionId));
+      publish(settledPatch({ phase: "idle", activeMode: undefined, sessionId: undefined }, slotOwner));
       return result;
     };
 
@@ -2593,7 +2635,7 @@ export default defineApp({
       /** 失败发生在开录 / 结束这一步（持有录音槽）：直接复位；收尾段只动自己的字段。 */
       owner = false,
     ): VoiceInputResult => {
-      const settle = <P extends Partial<VoiceViewState>>(patch: P) => publish(owner ? patch : settledPatch(patch, sessionId));
+      const settle = <P extends Partial<VoiceViewState>>(patch: P) => publish(owner ? patch : settledPatch(patch, { sessionId }));
       // 已报 insert_failed 的会话 Host 已结算，这次确认是空操作。
       overlayStages.release(sessionId);
       if (isVoiceCancellation(cause)) {
@@ -2740,14 +2782,23 @@ export default defineApp({
         }
         // Host 按同步语义收尾（旧 Host 忽略 asyncFinish）：撤掉段登记，就地收尾。
         if (segment) asyncSegments.delete(segment.sessionId);
-        return await completeInputResult(result, session, signal, callAt);
+        // 同步收尾：录音槽此刻仍归这一段（Host 没回 sessionId 时也认得）。
+        return await completeInputResult(result, session, signal, callAt, { sessionId: state.sessionId });
       } catch (cause) {
-        // 已确认多段的 Host 上结束回执失败（多半是 Host 已先结束了这段：胶囊 ✓ / 录音上限）：
-        // 终稿或失败交给这段的后台等待者收口，这里不重复报错。
+        // asyncFinish 段的结束请求失败：回查 Host。已结束（多半是 Host 先结束了它：胶囊 ✓ / 录音上限）
+        // 就交给后台等待者收口、不重复报错；还在录就保持在录，可以再按一次结束。
         const owned = completingSessionId ? asyncSegments.get(completingSessionId) : undefined;
-        if (owned && (owned.settling || hostAsyncFinish)) {
-          endAsyncSegment(owned);
-          return cancelledVoiceInputResult();
+        if (owned) {
+          const host = await reconcileFailedFinish(owned);
+          if (host === "ended") {
+            endAsyncSegment(owned);
+            return cancelledVoiceInputResult();
+          }
+          if (host === "listening" && state.sessionId === owned.sessionId) {
+            publish(Object.assign(failurePatch("recognize", cause), { phase: "listening" as const }));
+            throw cause;
+          }
+          dropAsyncSegment(owned);
         }
         return settleInputFailure(cause, finishedInputSessionId, true);
       } finally {
@@ -2769,7 +2820,7 @@ export default defineApp({
         complete: async result => {
           try {
             const lifecycle = segment.lifecycle.signal;
-            return await completeInputResult(result, session, lifecycle, segment.endedAt ?? Date.now(), lifecycle);
+            return await completeInputResult(result, session, lifecycle, segment.endedAt ?? Date.now(), { sessionId }, lifecycle);
           } catch (cause) {
             return settleInputFailure(cause, result.sessionId ?? sessionId);
           }
@@ -4650,7 +4701,7 @@ export default defineApp({
       },
     ): Promise<VoiceInputResult> => {
       const settle = <P extends Partial<VoiceViewState>>(patch: P) =>
-        publish(input.owner ? patch : settledPatch(patch, input.sessionId));
+        publish(input.owner ? patch : settledPatch(patch, { sessionId: input.sessionId }));
       if (isVoiceCancellation(cause)) {
         if (input.asyncSession && input.sessionId) overlayStages.release(input.sessionId);
         settle({
@@ -4696,6 +4747,8 @@ export default defineApp({
     const completeCommandResult = async (
       result: VoiceInputResult,
       session: CommandSessionContext,
+      /** 发布方占录音槽时的会话（见 settledPatch）。 */
+      slotOwner: VoiceSlotOwner,
       voiceSessionId?: string,
       /** 后台收尾段的生命周期（插件停用即中止）；同步收尾不传。 */
       signal?: AbortSignal,
@@ -4705,7 +4758,7 @@ export default defineApp({
       try {
         if (result.outcome === "cancelled") {
           if (voiceSessionId) overlayStages.release(voiceSessionId);
-          publish(settledPatch({ commandPhase: "idle", activeMode: undefined, sessionId: undefined }, result.sessionId));
+          publish(settledPatch({ commandPhase: "idle", activeMode: undefined, sessionId: undefined }, slotOwner));
           return result;
         }
         let transcript = result.transcript?.trim() ?? "";
@@ -4723,7 +4776,7 @@ export default defineApp({
           ? !shouldTranslateUtterance(transcript)
           : session.commandId !== BUILTIN_VOICE_COMMANDS.transcribe && classifyUtterance(transcript) !== "substantive";
         if (skipUtterance) {
-          publish(settledPatch({ commandPhase: "idle", activeMode: undefined, sessionId: undefined }, result.sessionId));
+          publish(settledPatch({ commandPhase: "idle", activeMode: undefined, sessionId: undefined }, slotOwner));
           // Host 只在本地识别结果完全为空时显示「没有听清」：让这句停一会儿再收。其余情况
           // （识别出语气词 / 单字，或云端转写）胶囊显示的是「处理中」，交给下面 catch 立刻收掉。
           if (commandResultSessionId && !result.audio && !result.transcript) {
@@ -4742,10 +4795,10 @@ export default defineApp({
             ? t("app.emptyTranslationNotSent") : t("app.emptyUtteranceNotSent"); }, retryable: true }, undefined, { constantMessage: true });
         }
         if (!transcript) {
-          publish(settledPatch({ commandPhase: "idle", activeMode: undefined, sessionId: undefined }, result.sessionId));
+          publish(settledPatch({ commandPhase: "idle", activeMode: undefined, sessionId: undefined }, slotOwner));
           throw new VoiceAppError({ code: "VOICE_COMMAND_NO_SPEECH", get userMessage() { return t("app.nothingWasHeardPleaseSayItAgain"); }, retryable: true }, undefined, { constantMessage: true });
         }
-        publish(settledPatch({ commandPhase: "processing", activeMode: "command", sessionId: undefined }, result.sessionId));
+        publish(settledPatch({ commandPhase: "processing", activeMode: "command", sessionId: undefined }, slotOwner));
         await startCommandAgent(transcript, session.commandId, session.deliveryTarget, {
           ...session.conversation,
           context: session.context,
@@ -4768,7 +4821,7 @@ export default defineApp({
           workflowStarted,
           resultSessionId: commandResultSessionId,
           commandId: session.commandId,
-          sessionId: result.sessionId,
+          sessionId: slotOwner.sessionId,
           asyncSession: voiceSessionId !== undefined,
         });
       }
@@ -4919,15 +4972,24 @@ export default defineApp({
         // Host 按同步语义收尾（旧 Host 忽略 asyncFinish）：撤掉段登记，就地收尾。
         if (segment) asyncSegments.delete(segment.sessionId);
         completionOwned = true;
-        return await completeCommandResult(result, session);
+        // 同步收尾：录音槽此刻仍归这一段（Host 没回 sessionId 时也认得）。
+        return await completeCommandResult(result, session, { sessionId: state.sessionId });
       } catch (cause) {
         // 收尾自己已经收过口（呈现失败 / 落历史），原样交回调用方。
         if (completionOwned) throw cause;
-        // 已确认多段的 Host 上结束回执失败（多半是 Host 已先结束了这段）：交给后台等待者收口。
+        // asyncFinish 段的结束请求失败：回查 Host（同听写，见 reconcileFailedFinish）。
         const owned = completingSessionId ? asyncSegments.get(completingSessionId) : undefined;
-        if (owned && (owned.settling || hostAsyncFinish)) {
-          endAsyncSegment(owned);
-          return cancelledVoiceInputResult();
+        if (owned) {
+          const host = await reconcileFailedFinish(owned);
+          if (host === "ended") {
+            endAsyncSegment(owned);
+            return cancelledVoiceInputResult();
+          }
+          if (host === "listening" && state.sessionId === owned.sessionId) {
+            publish(Object.assign(failurePatch("commandStart", cause), { commandPhase: "listening" as const }));
+            throw cause;
+          }
+          dropAsyncSegment(owned);
         }
         return await settleCommandStartFailure(cause, {
           workflowStarted: false,
@@ -4947,7 +5009,7 @@ export default defineApp({
 
     const registerCommandSegment = (sessionId: string, session: CommandSessionContext) =>
       registerAsyncSegment(sessionId, "command", segment => ({
-        complete: result => completeCommandResult(result, session, sessionId, segment.lifecycle.signal),
+        complete: result => completeCommandResult(result, session, { sessionId }, sessionId, segment.lifecycle.signal),
         fail: cause => settleCommandStartFailure(cause, {
           workflowStarted: false,
           resultSessionId: sessionId,

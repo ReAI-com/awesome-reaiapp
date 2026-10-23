@@ -55,6 +55,8 @@ async function harness(options: {
   deferAnswers?: boolean;
   /** 结束回执晚到：终稿当场放出，`finalizing` 回执延后这么久才回。 */
   finishReceiptDelayMs?: number;
+  /** 同步收尾的结束回执不带 sessionId（旧 Host 合同允许缺省）。 */
+  dropFinishSessionId?: boolean;
   hook?: (ctx: AppContext) => Promise<void> | void;
 }) {
   document.body.replaceChildren();
@@ -96,6 +98,8 @@ async function harness(options: {
   let seq = 0;
   /** 接下来这么多次按 sessionId 读状态抛传输异常（Host 状态不变）。 */
   let failSessionStatus = 0;
+  /** 下一次结束请求没送到 Host（传输异常，Host 仍在录）。 */
+  let failNextFinish = false;
   wire.handleRequest = async (method, params) => {
     if (method === "voice.toggle" && params["action"] === "start") starts.push({ ...params });
     if (method === "voice.acknowledge-result") acks.push(String(params["sessionId"]));
@@ -110,7 +114,14 @@ async function harness(options: {
       commits.push({ targetId: params["targetId"] as string, text: params["text"] as string });
       return { committed: true };
     }
-    if (!options.asyncHost) return await original(method, params);
+    if (!options.asyncHost) {
+      const result = await original(method, params);
+      if (options.dropFinishSessionId && method === "voice.toggle" && params["action"] !== "start") {
+        const { sessionId: _dropped, ...rest } = result as Params;
+        return rest;
+      }
+      return result;
+    }
     if (method === "voice.status") {
       const sessionId = params["sessionId"];
       const entry = typeof sessionId === "string" ? sessions.get(sessionId) : undefined;
@@ -141,6 +152,10 @@ async function harness(options: {
         return result;
       }
       if (params["action"] !== "start" && listening && (params["sessionId"] === undefined || params["sessionId"] === listening.sessionId)) {
+        if (failNextFinish) {
+          failNextFinish = false;
+          throw { code: "BRIDGE_TIMEOUT", message: "结束请求超时" };
+        }
         const entry = listening;
         listening = undefined;
         const result = await original(method, params) as Params;
@@ -169,6 +184,7 @@ async function harness(options: {
     answers,
     tasks,
     failSessionStatus: (count: number) => { failSessionStatus = count; },
+    failNextFinish: () => { failNextFinish = true; },
     /** Host 自己结束正在录的那段（胶囊 ✓ / 录音上限），终稿当场放出。 */
     hostEnd: async () => {
       const entry = listening;
@@ -379,4 +395,35 @@ test("新 Host：插件停用后，后台收尾不再写回", async () => {
     await new Promise(resolve => setTimeout(resolve, 800));
     expect(h.commits).toHaveLength(0);
   } finally { await h.dispose().catch(() => undefined); }
+});
+
+test("新 Host：结束请求没送到 Host（仍在录）时保持在录，再按一次能结束同一段", async () => {
+  const h = await harness({ asyncHost: true });
+  try {
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    h.failNextFinish();
+    await h.host.invokeCommand("com.reai.voice.toggle-input");
+    await settle();
+    expect(h.sessions.get(h.order[0]!)?.finalizing, "Host 仍在录").toBeFalse();
+    // 本地没把录音槽让出去：再按一次结束的是同一段，而不是另开一段。
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    await until(() => h.sessions.get(h.order[0]!)?.finalizing === true, "再按一次结束同一段");
+    expect(h.order).toHaveLength(1);
+    h.release(0);
+    await until(() => h.commits.length === 1, "照常写回");
+  } finally { await h.dispose(); }
+});
+
+test("旧 Host：结束回执不带 sessionId 时同步收尾照常复位，下一次按键能开录", async () => {
+  const h = await harness({ asyncHost: false, dropFinishSessionId: true });
+  try {
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    expect((await h.host.invokeCommand("com.reai.voice.toggle-input")).ok).toBeTrue();
+    await until(() => h.commits.length === 1, "同步收尾写回");
+    await settle();
+    // 听写的 phase / activeMode 都已复位：语音命令不会被当成「听写还在处理」挡掉。
+    expect((await h.host.invokeCommand("com.reai.voice.command.agent")).ok, "收尾后能开语音命令").toBeTrue();
+    await until(() => h.starts.length === 2, "收尾后复位，下一次按键开新录音");
+    expect(h.starts[1]!.mode).toBe("command");
+  } finally { await h.dispose(); }
 });
