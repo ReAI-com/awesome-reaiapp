@@ -61,7 +61,7 @@
         "id": "com.reai.voice/request-text@1",
         "version": "^1.0.0",
         "required": false,
-        "purpose": "只查询 Voice 文字服务是否可调用，不开始录音"
+        "purpose": "查询 Voice 文字服务是否可调用；只在你点「开始听写」时录一句话并取回识别文字（文字不保存）"
       }
     ]
   },

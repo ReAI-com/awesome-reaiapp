@@ -433,3 +433,87 @@ describe("核对码与终端命令", () => {
     expect(view.value).toBeUndefined();
   });
 });
+
+describe("录一句话控制器", () => {
+  test("Voice 拒绝时如实给出原因；界面关掉时请 Voice 取消、停止轮询", async () => {
+    const { VoiceDictation } = await import("../src/voice-dictation");
+    const port = createPreviewPort({ delayMs: 0, voiceInstalled: true });
+    const calls: string[] = [];
+    const original = port.callService.bind(port);
+    port.callService = async (id, method, input, signal) => {
+      calls.push(method);
+      if (method === "request-text") throw Object.assign(new Error("mic"), { code: "com.reai.voice/VOICE_MIC_PERMISSION_REQUIRED" });
+      return original(id, method, input, signal);
+    };
+    const denied = new VoiceDictation(port, () => undefined, 5);
+    denied.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(denied.state.phase).toBe("failed");
+    expect(denied.state.message).toContain("麦克风还没授权");
+
+    const live = createPreviewPort({ delayMs: 0, voiceInstalled: true });
+    const methods: string[] = [];
+    const liveCall = live.callService.bind(live);
+    live.callService = async (id, method, input, signal) => { methods.push(method); return liveCall(id, method, input, signal); };
+    const dictation = new VoiceDictation(live, () => undefined, 5);
+    dictation.start();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(dictation.state.phase).toBe("listening");
+    dictation.dispose();
+    const after = methods.length;
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(methods).toContain("cancel");
+    expect(methods.length).toBe(after);
+    dictation.start();
+    expect(methods.length).toBe(after);
+  });
+});
+
+describe("录一句话：取消与销毁的时序", () => {
+  test("识别中被取消：终态保持已取消，不会被迟到的完成覆盖", async () => {
+    const port = createPreviewPort({ delayMs: 20, voiceInstalled: true });
+    const { voiceRequestId, VOICE_SERVICE_ID } = await import("../src/probes");
+    const requestId = voiceRequestId();
+    const controller = new AbortController();
+    const pending = port.callService(VOICE_SERVICE_ID, "request-text", { requestId }, controller.signal).catch((error: { code?: string }) => error.code);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(await port.callService(VOICE_SERVICE_ID, "finish", { requestId })).toEqual({ accepted: true });
+    controller.abort();
+    expect(await pending).toBe("SERVICE_CANCELLED");
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect((await port.callService(VOICE_SERVICE_ID, "status", { requestId }) as { phase: string }).phase).toBe("cancelled");
+  });
+
+  test("状态查询还没回来时界面关掉：之后不再续排轮询", async () => {
+    const { VoiceDictation } = await import("../src/voice-dictation");
+    const port = createPreviewPort({ delayMs: 0, voiceInstalled: true });
+    const original = port.callService.bind(port);
+    let release: () => void = () => undefined;
+    let statusCalls = 0;
+    port.callService = async (id, method, input, signal) => {
+      if (method === "status") { statusCalls += 1; await new Promise<void>((resolve) => { release = resolve; }); }
+      return original(id, method, input, signal);
+    };
+    const dictation = new VoiceDictation(port, () => undefined, 5);
+    dictation.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(statusCalls).toBe(1);
+    dictation.dispose();
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(statusCalls).toBe(1);
+  });
+
+  test("听写成功后，识别文字不进存储和报告", async () => {
+    const { VoiceDictation } = await import("../src/voice-dictation");
+    const port = createPreviewPort({ delayMs: 0, voiceInstalled: true });
+    const dictation = new VoiceDictation(port, () => undefined, 5);
+    dictation.start();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await dictation.finish();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(dictation.state.text).toBe("这是预览里的假识别结果");
+    for (const key of await port.kv.keys()) expect(JSON.stringify(await port.kv.get(key))).not.toContain("假识别结果");
+    expect(buildReport({ mode: "preview", hostVersion: "1.0.5", developerMode: true, results: new Map() })).not.toContain("假识别结果");
+  });
+});

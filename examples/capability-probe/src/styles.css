@@ -210,7 +210,7 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .cp-jump-notice[hidden] { display: none; }
 .cp-jump-notice span { flex: 1 1 240px; color: var(--text-primary); }
 
-/* 本地存储单步验证 */
+/* 卡片里的手动单步区（本地存储单步验证、录一句话共用） */
 .cp-manual { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--divider); }
 .cp-manual h4 { margin: 0; font-size: 14px; }
 .cp-manual-msg { margin: 0; font-size: 13px; }

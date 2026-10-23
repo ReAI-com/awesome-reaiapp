@@ -13,6 +13,7 @@ import { CHANGELOG_TEXT } from "./release-notes";
 import { describeError, scrub } from "./errors";
 import { buildReport } from "./report";
 import { diskLocation, manualDelete, manualRead, manualWrite, MANUAL_KEY, type ManualView } from "./kv-manual";
+import { DICTATION_PHASE_LABELS, DICTATION_TIMEOUT_MS, isActive, VoiceDictation } from "./voice-dictation";
 import { clearSavedResults, loadSavedResults, saveResult } from "./saved-results";
 
 export type PageId = "overview" | ProbeSection | "capabilities" | "official" | "records" | "settings" | "changelog" | "about";
@@ -382,6 +383,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     if (block) card.append(block);
     if (probe.id === "kv-roundtrip") card.append(manualKvSection());
     if (probe.id === "system-task-open" && jumpBlockedHint) card.append(h(doc, "p", { className: "cp-locked", attrs: { role: "status" } }, icon(doc, "alert"), h(doc, "span", { text: jumpBlockedHint })));
+    if (probe.id === "voice-service") card.append(dictationSection());
     return card;
   }
 
@@ -445,6 +447,41 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
         ? "插件拿不到账号目录名。把下面这行粘到「终端」回车：它在所有账号的存储文件里找含这个核对码的那个，访达会选中它（只读，不改任何东西）。"
         : "把下面这行粘到「终端」回车：它列出还含这个键的存储文件，什么都没列出就说明已经删干净了（只读，不改任何东西）。" }), cmd,
         h(doc, "div", { className: "cp-card-actions" }, button("全选命令", () => { cmd.focus(); cmd.select(); }, { tier: "link" })));
+    }
+    return wrap;
+  }
+
+  /** 「录一句话」：真的发起一次听写，跟踪状态，拿到识别出的文字。不计入 17 项验收。 */
+  const dictation = new VoiceDictation(port, () => { if (!disposed) render(); });
+
+  function dictationSection(): HTMLElement {
+    const state = dictation.state;
+    const active = isActive(state);
+    const wrap = h(doc, "section", { className: "cp-manual", attrs: { "aria-label": "录一句话" } });
+    wrap.append(h(doc, "h4", { text: "录一句话：验证真的能拿到文字" }));
+    wrap.append(h(doc, "p", { className: "cp-card-sub", text: `上面的测试只问了一个不存在的请求。这里真的发起一次听写：会打开麦克风，识别走云端、可能消耗账户额度，最长 ${DICTATION_TIMEOUT_MS / 60_000} 分钟。识别出的文字只显示在这里，不保存、不进报告。不计入 17 项验收。` }));
+    wrap.append(h(doc, "div", { className: "cp-card-actions" },
+      button(active ? "听写中…" : state.phase === "idle" ? "开始听写" : "再录一次", () => dictation.start(), { tier: "primary", disabled: active, icon: "play" }),
+      button("说完了", () => void dictation.finish(), { disabled: !active || state.phase === "processing" }),
+      button("取消", () => void dictation.cancel(), { disabled: !active }),
+    ));
+    if (state.phase !== "idle") {
+      const tone = state.phase === "completed" ? "ok" : state.phase === "failed" || state.phase === "timed_out" ? "failed" : "neutral";
+      wrap.append(h(doc, "p", { className: `cp-manual-msg cp-manual-msg--${tone}`, attrs: { role: "status" }, text: `状态：${DICTATION_PHASE_LABELS[state.phase]}${state.phase === "listening" ? "。说完点「说完了」" : ""}` }));
+      const facts = h(doc, "dl", { className: "cp-facts" });
+      const row = (label: string, value: string) => facts.append(h(doc, "dt", { text: label }), h(doc, "dd", { text: value }));
+      if (state.requestId) row("请求号", state.requestId);
+      if (state.revision !== undefined) row("状态版本", String(state.revision));
+      if (state.captureStarted !== undefined) row("麦克风已开", state.captureStarted ? "是" : "否");
+      if (state.pcmReceived !== undefined) row("收到声音", state.pcmReceived === "unknown" ? "未知" : state.pcmReceived ? "是" : "否");
+      if (state.lastControl) row(state.lastControl.action === "finish" ? "「说完了」" : "「取消」", state.lastControl.accepted ? "Voice 已收到" : "Voice 没接受（可能已经结束）");
+      if (state.phase === "completed") {
+        row("识别类型", state.kind === "processed" ? "润色后" : state.kind === "raw" ? "原文" : state.kind === "raw_fallback" ? "润色失败，退回原文" : state.kind ?? "未知");
+        row("识别出的文字", state.text ? state.text : "（空：没听到内容）");
+      }
+      if (state.message) row("原因", state.message);
+      if (developerMode && state.code) row("错误码", state.code);
+      wrap.append(facts);
     }
     return wrap;
   }
@@ -793,6 +830,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     },
     get currentPage() { return page; },
     dispose() {
+      dictation.dispose();
       disposed = true;
       abort.abort();
       offEnv();
