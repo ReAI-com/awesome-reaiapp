@@ -11,6 +11,7 @@ import { SavedInputRetryController, projectSavedInputSession, type SavedInputRet
 import { InputSelectionJournal } from "./input-selection-journal";
 import { commandOverlayKind } from "./voice-overlay-kind";
 import { createVoiceOverlayStages } from "./voice-overlay-stage";
+import { VOICE_ANSWER_DEFER_REQUIRED, isFinalizingResult } from "./voice-sdk-compat";
 import { readVoiceAccountEpoch, isVoiceAccountCurrent, isVoiceRequestInvalidated } from "./voice-account";
 import { assessTranslationOutput, TRANSLATION_LANGUAGES, translationPrompt, translationTurnText } from "./voice-translation";
 import { DEFAULT_MODEL_ID, sanitizeVoiceFeatureSettings } from "./data";
@@ -231,6 +232,8 @@ let stopCloudModels: (() => void) | undefined;
 const listeners = new Set<(state: VoiceViewState) => void>();
 let cancelSavedInputRetries: (() => Promise<void>) | undefined;
 let disposeHostVersion: (() => void) | undefined;
+/** 停用时撤掉后台收尾段的等待者（Host 按 owner 清掉它们的终稿，不再呈现）。 */
+let disposeAsyncSegments: (() => void) | undefined;
 let cancelActiveVoiceInput: (() => Promise<void>) | undefined;
 let requestTextProviderDeactivate: (() => void) | undefined;
 /** 输入法片段增强（audio.capture@1 + audio.clips@1）；Host 未开放/未批准时恒为不可用。 */
@@ -274,6 +277,11 @@ interface CommandRunOptions {
   context?: Promise<VoiceContextEnvelope | undefined>;
   /** Host 录音会话 id：转文本 / 翻译交付完成（不弹结果框）时凭它收掉中央「处理中」胶囊。 */
   resultSessionId?: string;
+  /**
+   * 来自 `asyncFinish` 录音（胶囊叠放）时的同一会话 id：任务帧与前台结果带上它，Host 才认得栈里
+   * 那一枚胶囊，并可要求前台结果转后台。同步收尾的录音不带，行为不变。
+   */
+  voiceSessionId?: string;
   /** 这次命令录音的回听引用；Host 没带回 replayClip 时为空对象。 */
   recording?: VoiceRecordingRef;
 }
@@ -367,6 +375,10 @@ let state: VoiceViewState = {
   dayDigests: {},
   screenshotConsent: { enabled: false },
 };
+
+/** Host 按键会话切片已与片段增强同一窗口（`voice.status.captureModel`）：不再做第二次识别。 */
+const SPAN_MARKERS_CAPTURE_MODEL = "span-markers-v1";
+
 /**
  * 片段增强只给键盘连续源（USB Vendor HID / BLE）用：电脑麦按会话开录，不常驻消费者。
  * 返回值变化（切源、时间线运行态变化）会让协调器换一代消费者。
@@ -375,6 +387,7 @@ let state: VoiceViewState = {
  * 拨开关既不能关掉补气口，也不该让消费者换代、丢掉换代前的那段回看。
  */
 function voiceClipWantKey(current: VoiceViewState): string | undefined {
+  if (current.captureModel === SPAN_MARKERS_CAPTURE_MODEL) return undefined;
   const timeline = current.timeline;
   if (!timeline) return undefined;
   if (timeline.route !== "usb_vendor_hid" && timeline.route !== "ble_gatt") return undefined;
@@ -540,6 +553,10 @@ export default defineApp({
     const readVoiceStatus = async (sessionId?: string): Promise<VoiceInputStatus> => {
       const revision = archiveRevision;
       const status = await ctx.voiceInput.getStatus(sessionId);
+      // 切片口径只增不减：带 sessionId 的读数缺这一项时不清掉已知值。
+      if (typeof status.captureModel === "string" && status.captureModel !== state.captureModel) {
+        publish({ captureModel: status.captureModel });
+      }
       statusArchiveRevision.set(status, revision);
       return withConfirmedArchive(status);
     };
@@ -557,6 +574,27 @@ export default defineApp({
       }
       const keys = Object.keys(next);
       for (const key of keys.slice(0, Math.max(0, keys.length - 32))) delete next[key];
+      return next;
+    };
+
+    /**
+     * 收尾段（或已离开录音槽的命令）的状态发布：不能动此刻正在录的那一段。
+     *
+     * 胶囊叠放（Host `asyncFinish`）下，上一段还在识别 / 写回时下一段可能已经开录；旧段收尾
+     * 发出的「回到 idle」只能落在它自己的字段上，录音槽归属（`phase` / `commandPhase` /
+     * `dictationPhase` 正在录时连同 `activeMode` / `sessionId`）留给正在录的那一段。同步收尾时
+     * 录音槽在结束那一刻已空，这里原样放行，旧 Host 行为不变。保留 getter（本地化文案随语言切换）。
+     */
+    const settledPatch = <P extends Partial<VoiceViewState>>(patch: P): P => {
+      const inputLive = state.phase === "listening";
+      const commandLive = state.commandPhase === "preparing" || state.commandPhase === "listening";
+      const dictationLive = state.dictationPhase !== "idle";
+      if (!inputLive && !commandLive && !dictationLive) return patch;
+      const next = Object.defineProperties({}, Object.getOwnPropertyDescriptors(patch)) as P;
+      const drop = (key: keyof VoiceViewState) => { delete (next as Partial<VoiceViewState>)[key]; };
+      if (inputLive) { drop("phase"); drop("activeMode"); drop("sessionId"); }
+      if (commandLive) { drop("commandPhase"); drop("activeMode"); drop("sessionId"); }
+      if (dictationLive) { drop("dictationPhase"); drop("sessionId"); }
       return next;
     };
 
@@ -938,12 +976,13 @@ export default defineApp({
     ): boolean => {
       if (activeForegroundTaskId !== taskId) return false;
       activeForegroundTaskId = undefined;
-      publish({
+      // 胶囊叠放下前台命令收尾时下一段可能已经开录：录音槽归属留给它。
+      publish(settledPatch({
         commandPhase: "idle",
         activeMode: undefined,
         sessionId: undefined,
         ...patch,
-      });
+      }));
       return true;
     };
 
@@ -1122,6 +1161,13 @@ export default defineApp({
       language: settings.language,
     });
     let toggleInFlight = false;
+    // 胶囊叠放的后台收尾段（见 toggleInput 上方的说明）；服务预约要看它，所以登记在这里。
+    const asyncSegments = new Map<string, AsyncVoiceSegment>();
+    let asyncSegmentsDisposed = false;
+    disposeAsyncSegments = () => {
+      asyncSegmentsDisposed = true;
+      asyncSegments.clear();
+    };
     // 输入坞听写的起跑要经过 configure + toggle 两次 IPC。人在结果回来前离页时，
     // `dictationPhase` 仍是 idle，不能把取消请求当成“无事可做”丢掉；先记下，Host
     // 真正回 listening 的同一拍立刻 cancel，避免留下一场没有页面能收工的悬空录音。
@@ -1823,7 +1869,7 @@ export default defineApp({
         // 云端也可能识别出空文本（整段静音一类）。与本地路径一致：不写回、
         // 不编一条空历史，安静回到 idle——不是失败，只是没听到内容。
         overlayStages.release(result.sessionId);
-        publish({ phase: "idle", activeMode: undefined, sessionId: undefined });
+        publish(settledPatch({ phase: "idle", activeMode: undefined, sessionId: undefined }));
         return { ...result, transcript: "", inserted: false };
       }
       void overlayStages.report(result.sessionId, "transcribed");
@@ -1994,7 +2040,7 @@ export default defineApp({
           ...(outcome.changed ? { originalTranscript: transcript } : {}),
         });
         const history = await repository.appendHistory(item);
-        publish({
+        publish(settledPatch({
           failureRaw: withFailureRaw({ [`polish:${item.id}`]: polishFields?.raw, [`deliver:${item.id}`]: deliveryRaw }),
           phase: "idle",
           activeMode: undefined,
@@ -2011,17 +2057,17 @@ export default defineApp({
               errorDetail: errorDetailFrom("polish", undefined, { fields: polishFields!, at: new Date(polishFailure.at) }),
             }
             : {}),
-        });
+        }));
         // 就地合并只解决“刚录完立即可播”；再追一次 Host 权威值同步过期/配额清理后的下沿。
         if (savedReplayClip(finalResult)) void refreshReplayCache();
       } catch (cause) {
-        publish({
+        publish(settledPatch({
           phase: "idle",
           activeMode: undefined,
           sessionId: undefined,
           get error() { return t("app.recognitionFinishedButHistoryCouldNotBe", { value0: readableError(cause) }); },
           errorDetail: errorDetailFrom("historySave", cause),
-        });
+        }));
       }
       return finalResult;
     };
@@ -2179,6 +2225,8 @@ export default defineApp({
           || state.commandPhase !== "idle"
           || state.activeMode !== undefined
           || state.dictationPhase !== "idle"
+          // 服务预约仍要求全空闲：还有段在后台收尾（胶囊叠放）时不接。
+          || asyncSegments.size > 0
         ) {
           return undefined;
         }
@@ -2312,6 +2360,218 @@ export default defineApp({
       finally { signal?.removeEventListener("abort", cancel); }
     };
 
+    /**
+     * 胶囊叠放（Host `asyncFinish`，2026-10-23）：一段录音结束即回 `finalizing`，收尾在 Host 后台。
+     *
+     * `toggleInFlight` 只护开录与结束打标这两步；每段的收尾（取终稿、润色、写回、落历史 / 命令
+     * 运行）是各自独立的任务，用开录那一刻冻结的上下文跑完，互不阻塞，下一段可以马上开录。
+     * 写回顺序由 Host 按录音结束先后放行，插件不自己排。旧 Host 不回 `finalizing`：段登记在结束
+     * 那一刻撤掉，整条路径照旧同步收尾。
+     */
+    type AsyncSegmentOutcome =
+      | { kind: "result"; result: VoiceInputResult }
+      | { kind: "error"; cause: unknown }
+      | { kind: "unsupported" };
+    interface AsyncVoiceSegment {
+      sessionId: string;
+      mode: "input" | "command";
+      /** 本地已让出录音槽：插件 finish 回了 `finalizing`，或 Host 自己结束了这段（胶囊 ✓ / 录音上限）。 */
+      ended: boolean;
+      /** 让出录音槽的时刻（片段增强的松开时刻）。 */
+      endedAt?: number;
+      /** 同一段同时只有一个终稿等待者。 */
+      watching: boolean;
+      /** 收尾只跑一次。 */
+      settling: boolean;
+      /** 用开录时冻结的上下文跑这段的收尾（结果交接之后的全部步骤）。 */
+      complete(result: VoiceInputResult): Promise<unknown>;
+      /** 终稿没拿到（取消、出错、Host 不再认得这段）：按这段的口径收口。 */
+      fail(cause: unknown): Promise<unknown>;
+    }
+    /** 单次长轮询的上限（Host 夹到 20 秒）。 */
+    const ASYNC_RESULT_WAIT_MS = 20_000;
+    /** 本次运行里 Host 已回过 `finalizing` / `pending`：确认支持多段，放开录音之间的互斥。 */
+    let hostAsyncFinish = false;
+    /** 开录要不要声明 `asyncFinish`：已确认支持，或 Host 是带新切片口径的 1.0.6 起版本。 */
+    const asyncFinishCapable = () => hostAsyncFinish || state.captureModel === SPAN_MARKERS_CAPTURE_MODEL;
+    const publishFinalizingCount = () => {
+      let count = 0;
+      for (const segment of asyncSegments.values()) if (segment.ended) count++;
+      if ((state.finalizingCount ?? 0) !== count) publish({ finalizingCount: count || undefined });
+    };
+    const sleep = (ms: number) => new Promise<void>(resolve => { setTimeout(resolve, ms); });
+    const asyncSegmentCancelled = () => new VoiceAppError({
+      code: "com.reai.voice/VOICE_CANCELLED",
+      get userMessage() { return t("app.voiceInputWasCancelled"); },
+      retryable: true,
+    }, undefined, { constantMessage: true });
+    /** 按 sessionId 长轮询这段的终稿；Host 不回 `pending`（旧 Host / 不认得这段）即 `unsupported`。 */
+    const pollAsyncOutcome = async (segment: AsyncVoiceSegment): Promise<AsyncSegmentOutcome> => {
+      for (let failures = 0; ;) {
+        if (asyncSegments.get(segment.sessionId) !== segment) return { kind: "error", cause: asyncSegmentCancelled() };
+        const askedAt = Date.now();
+        let status: VoiceInputStatus;
+        try {
+          status = await ctx.voiceInput.getStatus(segment.sessionId, { waitMs: ASYNC_RESULT_WAIT_MS });
+          failures = 0;
+        } catch (cause) {
+          if (++failures >= 3) return { kind: "error", cause };
+          await sleep(500);
+          continue;
+        }
+        if (status.result) return { kind: "result", result: status.result };
+        if (status.resultError) {
+          return {
+            kind: "error",
+            cause: new AppError({ code: status.resultError.code, userMessage: status.resultError.message, retryable: true }),
+          };
+        }
+        if (!status.pending) return { kind: "unsupported" };
+        hostAsyncFinish = true;
+        // 长轮询到点，再问一次；万一立即回包也不空转。
+        if (Date.now() - askedAt < 200) await sleep(250);
+      }
+    };
+    const settleAsyncSegment = async (segment: AsyncVoiceSegment, outcome: AsyncSegmentOutcome) => {
+      if (segment.settling) return;
+      segment.settling = true;
+      // Host 自己结束了这段（胶囊 ✓ / 录音上限）而本地还当它在录：先让出录音槽。
+      if (!segment.ended) endAsyncSegment(segment);
+      try {
+        if (outcome.kind === "result") await segment.complete(outcome.result);
+        else await segment.fail(outcome.kind === "error" ? outcome.cause : asyncSegmentCancelled());
+      } catch {
+        // 收尾自己已经呈现了失败（界面主句 / 取回卡），后台任务不再往外抛。
+      } finally {
+        if (asyncSegments.get(segment.sessionId) === segment) asyncSegments.delete(segment.sessionId);
+        publishFinalizingCount();
+      }
+    };
+    const watchAsyncSegment = (segment: AsyncVoiceSegment) => {
+      if (segment.watching || segment.settling) return;
+      segment.watching = true;
+      void pollAsyncOutcome(segment).then(async (outcome) => {
+        segment.watching = false;
+        if (asyncSegmentsDisposed) return;
+        // 还在录、Host 却不认 `waitMs`：交给结束回执决定（同步结果就地收尾，finalizing 再等一次）。
+        if (outcome.kind === "unsupported" && !segment.ended) return;
+        await settleAsyncSegment(segment, outcome);
+      });
+    };
+    /** 本地让出录音槽：这段进入后台收尾，下一段可以开录。 */
+    const endAsyncSegment = (segment: AsyncVoiceSegment) => {
+      if (segment.ended) return;
+      segment.ended = true;
+      segment.endedAt = Date.now();
+      if (state.sessionId === segment.sessionId) {
+        publish(segment.mode === "input"
+          ? { phase: "idle", activeMode: undefined, sessionId: undefined }
+          : { commandPhase: "idle", activeMode: undefined, sessionId: undefined });
+      }
+      publishFinalizingCount();
+      watchAsyncSegment(segment);
+    };
+    const registerAsyncSegment = (
+      sessionId: string,
+      mode: AsyncVoiceSegment["mode"],
+      handlers: (segment: AsyncVoiceSegment) => Pick<AsyncVoiceSegment, "complete" | "fail">,
+      watchNow: boolean,
+    ): AsyncVoiceSegment => {
+      const segment = { sessionId, mode, ended: false, watching: false, settling: false } as AsyncVoiceSegment;
+      Object.assign(segment, handlers(segment));
+      asyncSegments.set(sessionId, segment);
+      // 已确认 Host 支持时从开录起就等终稿：Host 自己结束这段（✓ / 录音上限）也不漏。
+      if (watchNow) watchAsyncSegment(segment);
+      return segment;
+    };
+
+    /** 一段听写在开录那一刻冻结的收尾上下文：多段并存时下一段开录不会改掉它。 */
+    interface InputSessionContext {
+      deliveryTarget: VoiceDeliveryTargetRef | undefined;
+      insertText: boolean | undefined;
+      polish: VoicePolishSetting;
+      context: Promise<VoiceContextEnvelope | undefined>;
+      selection: SavedInputSelection | undefined;
+      clipPress: VoiceClipPressToken | undefined;
+    }
+
+    /** 听写拿到 Host 终稿之后的收尾：云端转写 / 片段增强 → 润色 → 写回 → 落历史。 */
+    const completeInputResult = async (
+      result: VoiceInputResult,
+      session: InputSessionContext,
+      signal: AbortSignal | undefined,
+      releasedAtMs: number,
+    ): Promise<VoiceInputResult> => {
+      if (result.audio) {
+        return await finishCloudTranscript(
+          result,
+          result.audio,
+          session.deliveryTarget,
+          session.insertText,
+          session.polish,
+          await session.context,
+          session.selection,
+        );
+      }
+
+      // 片段增强（audio.clips@1）：键盘持续收音补按下前的话、松开后顺延 1.5 秒。只在 Host
+      // 已正常识别出文字时才替换（取消、没听到都保持原样，片段不能复活一次已结束的录音）；
+      // 不可用 / 失败 / 超时 / 为空一律退回 Host 会话自己的识别结果（与旧版一致）。
+      const hostTranscript = result.transcript?.trim() ?? "";
+      const enhanceClip = session.clipPress !== undefined && hostTranscript !== "" && result.outcome !== "cancelled";
+      const clipTranscript = !enhanceClip ? undefined : await voiceClipCapture?.enhance({
+        token: session.clipPress!,
+        releasedAtMs,
+        boardRoute: true,
+      }).catch(() => undefined);
+      // 只有真的等过片段才复核取消；没走片段时保持旧版行为不变。
+      if (enhanceClip) throwIfAborted(signal);
+      const localTranscript = clipTranscript ?? hostTranscript;
+      if (localTranscript) {
+        // 本地与云端识别走同一条收尾：润色（仅输入法）→ commit → 失败弹取回卡 → 落历史。
+        return await deliverRecognizedText({
+          result,
+          transcript: localTranscript,
+          recognitionEngine: "local",
+          originalSelection: session.selection,
+          deliveryTarget: session.deliveryTarget,
+          insertText: session.insertText,
+          polish: session.polish,
+          context: await session.context,
+        });
+      }
+      overlayStages.release(result.sessionId);
+      publish(settledPatch({ phase: "idle", activeMode: undefined, sessionId: undefined }));
+      return result;
+    };
+
+    /** 识别结束后才失败（云端转写失败等）或取消：没有写入可等，收起中央胶囊。 */
+    const settleInputFailure = (
+      cause: unknown,
+      sessionId: string | undefined,
+      /** 失败发生在开录 / 结束这一步（持有录音槽）：直接复位；收尾段只动自己的字段。 */
+      owner = false,
+    ): VoiceInputResult => {
+      const settle = <P extends Partial<VoiceViewState>>(patch: P) => publish(owner ? patch : settledPatch(patch));
+      // 已报 insert_failed 的会话 Host 已结算，这次确认是空操作。
+      overlayStages.release(sessionId);
+      if (isVoiceCancellation(cause)) {
+        settle({
+          phase: "idle",
+          activeMode: undefined,
+          sessionId: undefined,
+          error: undefined,
+        });
+        return cancelledVoiceInputResult();
+      }
+      settle(Object.assign(failurePatch("recognize", cause), {
+        phase: "idle" as const,
+        activeMode: undefined,
+        sessionId: undefined,
+      }));
+      throw cause;
+    };
+
     const toggleInput = async (
       signal?: AbortSignal,
       insertText?: boolean,
@@ -2320,7 +2580,12 @@ export default defineApp({
       /** 硬件触发时 Host 签发的一次性来源凭证：开始录音时原样回传，让发起设备的麦优先。 */
       triggerRef?: string,
     ): Promise<VoiceInputResult> => {
-      if (toggleInFlight || serviceOperationActive || state.commandPhase === "processing" || state.activeMode === "command") {
+      // 已确认 Host 支持多段：上一段（含前台命令）还在收尾不再挡新录音，只让正在录的命令段。
+      const busy = hostAsyncFinish
+        ? toggleInFlight || serviceOperationActive || state.commandPhase === "preparing"
+          || state.commandPhase === "listening" || state.commandPhase === "recognizing"
+        : toggleInFlight || serviceOperationActive || state.commandPhase === "processing" || state.activeMode === "command";
+      if (busy) {
         throw new VoiceAppError({
           code: "com.reai.voice/VOICE_BUSY",
           get userMessage() { return t("app.thePreviousRecordingIsStillProcessing"); },
@@ -2346,10 +2611,13 @@ export default defineApp({
       toggleInFlight = true;
       publish({ error: undefined });
       let finishedInputSessionId: string | undefined;
+      let completingSessionId: string | undefined;
       try {
         const completing = state.phase === "listening";
-        if (completing) publish({ phase: "recognizing" });
-        else {
+        if (completing) {
+          completingSessionId = state.sessionId;
+          publish({ phase: "recognizing" });
+        } else {
           await awaitVoicePreparation(signal, () => settingsSaveChain);
           const settings = { ...state.settings };
           pendingInputSelection = snapshotVoiceSelection();
@@ -2359,13 +2627,18 @@ export default defineApp({
         throwIfAborted(signal);
         const useCloud = pendingInputSelection?.engine === "cloud";
         const polish = state.settings.polish;
+        // 硬件按键开录（start）声明结束即返回；页面按钮的 toggle 与旧 Host 照旧同步收尾。
+        const asyncFinish = startOnly && !completing && asyncFinishCapable();
         // 识别与插入解耦（Host API 1.22）：Host 一律只出文本，润色之后由插件经
         // delivery.commit 写回（`deliverRecognizedText`）。Host 若先把识别原文打进去，
         // 润色稿再打一遍，用户会看到同一句话出现两次。
         // 调用前的时刻：开始时即按下时刻，结束时即松开时刻（片段增强用）。
         const callAt = Date.now();
         const result = finishSessionId ? await ctx.voiceInput.finish(finishSessionId) : await (startOnly
-          ? (options: Parameters<typeof ctx.voiceInput.toggle>[0]) => startOwnedCapture(signal, options ?? {})
+          ? (options: Parameters<typeof ctx.voiceInput.toggle>[0]) => startOwnedCapture(signal, {
+            ...options ?? {},
+            ...(asyncFinish ? { asyncFinish: true } : {}),
+          })
           : ctx.voiceInput.toggle)({
           mode: "input",
           insertText: false,
@@ -2390,8 +2663,10 @@ export default defineApp({
           pendingDeliveryTarget = result.deliveryTarget;
           pendingInsertText = insertText;
           pendingPolish = polish;
-          // 片段增强只用于与 Host 片段转写参数一致的本地识别设置；其余沿用原链路。
+          // 片段增强只用于与 Host 片段转写参数一致的本地识别设置；其余沿用原链路。Host 切片已与
+          // 片段增强同一窗口（captureModel）时不再做第二次识别。
           pendingClipPress = pendingInputSelection && clipTranscriptionMatches(pendingInputSelection)
+            && state.captureModel !== SPAN_MARKERS_CAPTURE_MODEL
             ? voiceClipCapture?.press(callAt) : undefined;
           // 「触发语音瞬间焦点窗口」——现在采，不是等说完再采。等说完的话，
           // 焦点很可能已经换了窗口，采到的是另一个应用里的文字。
@@ -2399,90 +2674,70 @@ export default defineApp({
           pendingContext = polish === "raw"
             ? Promise.resolve(undefined)
             : assembleContext(result.sessionId).catch(() => undefined);
+          if (asyncFinish && result.sessionId) {
+            registerInputSegment(result.sessionId, frozenInputContext(), hostAsyncFinish);
+          }
           publish({ phase: "listening", activeMode: "input", sessionId: result.sessionId });
           return result;
         }
 
         finishedInputSessionId = result.sessionId;
-        const deliveryTarget = pendingDeliveryTarget;
-        const originalSelection = pendingInputSelection;
+        const session = frozenInputContext();
         pendingInputSelection = undefined;
-        const sessionInsertText = pendingInsertText;
-        const sessionPolish = pendingPolish;
-        const sessionContext = pendingContext;
         pendingDeliveryTarget = undefined;
         pendingInsertText = undefined;
         pendingPolish = "raw";
         pendingContext = Promise.resolve(undefined);
-        const clipPress = pendingClipPress;
         pendingClipPress = undefined;
 
-        if (result.audio) {
-          return await finishCloudTranscript(
-            result,
-            result.audio,
-            deliveryTarget,
-            sessionInsertText,
-            sessionPolish,
-            await sessionContext,
-            originalSelection,
-          );
+        const segment = result.sessionId ? asyncSegments.get(result.sessionId) : undefined;
+        if (isFinalizingResult(result) && result.sessionId) {
+          // 结束即返回：录音槽空出，这段的收尾交给后台任务（终稿用 getStatus 长轮询取回）。
+          hostAsyncFinish = true;
+          endAsyncSegment(segment ?? registerInputSegment(result.sessionId, session, false));
+          return result;
         }
-
-        // 片段增强（audio.clips@1）：键盘持续收音补按下前的话、松开后顺延 1.5 秒。只在 Host
-        // 已正常识别出文字时才替换（取消、没听到都保持原样，片段不能复活一次已结束的录音）；
-        // 不可用 / 失败 / 超时 / 为空一律退回 Host 会话自己的识别结果（与旧版一致）。
-        const hostTranscript = result.transcript?.trim() ?? "";
-        const enhanceClip = clipPress !== undefined && hostTranscript !== "" && result.outcome !== "cancelled";
-        const clipTranscript = !enhanceClip ? undefined : await voiceClipCapture?.enhance({
-          token: clipPress,
-          releasedAtMs: callAt,
-          boardRoute: true,
-        }).catch(() => undefined);
-        // 只有真的等过片段才复核取消；没走片段时保持旧版行为不变。
-        if (enhanceClip) throwIfAborted(signal);
-        const localTranscript = clipTranscript ?? hostTranscript;
-        if (localTranscript) {
-          // 本地与云端识别走同一条收尾：润色（仅输入法）→ commit → 失败弹取回卡 → 落历史。
-          return await deliverRecognizedText({
-            result,
-            transcript: localTranscript,
-            recognitionEngine: "local",
-            originalSelection,
-            deliveryTarget,
-            insertText: sessionInsertText,
-            polish: sessionPolish,
-            context: await sessionContext,
-          });
-        } else {
-          overlayStages.release(result.sessionId);
-          publish({ phase: "idle", activeMode: undefined, sessionId: undefined });
-        }
-        return result;
+        // Host 按同步语义收尾（旧 Host 忽略 asyncFinish）：撤掉段登记，就地收尾。
+        if (segment) asyncSegments.delete(segment.sessionId);
+        return await completeInputResult(result, session, signal, callAt);
       } catch (cause) {
-        // 识别结束后才失败（云端转写失败等）或取消：没有写入可等，收起中央胶囊。
-        // 已报 insert_failed 的会话 Host 已结算，这次确认是空操作。
-        overlayStages.release(finishedInputSessionId);
-        if (isVoiceCancellation(cause)) {
-          publish({
-            phase: "idle",
-            activeMode: undefined,
-            sessionId: undefined,
-            error: undefined,
-          });
+        // 已确认多段的 Host 上结束回执失败（多半是 Host 已先结束了这段：胶囊 ✓ / 录音上限）：
+        // 终稿或失败交给这段的后台等待者收口，这里不重复报错。
+        const owned = completingSessionId ? asyncSegments.get(completingSessionId) : undefined;
+        if (owned && (owned.settling || hostAsyncFinish)) {
+          endAsyncSegment(owned);
           return cancelledVoiceInputResult();
         }
-        publish(Object.assign(failurePatch("recognize", cause), {
-          phase: "idle" as const,
-          activeMode: undefined,
-          sessionId: undefined,
-        }));
-        throw cause;
+        return settleInputFailure(cause, finishedInputSessionId, true);
       } finally {
         toggleInFlight = false;
       }
     };
 
+    /** 当前 pending* 即这一段开录时冻结的上下文。 */
+    const frozenInputContext = (): InputSessionContext => ({
+      deliveryTarget: pendingDeliveryTarget,
+      insertText: pendingInsertText,
+      polish: pendingPolish,
+      context: pendingContext,
+      selection: pendingInputSelection,
+      clipPress: pendingClipPress,
+    });
+    const registerInputSegment = (sessionId: string, session: InputSessionContext, watchNow: boolean) =>
+      registerAsyncSegment(sessionId, "input", segment => ({
+        complete: async result => {
+          try {
+            return await completeInputResult(result, session, undefined, segment.endedAt ?? Date.now());
+          } catch (cause) {
+            return settleInputFailure(cause, result.sessionId ?? sessionId);
+          }
+        },
+        fail: async cause => settleInputFailure(cause, sessionId),
+      }), watchNow);
+
+    // 硬件键常在 Voice 页从没打开时使用（整页刷新只在挂载时跑）：启动时读一次 Host 状态，
+    // 拿到切片口径，硬件开录才知道能否声明 asyncFinish。读不到就按旧 Host 处理。
+    void readVoiceStatus().catch(() => undefined);
     let statusPollInFlight = false;
     // 「今天存了 N 段 · X 字」在收听中也要跟着长：refresh() 的调用点全在收听
     // 路径之外（activate/模型/权限/删段/任务返回），且它带 phase 守卫、会话进行中
@@ -2536,6 +2791,13 @@ export default defineApp({
       void readVoiceStatus(expectedSessionId)
         .then((status) => {
           if (toggleInFlight || state.sessionId !== expectedSessionId || sourceSettingsRevision !== expectedSourceRevision) return;
+          // Host 自己结束了正在录的 asyncFinish 段（胶囊 ✓ / 录音上限）：它进了收尾集合，本地让出录音槽，
+          // 终稿由这段的后台等待者取回。
+          const liveSegment = expectedSessionId ? asyncSegments.get(expectedSessionId) : undefined;
+          if (liveSegment && !liveSegment.ended && status.phase === "recognizing" && status.sessionId === expectedSessionId) {
+            endAsyncSegment(liveSegment);
+            return;
+          }
           const authoritative = reconcileAuthoritativeVoiceStatus(
             state,
             status,
@@ -2639,13 +2901,13 @@ export default defineApp({
         });
         return { persisted: true, message: presented.message };
       } catch (storageCause) {
-        publish({
+        publish(settledPatch({
           commandPhase: "idle",
           activeMode: undefined,
           sessionId: undefined,
           get error() { return voiceHistorySaveFailureMessage(purpose ?? "transcription"); },
           errorDetail: errorDetailFrom("historySave", storageCause),
-        });
+        }));
         return { persisted: false, message: presented.message };
       }
     };
@@ -2698,6 +2960,17 @@ export default defineApp({
       } catch {
         return false;
       }
+    };
+
+    /**
+     * 前台结果面板的呈现结局。`defer`：Host 要求转后台（`VOICE_ANSWER_DEFER_REQUIRED`，胶囊叠放下
+     * 有新一段正在录音或前台面板被占），调用方改投 running 帧交接到角落、完成后以 deferred 呈现。
+     * 其余失败与旧版一样吞掉，不影响命令本身。
+     */
+    type VoiceAnswerPresentation = "presented" | "defer" | "failed";
+    const answerPresentationFailure = (cause: unknown): VoiceAnswerPresentation => {
+      const code = normalizedError(cause).code;
+      return code === VOICE_ANSWER_DEFER_REQUIRED || code.endsWith(`/${VOICE_ANSWER_DEFER_REQUIRED}`) ? "defer" : "failed";
     };
 
     /**
@@ -2761,8 +3034,10 @@ export default defineApp({
       title?: string;
       itemPersisted: boolean;
       deferred?: boolean;
-    }): Promise<void> => {
-      await ctx.voiceCommand.presentAnswer({
+      /** 这份结果来自哪段 `asyncFinish` 录音（只给非 deferred 的前台呈现）。 */
+      voiceSessionId?: string;
+    }): Promise<VoiceAnswerPresentation> => {
+      return await ctx.voiceCommand.presentAnswer({
         runId: input.runId,
         badge: COMMAND_LABEL[input.commandId],
         title: input.title ?? t("app.valueResult", { value0: COMMAND_LABEL[input.commandId] }),
@@ -2778,7 +3053,8 @@ export default defineApp({
         canCopy: input.reply.length > 0,
         canContinue: input.itemPersisted,
         ...(input.deferred ? { deferred: true } : {}),
-      }).catch(() => undefined);
+        ...(!input.deferred && input.voiceSessionId ? { voiceSessionId: input.voiceSessionId } : {}),
+      }).then(() => "presented" as const, answerPresentationFailure);
     };
 
     const presentForegroundFailure = async (input: {
@@ -2791,9 +3067,11 @@ export default defineApp({
       code?: string;
       /** Agent 引擎阶段 / 退出码 / 上游码（已采集字段里按出身取的结构化值）。 */
       agentFailure?: VoiceErrorFields["agentFailure"];
-    }): Promise<void> => {
+      /** 这份结果来自哪段 `asyncFinish` 录音。 */
+      voiceSessionId?: string;
+    }): Promise<VoiceAnswerPresentation> => {
       // 业务字段只含失败主句；结构化码交给 Host 开发模式诊断区。
-      await ctx.voiceCommand.presentAnswer({
+      return await ctx.voiceCommand.presentAnswer({
         runId: input.taskId,
         badge: COMMAND_LABEL[input.commandId],
         get title() { return t("app.valueIncomplete", { value0: COMMAND_LABEL[input.commandId] }); },
@@ -2811,7 +3089,8 @@ export default defineApp({
         ],
         canCopy: true,
         canContinue: input.itemPersisted,
-      }).catch(() => undefined);
+        ...(input.voiceSessionId ? { voiceSessionId: input.voiceSessionId } : {}),
+      }).then(() => "presented" as const, answerPresentationFailure);
     };
 
     /**
@@ -2907,10 +3186,28 @@ export default defineApp({
         // 终态帧一律不带等人旗：任务结束就不再「等你确认」。
         const sent = frame.state === "running" ? frame : { ...frame, waiting: false };
         if (sent.state !== "running") terminalQueued = true;
+        // 胶囊叠放：带上录音会话，Host 认得栈里的那一枚（交接从它起飞、只收它）。旧 Host 忽略。
+        const framed = options.voiceSessionId ? { ...sent, voiceSessionId: options.voiceSessionId } : sent;
         presentChain = presentChain
-          .then(() => ctx.voiceCommand.presentTask(sent))
+          .then(() => ctx.voiceCommand.presentTask(framed))
           .catch(() => undefined);
         return presentChain;
+      };
+      /**
+       * `asyncFinish` 录音的 Agent 段不写回：交接到角落或前台结果出现后即确认消费，让 Host 放开排在
+       * 它后面的写回与这段的终稿保留（确认是幂等的，重复无害）。写回类命令照旧在写回确认处释放。
+       */
+      const releaseVoiceSegment = () => {
+        if (options.voiceSessionId && !writesBack) overlayStages.release(options.voiceSessionId);
+      };
+      /** 前台呈现被 Host 要求转后台：补 running 帧交接到角落，此后按后台口径收尾。 */
+      const deferToBackground = async (): Promise<"background"> => {
+        const first = present(snapshot);
+        runningFramePresented = true;
+        await first;
+        releaseForegroundCommand(taskId);
+        releaseVoiceSegment();
+        return "background";
       };
       let feedbackChain: Promise<unknown> = Promise.resolve();
       const reportFeedback = (label: string) => {
@@ -2966,6 +3263,7 @@ export default defineApp({
           runningFramePresented = true;
           await first;
           releaseForegroundCommand(taskId);
+          releaseVoiceSegment();
         },
       });
       // 会话 id 放在 try 外：失败条目也要留在同一段对话里。
@@ -3210,7 +3508,7 @@ export default defineApp({
               }
             })();
         if (!isRunActive()) return;
-        const disposition = await presentationGate.complete();
+        let disposition = await presentationGate.complete();
         throwIfCommandCancelled(controller.signal);
         // 转文本与翻译：和输入法一样，以写回回执为准——写进去了就只收胶囊、不弹任何窗口；
         // 没写进去（没有输入框 / 事前判断确定不可输入 / 写入失败）才弹一张取回卡（内容为结果，
@@ -3319,15 +3617,17 @@ export default defineApp({
           } else if (writesBack) {
             finishWriteBackInForeground(taskId, options.resultSessionId);
           } else {
-            await presentAgentResult({
+            const presented = await presentAgentResult({
               runId: result.runId,
               commandId,
               transcript,
               reply: result.reply,
               title: options.title,
               itemPersisted,
+              voiceSessionId: options.voiceSessionId,
             });
-            releaseForegroundCommand(taskId);
+            if (presented === "defer") disposition = await deferToBackground();
+            else releaseForegroundCommand(taskId);
           }
         }
         // 只有已经明确转入后台的运行才更新 Host 胶囊；短任务不能在角落留下第二份结果。
@@ -3397,27 +3697,32 @@ export default defineApp({
               finishWriteBackInForeground(taskId, options.resultSessionId);
               return;
             }
-            await presentForegroundFailure({
+            const presented = await presentForegroundFailure({
               taskId,
               commandId,
               transcript,
               message: recorded.message,
               itemPersisted: recorded.persisted,
               ...foregroundFailureFields(cause),
+              voiceSessionId: options.voiceSessionId,
             });
-            releaseForegroundCommand(taskId);
-          } else {
-            await present({
-              ...snapshot,
-              state: "failed",
-              stageLabel,
-              unread: true,
-            });
-            taskSettled = true;
-            if (failureTakebackFallback && isRunActive() && !controller.signal.aborted) {
-              await presentTakebackFallback({ taskId, commandId, transcript, card: failureTakebackFallback,
-                itemPersisted: recorded.persisted, deferred: true });
+            if (presented !== "defer") {
+              releaseForegroundCommand(taskId);
+              return;
             }
+            // Host 要求转后台：交接到角落后按后台失败收尾（角落失败态，不再弹前台面板）。
+            await deferToBackground();
+          }
+          await present({
+            ...snapshot,
+            state: "failed",
+            stageLabel,
+            unread: true,
+          });
+          taskSettled = true;
+          if (failureTakebackFallback && isRunActive() && !controller.signal.aborted) {
+            await presentTakebackFallback({ taskId, commandId, transcript, card: failureTakebackFallback,
+              itemPersisted: recorded.persisted, deferred: true });
           }
         };
         // 失败要被看见：角落里的失败态不参与自动收起（与 run.failed 投影一致）。
@@ -3534,6 +3839,7 @@ export default defineApp({
         }
       } finally {
         await presentationGate.dispose();
+        releaseVoiceSegment();
         if (isRunActive() && runningFramePresented && !taskSettled) {
           await ctx.voiceCommand.dismissTask(taskId).catch(() => undefined);
         }
@@ -3619,13 +3925,13 @@ export default defineApp({
           commandId,
           code: "VOICE_COMMAND_HISTORY_SAVE_FAILED",
         });
-        publish({
+        publish(settledPatch({
           commandPhase: "idle",
           activeMode: undefined,
           sessionId: undefined,
           get error() { return voiceHistorySaveFailureMessage("reply"); },
           errorDetail: errorDetailFrom("historySave", cause),
-        });
+        }));
         throw new VoiceAppError({
           code: "VOICE_COMMAND_HISTORY_SAVE_FAILED",
           get userMessage() { return voiceHistorySaveFailureMessage("reply"); },
@@ -4259,6 +4565,149 @@ export default defineApp({
       }
     };
 
+    /** 一段语音命令在开录那一刻冻结的上下文：多段并存时下一段开录不会改掉它。 */
+    interface CommandSessionContext {
+      commandId: VoiceCommandId;
+      conversation: VoiceAgentConversationRef | undefined;
+      deliveryTarget: { id: string } | undefined;
+      context: Promise<VoiceContextEnvelope | undefined>;
+      selection: SavedInputSelection | undefined;
+    }
+    const frozenCommandContext = (): CommandSessionContext => ({
+      commandId: activeCommandId,
+      conversation: activeAgentConversation,
+      deliveryTarget: activeDeliveryTarget,
+      context: activeCommandContext,
+      selection: pendingCommandSelection,
+    });
+
+    /** 命令段在 Agent 实际起跑前失败（识别为空、云端转写失败、门禁失败等）的收口。 */
+    const settleCommandStartFailure = async (
+      cause: unknown,
+      input: {
+        workflowStarted: boolean;
+        resultSessionId: string | undefined;
+        commandId: VoiceCommandId;
+        /** 失败发生在开录 / 结束这一步（持有录音槽）：直接复位；收尾段只动自己的字段。 */
+        owner?: boolean;
+      },
+    ): Promise<VoiceInputResult> => {
+      const settle = <P extends Partial<VoiceViewState>>(patch: P) => publish(input.owner ? patch : settledPatch(patch));
+      if (isVoiceCancellation(cause)) {
+        settle({
+          commandPhase: "idle",
+          activeMode: undefined,
+          sessionId: undefined,
+          error: undefined,
+        });
+        return cancelledVoiceInputResult();
+      }
+      if (!input.workflowStarted) {
+        if (input.resultSessionId) {
+          await ctx.voiceInput.acknowledgeResult(input.resultSessionId).catch(() => undefined);
+        }
+        settle(Object.assign(failurePatch("commandStart", cause), {
+          commandPhase: "idle" as const,
+          activeMode: undefined,
+          sessionId: undefined,
+        }));
+        // 云端命令的门禁失败发生在 3 秒 gate 起跑前，但它仍是短任务结果：
+        // 用同一结果面板如实说明，不登记一条根本没有进入后台的全局失败任务。
+        const normalized = normalizedError(cause);
+        if (isCommandGateFailureCode(normalized.code)) {
+          void presentForegroundFailure({
+            taskId: crypto.randomUUID(),
+            commandId: input.commandId,
+            transcript: "",
+            // 结果面板是浮层：只放声明为固定文案的插件主句（按出身登记，见 voice-app-error），
+            // 或按码查表的固定短句；Host / 上游的 userMessage 不透传（§6.0 ⑧）。
+            message: constantUserMessage(cause) ?? taskFailureLabel(cause),
+            itemPersisted: false,
+            code: normalized.code,
+          });
+        }
+      }
+      throw cause;
+    };
+
+    /**
+     * 命令段拿到 Host 终稿之后的收尾：（云端转写）→ 空话门禁 → 起跑命令 Agent。
+     * `voiceSessionId` 只给 `asyncFinish` 段：任务帧与前台结果带上它，Host 认得栈里那一枚胶囊。
+     */
+    const completeCommandResult = async (
+      result: VoiceInputResult,
+      session: CommandSessionContext,
+      voiceSessionId?: string,
+    ): Promise<VoiceInputResult | { phase: "processing"; transcript: string }> => {
+      let commandResultSessionId = result.sessionId;
+      let workflowStarted = false;
+      try {
+        if (result.outcome === "cancelled") {
+          publish(settledPatch({ commandPhase: "idle", activeMode: undefined, sessionId: undefined }));
+          return result;
+        }
+        let transcript = result.transcript?.trim() ?? "";
+        if (!transcript && result.audio) {
+          // 云端命令收尾：音频留在 Host 短时槽、没有本地 transcript，先拿
+          // sessionId 换文本再喂命令 Agent。只加 retainAudio 不做这一步，
+          // transcript 恒为 null，命令链会把每次云端录音都判成「没有听清」。
+          if (shouldWriteBack(session.commandId)) void overlayStages.report(result.sessionId, "transcribing");
+          transcript = await transcribeCloudRecording(result, result.audio, session.selection);
+        }
+        // 翻译保留短确认和实义单字；Agent 沿用原 substantive 门禁。转文本保持原样。
+        const translationUtterance = session.commandId === BUILTIN_VOICE_COMMANDS.translate;
+        const skipUtterance = translationUtterance
+          ? !shouldTranslateUtterance(transcript)
+          : session.commandId !== BUILTIN_VOICE_COMMANDS.transcribe && classifyUtterance(transcript) !== "substantive";
+        if (skipUtterance) {
+          publish(settledPatch({ commandPhase: "idle", activeMode: undefined, sessionId: undefined }));
+          // Host 只在本地识别结果完全为空时显示「没有听清」：让这句停一会儿再收。其余情况
+          // （识别出语气词 / 单字，或云端转写）胶囊显示的是「处理中」，交给下面 catch 立刻收掉。
+          if (commandResultSessionId && !result.audio && !result.transcript) {
+            const heldSessionId = commandResultSessionId;
+            commandResultSessionId = undefined;
+            setTimeout(() => {
+              try {
+                void ctx.voiceInput.acknowledgeResult(heldSessionId).catch(() => undefined);
+              } catch {
+                // 插件已停用：Host 按 owner 清掉了这份待确认结果，不需要再收。
+              }
+            }, EMPTY_UTTERANCE_HINT_MS);
+          }
+          // 固定文案、固定码：诊断里只有码与版本，不带用户说了什么。
+          throw new VoiceAppError({ code: "com.reai.voice/VOICE_EMPTY_UTTERANCE", get userMessage() { return translationUtterance
+            ? t("app.emptyTranslationNotSent") : t("app.emptyUtteranceNotSent"); }, retryable: true }, undefined, { constantMessage: true });
+        }
+        if (!transcript) {
+          publish(settledPatch({ commandPhase: "idle", activeMode: undefined, sessionId: undefined }));
+          throw new VoiceAppError({ code: "VOICE_COMMAND_NO_SPEECH", get userMessage() { return t("app.nothingWasHeardPleaseSayItAgain"); }, retryable: true }, undefined, { constantMessage: true });
+        }
+        publish(settledPatch({ commandPhase: "processing", activeMode: "command", sessionId: undefined }));
+        await startCommandAgent(transcript, session.commandId, session.deliveryTarget, {
+          ...session.conversation,
+          context: session.context,
+          ...(result.sessionId ? { resultSessionId: result.sessionId } : {}),
+          ...(voiceSessionId ? { voiceSessionId } : {}),
+          // 三个方向都存切片原始音频：Host 带回 replayClip 就把回听引用挂到这条命令上。
+          recording: recordingRefFromClip(savedReplayClip(result)),
+        });
+        workflowStarted = true;
+        // 命令录音也落了回听片段：并进缓存状态并追一次权威值（与输入法同一口径）。
+        const commandClip = savedReplayClip(result);
+        if (commandClip) {
+          publish({ replayCache: replayCacheWithClip(state.replayCache, commandClip) });
+          void refreshReplayCache();
+        }
+        return { phase: "processing", transcript };
+      } catch (cause) {
+        return await settleCommandStartFailure(cause, {
+          workflowStarted,
+          resultSessionId: commandResultSessionId,
+          commandId: session.commandId,
+        });
+      }
+    };
+
     const toggleCommand = async (
       signal?: AbortSignal,
       commandId?: VoiceCommandId,
@@ -4268,13 +4717,18 @@ export default defineApp({
       /** 同 {@link toggleInput} 的 triggerRef。 */
       triggerRef?: string,
     ): Promise<VoiceInputResult | { phase: "processing"; transcript: string }> => {
-      if (toggleInFlight || serviceOperationActive || state.commandPhase === "processing" || state.activeMode === "input") {
+      // 已确认 Host 支持多段：上一条命令还在跑（含前台 3 秒）不再挡新录音，只让正在录的听写段。
+      const busy = hostAsyncFinish
+        ? toggleInFlight || serviceOperationActive || state.phase !== "idle"
+        : toggleInFlight || serviceOperationActive || state.commandPhase === "processing" || state.activeMode === "input";
+      if (busy) {
         throw new VoiceAppError({ code: "com.reai.voice/VOICE_BUSY", get userMessage() { return t("app.thePreviousVoiceCommandIsStillProcessing"); }, retryable: true }, undefined, { constantMessage: true });
       }
       // 硬件语音键在听写期间按下：不把这场听写当命令收走，也不另起一场。
       throwIfDictating();
       toggleInFlight = true;
-      let workflowStarted = false;
+      let completionOwned = false;
+      let completingSessionId: string | undefined;
       let commandResultSessionId: string | undefined;
       let commandPrepareStartedAt: number | undefined;
       let globalPreparingRequestId: string | undefined;
@@ -4323,17 +4777,23 @@ export default defineApp({
           activeDeliveryTarget = undefined;
         }
         if (completing) {
+          completingSessionId = state.sessionId;
           publish({ commandPhase: "recognizing" });
         }
         // 云端引擎没有本地识别可跑：音频必须以 retainAudio 留给 Host 的短时槽，
         // 否则 Host 的「非 retainAudio 就查本地模型」门禁会把没有本地模型的
         // 云端用户挡死在起跑线上（#289 只修了听写输入链，命令链同样要接）。
         const useCloud = pendingCommandSelection?.engine === "cloud";
+        // 硬件按键开录（start）声明结束即返回；页面入口的 toggle 与旧 Host 照旧同步收尾。
+        const asyncFinish = startOnly && !completing && asyncFinishCapable();
         const captureStartedAt = Date.now();
         let result: VoiceInputResult;
         try {
           result = finishSessionId ? await ctx.voiceInput.finish(finishSessionId) : await (startOnly
-            ? (options: Parameters<typeof ctx.voiceInput.toggle>[0]) => startOwnedCapture(signal, options ?? {})
+            ? (options: Parameters<typeof ctx.voiceInput.toggle>[0]) => startOwnedCapture(signal, {
+              ...options ?? {},
+              ...(asyncFinish ? { asyncFinish: true } : {}),
+            })
             : ctx.voiceInput.toggle)({
             mode: "command",
             overlayKind: commandOverlayKind(activeCommandId),
@@ -4368,6 +4828,9 @@ export default defineApp({
           activeCommandContext = activeCommandId !== BUILTIN_VOICE_COMMANDS.transcribe || state.settings.polish === "raw"
             ? Promise.resolve(undefined)
             : assembleContext(result.sessionId).catch(() => undefined);
+          if (asyncFinish && result.sessionId) {
+            registerCommandSegment(result.sessionId, frozenCommandContext(), hostAsyncFinish);
+          }
           publish({
             commandPhase: "listening",
             activeMode: "command",
@@ -4376,100 +4839,34 @@ export default defineApp({
           return result;
         }
         commandResultSessionId = result.sessionId;
-        const originalSelection = pendingCommandSelection;
+        const session = frozenCommandContext();
         pendingCommandSelection = undefined;
-        if (result.outcome === "cancelled") {
-          publish({ commandPhase: "idle", activeMode: undefined, sessionId: undefined });
+        const segment = result.sessionId ? asyncSegments.get(result.sessionId) : undefined;
+        if (isFinalizingResult(result) && result.sessionId) {
+          // 结束即返回：录音槽空出，这段的收尾交给后台任务（终稿用 getStatus 长轮询取回）。
+          hostAsyncFinish = true;
+          endAsyncSegment(segment ?? registerCommandSegment(result.sessionId, session, false));
           return result;
         }
-        let transcript = result.transcript?.trim() ?? "";
-        if (!transcript && result.audio) {
-          // 云端命令收尾：音频留在 Host 短时槽、没有本地 transcript，先拿
-          // sessionId 换文本再喂命令 Agent。只加 retainAudio 不做这一步，
-          // transcript 恒为 null，命令链会把每次云端录音都判成「没有听清」。
-          if (shouldWriteBack(activeCommandId)) void overlayStages.report(result.sessionId, "transcribing");
-          transcript = await transcribeCloudRecording(result, result.audio, originalSelection);
-        }
-        // 翻译保留短确认和实义单字；Agent 沿用原 substantive 门禁。转文本保持原样。
-        const translationUtterance = activeCommandId === BUILTIN_VOICE_COMMANDS.translate;
-        const skipUtterance = translationUtterance
-          ? !shouldTranslateUtterance(transcript)
-          : activeCommandId !== BUILTIN_VOICE_COMMANDS.transcribe && classifyUtterance(transcript) !== "substantive";
-        if (skipUtterance) {
-          publish({ commandPhase: "idle", activeMode: undefined, sessionId: undefined });
-          // Host 只在本地识别结果完全为空时显示「没有听清」：让这句停一会儿再收。其余情况
-          // （识别出语气词 / 单字，或云端转写）胶囊显示的是「处理中」，交给下面 catch 立刻收掉。
-          if (commandResultSessionId && !result.audio && !result.transcript) {
-            const heldSessionId = commandResultSessionId;
-            commandResultSessionId = undefined;
-            setTimeout(() => {
-              try {
-                void ctx.voiceInput.acknowledgeResult(heldSessionId).catch(() => undefined);
-              } catch {
-                // 插件已停用：Host 按 owner 清掉了这份待确认结果，不需要再收。
-              }
-            }, EMPTY_UTTERANCE_HINT_MS);
-          }
-          // 固定文案、固定码：诊断里只有码与版本，不带用户说了什么。
-          throw new VoiceAppError({ code: "com.reai.voice/VOICE_EMPTY_UTTERANCE", get userMessage() { return translationUtterance
-            ? t("app.emptyTranslationNotSent") : t("app.emptyUtteranceNotSent"); }, retryable: true }, undefined, { constantMessage: true });
-        }
-        if (!transcript) {
-          publish({ commandPhase: "idle", activeMode: undefined, sessionId: undefined });
-          throw new VoiceAppError({ code: "VOICE_COMMAND_NO_SPEECH", get userMessage() { return t("app.nothingWasHeardPleaseSayItAgain"); }, retryable: true }, undefined, { constantMessage: true });
-        }
-        publish({ commandPhase: "processing", activeMode: "command", sessionId: undefined });
-        await startCommandAgent(transcript, activeCommandId, activeDeliveryTarget, {
-          ...activeAgentConversation,
-          context: activeCommandContext,
-          ...(result.sessionId ? { resultSessionId: result.sessionId } : {}),
-          // 三个方向都存切片原始音频：Host 带回 replayClip 就把回听引用挂到这条命令上。
-          recording: recordingRefFromClip(savedReplayClip(result)),
-        });
-        workflowStarted = true;
-        // 命令录音也落了回听片段：并进缓存状态并追一次权威值（与输入法同一口径）。
-        const commandClip = savedReplayClip(result);
-        if (commandClip) {
-          publish({ replayCache: replayCacheWithClip(state.replayCache, commandClip) });
-          void refreshReplayCache();
-        }
-        return { phase: "processing", transcript };
+        // Host 按同步语义收尾（旧 Host 忽略 asyncFinish）：撤掉段登记，就地收尾。
+        if (segment) asyncSegments.delete(segment.sessionId);
+        completionOwned = true;
+        return await completeCommandResult(result, session);
       } catch (cause) {
-        if (isVoiceCancellation(cause)) {
-          publish({
-            commandPhase: "idle",
-            activeMode: undefined,
-            sessionId: undefined,
-            error: undefined,
-          });
+        // 收尾自己已经收过口（呈现失败 / 落历史），原样交回调用方。
+        if (completionOwned) throw cause;
+        // 已确认多段的 Host 上结束回执失败（多半是 Host 已先结束了这段）：交给后台等待者收口。
+        const owned = completingSessionId ? asyncSegments.get(completingSessionId) : undefined;
+        if (owned && (owned.settling || hostAsyncFinish)) {
+          endAsyncSegment(owned);
           return cancelledVoiceInputResult();
         }
-        if (!workflowStarted) {
-          if (commandResultSessionId) {
-            await ctx.voiceInput.acknowledgeResult(commandResultSessionId).catch(() => undefined);
-          }
-          publish(Object.assign(failurePatch("commandStart", cause), {
-            commandPhase: "idle" as const,
-            activeMode: undefined,
-            sessionId: undefined,
-          }));
-          // 云端命令的门禁失败发生在 3 秒 gate 起跑前，但它仍是短任务结果：
-          // 用同一结果面板如实说明，不登记一条根本没有进入后台的全局失败任务。
-          const normalized = normalizedError(cause);
-          if (isCommandGateFailureCode(normalized.code)) {
-            void presentForegroundFailure({
-              taskId: crypto.randomUUID(),
-              commandId: activeCommandId,
-              transcript: "",
-              // 结果面板是浮层：只放声明为固定文案的插件主句（按出身登记，见 voice-app-error），
-              // 或按码查表的固定短句；Host / 上游的 userMessage 不透传（§6.0 ⑧）。
-              message: constantUserMessage(cause) ?? taskFailureLabel(cause),
-              itemPersisted: false,
-              code: normalized.code,
-            });
-          }
-        }
-        throw cause;
+        return await settleCommandStartFailure(cause, {
+          workflowStarted: false,
+          resultSessionId: commandResultSessionId,
+          commandId: activeCommandId,
+          owner: true,
+        });
       } finally {
         if (globalPreparingRequestId) {
           // Host 只收匹配 owner + requestId + overlay generation 的准备胶囊；
@@ -4479,6 +4876,12 @@ export default defineApp({
         toggleInFlight = false;
       }
     };
+
+    const registerCommandSegment = (sessionId: string, session: CommandSessionContext, watchNow: boolean) =>
+      registerAsyncSegment(sessionId, "command", () => ({
+        complete: result => completeCommandResult(result, session, sessionId),
+        fail: cause => settleCommandStartFailure(cause, { workflowStarted: false, resultSessionId: sessionId, commandId: session.commandId }),
+      }), watchNow);
 
     /**
      * 三种可绑定的语音胶囊行为共用同一个关闭入口。
@@ -5478,6 +5881,8 @@ export default defineApp({
     stopCloudModels = undefined;
     disposeHostVersion?.();
     disposeHostVersion = undefined;
+    disposeAsyncSegments?.();
+    disposeAsyncSegments = undefined;
     const cancelRetries = cancelSavedInputRetries;
     cancelSavedInputRetries = undefined;
     await cancelRetries?.();

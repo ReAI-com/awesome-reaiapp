@@ -945,14 +945,17 @@ describe("App 层定向听写（源断言）", () => {
   });
 
   test("Preparing 阶段取消在输入与命令入口都按正常控制流收口", () => {
+    // 取消与失败的收口抽成了输入 / 命令各自的共用函数（开录结束同步收尾与胶囊叠放的后台收尾共用）。
     const inputBlock = source.slice(
-      source.indexOf("const toggleInput = async"),
+      source.indexOf("const settleInputFailure = ("),
       source.indexOf("let statusPollInFlight"),
     );
     const commandBlock = source.slice(
-      source.indexOf("const toggleCommand = async"),
+      source.indexOf("const settleCommandStartFailure = async"),
       source.indexOf('ctx.commands.register("com.reai.voice.toggle-input"'),
     );
+    expect(inputBlock).toContain("return settleInputFailure(cause, finishedInputSessionId, true)");
+    expect(commandBlock).toContain("return await settleCommandStartFailure(cause, {");
     expect(source).toContain("function isVoiceCancellation(cause: unknown): boolean");
     expect(inputBlock).toContain("if (isVoiceCancellation(cause))");
     expect(inputBlock).toContain("return cancelledVoiceInputResult()");

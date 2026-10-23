@@ -1169,7 +1169,8 @@ export function mountVoiceView(
       return { key: `recording:${state.sessionId ?? ""}`, step: () => t("view.recording"), seg: "mic" };
     }
     if (state.commandPhase === "preparing") return { key: "preparing", step: () => t("view.preparingVoice"), seg: "mic" };
-    if (state.phase === "recognizing" || state.commandPhase === "recognizing") {
+    // 胶囊叠放：录音槽空着、上一段还在后台收尾时，页头同样显示识别中。
+    if (state.phase === "recognizing" || state.commandPhase === "recognizing" || (state.finalizingCount ?? 0) > 0) {
       return { key: `recognizing:${state.sessionId ?? ""}`, step: () => t("view.recognizing"), seg: "mic" };
     }
     if (state.commandPhase === "processing") {
@@ -1302,7 +1303,8 @@ export function mountVoiceView(
     }
     const busy = state.phase === "recognizing"
       || state.commandPhase === "recognizing"
-      || state.commandPhase === "processing";
+      || state.commandPhase === "processing"
+      || (state.finalizingCount ?? 0) > 0;
     if (busy) {
       return withActivityElapsed(capSegment("", activityIcon(), () => t("view.recognizing"), "mic"), "mic");
     }
