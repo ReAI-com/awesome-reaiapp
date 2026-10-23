@@ -2006,6 +2006,7 @@ export default defineApp({
       if (undelivered) {
         // 胶囊先说一句「文字没有写入」（必须先于任何确认送达），再弹取回卡。
         await overlayStages.report(result.sessionId, "insert_failed");
+        throwIfAborted(input.lifecycle);
         // 真实码独立传给开发模式诊断；普通原因只用固定人话。
         const code = deliveryFailure?.code ?? undelivered.reason;
         const card = {
@@ -2017,25 +2018,29 @@ export default defineApp({
         // 取回卡被 Host 拒了（旧 Host 不认这条方法；或写回权限被拒——Host 对 `voice.deliver.*`
         // 共用同一道权限门，取回卡跟着被拒）：改弹失败态结果面板，同样的标题、全文（可复制）、
         // 原因与真实码。等待可见回执后收起；若两种窗口都失败，保留胶囊并照常落历史。
-        const presentation = ctx.delivery.presentTakeback(card).catch(() => ctx.voiceCommand.presentAnswer({
-          runId: `input:${result.sessionId ?? Date.now()}`,
-          badge: t("view.voiceInput"),
-          title: card.title,
-          text: card.text,
-          originalText: transcript,
-          status: "failed",
-          ...(card.errorCode ? { errorCode: card.errorCode } : {}),
-          // 与命令的兜底面板同一排法：原文；润色稿与原文不同时再摆一段结果；最后是原因。
-          sections: [
-            { label: t("app.original"), text: transcript },
-            ...(card.text !== transcript
-              ? [{ label: t("app.valueResult", { value0: t("view.voiceInput") }), text: card.text }]
-              : []),
-            { label: t("app.error"), text: card.reason },
-          ],
-          canCopy: true,
-          canContinue: false,
-        })).then(() => overlayStages.release(result.sessionId)).catch(() => undefined);
+        const presentation = ctx.delivery.presentTakeback(card).catch(() => {
+          // 取回卡被拒到改弹面板之间插件可能已停用：不再弹。
+          throwIfAborted(input.lifecycle);
+          return ctx.voiceCommand.presentAnswer({
+            runId: `input:${result.sessionId ?? Date.now()}`,
+            badge: t("view.voiceInput"),
+            title: card.title,
+            text: card.text,
+            originalText: transcript,
+            status: "failed",
+            ...(card.errorCode ? { errorCode: card.errorCode } : {}),
+            // 与命令的兜底面板同一排法：原文；润色稿与原文不同时再摆一段结果；最后是原因。
+            sections: [
+              { label: t("app.original"), text: transcript },
+              ...(card.text !== transcript
+                ? [{ label: t("app.valueResult", { value0: t("view.voiceInput") }), text: card.text }]
+                : []),
+              { label: t("app.error"), text: card.reason },
+            ],
+            canCopy: true,
+            canContinue: false,
+          });
+        }).then(() => overlayStages.release(result.sessionId)).catch(() => undefined);
         await waitForPresentation(presentation);
       } else if (!inserted) {
         // 没有要写的（insertText: false / Tab 层已消费 / 润色后为空）：同样收起。
@@ -2048,6 +2053,8 @@ export default defineApp({
         inserted,
         ...(warningCode ? { warningCode } : {}),
       };
+      // 取回卡等待期间插件可能已停用：不再落历史。
+      throwIfAborted(input.lifecycle);
       try {
         const item = historyItem(finalResult, {
           polish,
@@ -2548,13 +2555,15 @@ export default defineApp({
       if (segment.ended || segment.settling) return "ended";
       try {
         const status = await ctx.voiceInput.getStatus(segment.sessionId);
+        // 回查期间后台等待者可能已拿到终稿开始收尾：以它为准，不再看这份可能过时的快照。
+        if (segment.ended || segment.settling) return "ended";
         if (status.sessionId === segment.sessionId) {
           if (status.phase === "listening") return "listening";
           if (status.phase === "recognizing") return "ended";
         }
         // 终稿已出、还没确认：普通状态不带它，按 waitMs 0 再问一次 Host 是否还认得这段。
         const outcome = await ctx.voiceInput.getStatus(segment.sessionId, { waitMs: 0 });
-        if (outcome.pending || outcome.result || outcome.resultError) return "ended";
+        if (segment.ended || segment.settling || outcome.pending || outcome.result || outcome.resultError) return "ended";
       } catch {
         // 查不清就按旧版失败收口。
       }
@@ -2790,7 +2799,7 @@ export default defineApp({
         const owned = completingSessionId ? asyncSegments.get(completingSessionId) : undefined;
         if (owned) {
           const host = await reconcileFailedFinish(owned);
-          if (host === "ended") {
+          if (host === "ended" || owned.ended || owned.settling) {
             endAsyncSegment(owned);
             return cancelledVoiceInputResult();
           }
@@ -4981,7 +4990,7 @@ export default defineApp({
         const owned = completingSessionId ? asyncSegments.get(completingSessionId) : undefined;
         if (owned) {
           const host = await reconcileFailedFinish(owned);
-          if (host === "ended") {
+          if (host === "ended" || owned.ended || owned.settling) {
             endAsyncSegment(owned);
             return cancelledVoiceInputResult();
           }
