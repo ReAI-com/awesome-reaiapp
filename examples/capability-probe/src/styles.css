@@ -204,3 +204,10 @@ button:disabled { cursor: not-allowed; opacity: .45; }
 .cp-accept--done .cp-accept-head { color: var(--bound); }
 .cp-accept-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .cp-accept-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+
+/* 卡片里的手动单步区（本地存储单步验证、录一句话共用） */
+.cp-manual { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--divider); }
+.cp-manual h4 { margin: 0; font-size: 14px; }
+.cp-manual-msg { margin: 0; font-size: 13px; }
+.cp-manual-msg--ok { color: var(--bound); }
+.cp-manual-msg--failed { color: var(--alert); }

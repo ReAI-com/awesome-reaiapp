@@ -213,6 +213,33 @@ describe("能力探针界面", () => {
     expect(await port.kv.get("probe.savedResults")).toBeUndefined();
   });
 
+  test("录一句话：开始 → 听写中 → 说完了 → 显示识别文字；取消也如实显示", async () => {
+    const { root } = mount();
+    view!.show("basic");
+    const section = () => root.querySelector("[data-probe='voice-service'] .cp-manual")!;
+    const click = (label: string) => [...section().querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === label)!.click();
+    expect(section().textContent).toContain("不计入 17 项验收");
+    click("开始听写");
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(section().textContent).toContain("听写中");
+    expect(section().textContent).toMatch(/请求号\d+:/);
+    click("说完了");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(section().textContent).toContain("完成");
+    expect(section().textContent).toContain("这是预览里的假识别结果");
+    expect(section().textContent).toContain("润色后");
+    view!.show("records");
+    expect(root.querySelector<HTMLTextAreaElement>("textarea[aria-label='测试报告 JSON']")!.value).not.toContain("假识别结果");
+    expect(root.querySelector(".cp-log")?.textContent ?? "").not.toContain("假识别结果");
+    view!.show("basic");
+
+    click("再录一次");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    click("取消");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(section().textContent).toContain("已取消");
+  });
+
   test("外脑与需要批准的探针按钮是关的，并写明原因", () => {
     const { root } = mount();
     view!.show("cloud");

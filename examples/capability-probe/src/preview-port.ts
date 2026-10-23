@@ -17,6 +17,14 @@ export interface PreviewOptions {
   lenientNetwork?: boolean;
 }
 
+interface PreviewDictation {
+  phase: "listening" | "processing" | "completed" | "cancelled";
+  revision: number;
+  timer?: ReturnType<typeof setTimeout>;
+  resolve(value: unknown): void;
+  reject(error: unknown): void;
+}
+
 /** 与 Voice 插件相同的请求号规则：`<毫秒时间>:<UUIDv4>`。 */
 const VOICE_REQUEST_ID = /^(\d{1,16}):[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i;
 
@@ -27,6 +35,16 @@ function bridgeError(code: string, message: string): Error & { code: string; use
 }
 
 export function createPreviewPort(options: PreviewOptions = {}): ProbePort & { setDeveloperMode(value: boolean): void } {
+  const dictations = new Map<string, PreviewDictation>();
+  /** 结束一次进行中的模拟听写：清掉待完成的计时器，终态记为已取消。 */
+  const stop = (item: PreviewDictation, message: string) => {
+    if (item.phase !== "listening" && item.phase !== "processing") return;
+    if (item.timer !== undefined) clearTimeout(item.timer);
+    item.timer = undefined;
+    item.phase = "cancelled";
+    item.revision += 1;
+    item.reject(bridgeError("SERVICE_CANCELLED", message));
+  };
   const stores = new Map<string, Map<string, unknown>>();
   const listeners = new Set<(value: { developerMode: boolean }) => void>();
   let developerMode = options.developerMode ?? true;
@@ -104,12 +122,47 @@ export function createPreviewPort(options: PreviewOptions = {}): ProbePort & { s
       }
       return { status: 200, text: "{\"status\":\"ok\",\"note\":\"预览假数据，没有真的访问网络\"}" };
     },
-    async callService(serviceId, _method, input) {
+    async callService(serviceId, method, input, signal) {
       await delay();
       if (!options.voiceInstalled) throw bridgeError("SERVICE_PROVIDER_UNAVAILABLE", `${serviceId} 未安装或未启用`);
       const requestId = (input as { requestId?: unknown } | null)?.requestId;
       if (typeof requestId !== "string" || !VOICE_REQUEST_ID.test(requestId)) throw bridgeError("VOICE_REQUEST_INVALID", "请求号格式不对");
-      return { requestId: "preview", phase: "not_found", revision: 0, captureStarted: false, pcmReceived: false };
+      // 预览里模拟一次听写：开始后进入「听写中」，点「说完了」进入「识别中」并返回一句假文字。
+      const job = dictations.get(requestId);
+      if (method === "request-text") {
+        if ([...dictations.values()].some((item) => item.phase === "listening" || item.phase === "processing")) throw bridgeError("SERVICE_BUSY", "正在录别的");
+        return new Promise((resolve, reject) => {
+          const onAbort = () => stop(item, "已取消");
+          const item: PreviewDictation = {
+            phase: "listening",
+            revision: 2,
+            resolve: (value) => { signal?.removeEventListener("abort", onAbort); resolve(value); },
+            reject: (error) => { signal?.removeEventListener("abort", onAbort); reject(error); },
+          };
+          dictations.set(requestId, item);
+          signal?.addEventListener("abort", onAbort, { once: true });
+        });
+      }
+      if (method === "finish") {
+        if (!job || job.phase !== "listening") return { accepted: false };
+        job.phase = "processing";
+        job.revision += 1;
+        job.timer = setTimeout(() => {
+          job.timer = undefined;
+          if (job.phase !== "processing") return;
+          job.phase = "completed";
+          job.revision += 1;
+          job.resolve({ requestId, text: "这是预览里的假识别结果", kind: "processed" });
+        }, Math.max(options.delayMs ?? 0, 1));
+        return { accepted: true };
+      }
+      if (method === "cancel") {
+        if (!job || (job.phase !== "listening" && job.phase !== "processing")) return { accepted: false };
+        stop(job, "已取消");
+        return { accepted: true };
+      }
+      if (!job) return { requestId, phase: "not_found", revision: 0, captureStarted: false, pcmReceived: "unknown" };
+      return { requestId, phase: job.phase, revision: job.revision, captureStarted: true, pcmReceived: job.phase !== "listening" || job.revision > 2 };
     },
   };
 }
