@@ -497,6 +497,16 @@ export interface VoiceViewState {
    * 置灰并提示更新。
    */
   captureLimitSeconds?: number;
+  /**
+   * Host 按键会话切片口径（`voice.status` 的 `captureModel`）。`"span-markers-v1"` 时片段增强停用；
+   * 旧 Host 不返回，保持缺席。
+   */
+  captureModel?: string;
+  /**
+   * 已结束录音、还在后台收尾（识别 / 润色 / 写回）的 `asyncFinish` 段数（胶囊叠放）。
+   * 旧 Host 不会出现收尾段，恒为缺席。
+   */
+  finalizingCount?: number;
   phase: "idle" | "listening" | "recognizing";
   sessionId?: string;
   settings: VoiceInputSettings;
@@ -642,9 +652,11 @@ export function voiceSourceStatusPatch(
 ): Pick<
   VoiceViewState,
   "sourceReady" | "sourceIssue" | "boardFirmwareVersion" | "minimumBoardFirmwareVersion"
-  | "timeline" | "captureLimitSeconds"
+  | "timeline" | "captureLimitSeconds" | "captureModel"
 > {
   return {
+    // 只认 Host 明确回带的值：带 sessionId 的状态读数缺这一项时不把已知口径清掉。
+    ...(typeof status.captureModel === "string" ? { captureModel: status.captureModel } : {}),
     sourceReady: status.sourceReady,
     sourceIssue: status.sourceIssue,
     boardFirmwareVersion: status.boardFirmwareVersion,
