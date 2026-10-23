@@ -37,7 +37,7 @@
 
 ## 装进 Driver（仅 macOS）
 
-1. 在本目录打包（见下方「本地构建」），得到 `capability-probe-0.2.0.reaiapp`。
+1. 在本目录打包（见下方「本地构建」），得到 `capability-probe-0.2.1.reaiapp`。
 2. Driver 打开开发者模式。
 3. 「设置 › 开发者选项 › 从本地安装 .reaiapp」选这个文件；或者在 Finder 里双击包文件，交给正在运行的 Driver。确认「未经审核」提示。
 4. 安装弹窗会列出要同意的项目：账户状态、系统通知、网络、Voice 文字服务、网络地址。全部同意才能「全部 17 项通过」；也可以先取消勾选，看看「被拦下」的结果，再到「已安装」点开能力探针，在「权限」里允许后重测（Voice 服务依赖只能在安装弹窗里决定）。
@@ -83,7 +83,7 @@ bun run typecheck
 bun run validate
 bun run build
 bun run test:contract
-bun run pack          # 得到 capability-probe-0.2.0.reaiapp
+bun run pack          # 得到 capability-probe-0.2.1.reaiapp
 bun run dev           # 浏览器预览：http://127.0.0.1:4179/preview.html
 ```
 

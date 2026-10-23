@@ -326,7 +326,7 @@ export const PROBES: ProbeDefinition[] = [
       try {
         const last = (await port.kv.get(PING_KEY)) as { at?: string; count?: number } | undefined;
         if (!last?.at) {
-          return { outcome: "waiting", summary: "还没被触发过：到 Driver「设备 → 键位映射」点一个键，在「插件动作」里选「能力探针：测试按键」，按一下这个键（或点绑定抽屉里的「测试」），再回来点这里" };
+          return { outcome: "waiting", summary: "还没被触发过：到 Driver「设备 → 键位映射」点一个键，在「插件动作」里选「能力探针：测试按键」，按一下这个键（或点绑定抽屉里的「测试」），再回来点这里。注意拨杆当前所在的那一档如果给这个键单独配了别的动作，按下去会执行那个动作，不会触发探针" };
         }
         return { outcome: "ok", summary: `最近一次在 ${formatTime(last.at)} 被触发，累计 ${last.count ?? 1} 次` };
       } catch (error) {
@@ -379,6 +379,11 @@ export const PROBES: ProbeDefinition[] = [
         // Driver 只是接受了请求，还不能证明跳过去了：等用户从权限页点「返回」、Driver 带回回执才算通过。
         return { outcome: "waiting", summary: "Driver 已接受，正在打开本插件的权限页；到那边点右上角「返回」回到探针，收到回执才算通过", detail: `任务号 ${result.taskId}` };
       } catch (error) {
+        // Driver 同一时间只开一个系统任务：上一次跳转没点「返回」或「关闭」就回来，它还挂着，新的会被拒。
+        const { code, message } = describeError(error);
+        if (code === "SYSTEM_TASK_RETURN_PENDING" || code === "SYSTEM_TASK_BUSY") {
+          return { outcome: "waiting", summary: "上一次跳转还没结束：点 Driver 右上角状态条里的「返回」（或「关闭」）把它结束掉，再测一次", code, detail: scrub(message) };
+        }
         return failure(error);
       }
     },

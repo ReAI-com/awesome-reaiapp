@@ -281,7 +281,7 @@ describe("错误与报告", () => {
     expect(withDiagnostics).not.toContain("wno-secret-token");
     expect(withDiagnostics).toContain("X_FAILED");
     const parsed = JSON.parse(withDiagnostics) as { plugin: { version: string }; results: unknown[] };
-    expect(parsed.plugin.version).toBe("0.2.0");
+    expect(parsed.plugin.version).toBe("0.2.1");
     expect(parsed.results).toHaveLength(1);
     const plain = buildReport({ mode: "preview", hostVersion: "1.0.5", developerMode: false, results });
     expect(plain).not.toContain("X_FAILED");
@@ -339,7 +339,7 @@ describe("跳转确认（Driver 的返回回执）", () => {
 describe("结果保存的合并规则", () => {
   test("同一探针只留更晚的；清空时间之前的结果写不回去", async () => {
     const { mergeRecord } = await import("../src/saved-results");
-    const base = { outcome: "ok" as const, summary: "", durationMs: 1, host: "1.0.5", plugin: "0.2.0" };
+    const base = { outcome: "ok" as const, summary: "", durationMs: 1, host: "1.0.5", plugin: "0.2.1" };
     const newer = { ...base, probeId: "env", startedAt: "2026-10-22T12:00:00Z" };
     const older = { ...base, probeId: "env", startedAt: "2026-10-22T11:00:00Z" };
     const state = mergeRecord({ clearedAt: null, results: [], log: [] }, newer);
@@ -353,7 +353,7 @@ describe("结果保存的合并规则", () => {
   test("旧开发版存下的「跳转已接受」过渡状态读回时丢掉", async () => {
     const { loadSavedResults } = await import("../src/saved-results");
     const port = createPreviewPort({ delayMs: 0 });
-    const record = { probeId: "system-task-open", outcome: "waiting", summary: "", startedAt: "2026-10-22T11:00:00Z", durationMs: 1, host: "1.0.5", plugin: "0.2.0" };
+    const record = { probeId: "system-task-open", outcome: "waiting", summary: "", startedAt: "2026-10-22T11:00:00Z", durationMs: 1, host: "1.0.5", plugin: "0.2.1" };
     await port.kv.set("probe.savedResults", { clearedAt: null, results: [record], log: [record] });
     const state = await loadSavedResults(port.kv);
     expect(state.results).toEqual([]);
@@ -363,7 +363,7 @@ describe("结果保存的合并规则", () => {
   test("旧界面晚到的保存不会盖掉清空：清空后在途的旧结果被丢掉", async () => {
     const { clearSavedResults, loadSavedResults, saveResult } = await import("../src/saved-results");
     const port = createPreviewPort({ delayMs: 0 });
-    const base = { outcome: "ok" as const, summary: "", durationMs: 1, host: "1.0.5", plugin: "0.2.0" };
+    const base = { outcome: "ok" as const, summary: "", durationMs: 1, host: "1.0.5", plugin: "0.2.1" };
     await saveResult(port.kv, { ...base, probeId: "env", startedAt: "2026-10-22T11:00:00Z" });
     await clearSavedResults(port.kv, "2026-10-22T11:30:00Z");
     await saveResult(port.kv, { ...base, probeId: "kv-oversize", startedAt: "2026-10-22T11:10:00Z" });
@@ -395,5 +395,41 @@ describe("脱敏", () => {
     expect(out).not.toContain("CANARY-TAIL");
     expect(out).toContain('"access_token":"[已隐藏]"');
     expect(out).toContain('"ok":1');
+  });
+});
+
+describe("存储文件名", () => {
+  test("和 Driver 的编码规则一致", async () => {
+    const { kvFileName } = await import("../src/kv-manual");
+    expect(kvFileName("com.example.capability-probe")).toBe("com-dexample-dcapability-hprobe.json");
+    expect(kvFileName("a.B_c")).toBe("a-d-x42-x5fc.json");
+  });
+});
+
+describe("跳转被上一次任务占着", () => {
+  test("SYSTEM_TASK_RETURN_PENDING / BUSY 提示先点「返回」或「关闭」，不算出错", async () => {
+    for (const code of ["SYSTEM_TASK_RETURN_PENDING", "SYSTEM_TASK_BUSY"]) {
+      const port = createPreviewPort({ delayMs: 0 });
+      port.openSystemTask = async () => { throw Object.assign(new Error("busy"), { code }); };
+      const result = await runProbe(probeById("system-task-open")!, { port, document, signal: new AbortController().signal });
+      expect(result.outcome).toBe("waiting");
+      expect(result.summary).toContain("返回");
+    }
+  });
+});
+
+describe("核对码与终端命令", () => {
+  test("格式不对的核对码不拼进命令，读回时也当格式不对", async () => {
+    const { diskLocation, manualRead } = await import("../src/kv-manual");
+    for (const bad of ['$(touch x)', '`id`', 'A"B', "", "ABCDEFG"]) {
+      expect(diskLocation("com.example.capability-probe", bad).command).not.toContain(bad || "@@");
+      expect(diskLocation("com.example.capability-probe", bad).command).toContain("probe/probe.manualCheck");
+    }
+    expect(diskLocation("com.example.capability-probe", "0A1B2C").command).toContain('grep -lF -- "0A1B2C"');
+    const port = createPreviewPort({ delayMs: 0 });
+    await port.kv.set("probe.manualCheck", { code: "$(id)", writtenAt: "2026-10-23T00:00:00Z" });
+    const view = await manualRead(port.kv);
+    expect(view.exists).toBe(true);
+    expect(view.value).toBeUndefined();
   });
 });
