@@ -120,15 +120,75 @@ test("WebGL 稳定运行后再丢失上下文会重新获得重建机会", () =>
   expect(terminal.loaded).toHaveLength(4);
 });
 
-test("释放句柄会取消待执行的重建，且不重复释放终端持有的插件", () => {
+test("释放句柄会取消已排队的重建，且不重复释放终端持有的插件", () => {
   const terminal = fakeTerminal();
   const timers = manualTimers();
   const handle = attachTerminalRenderer(terminal, { createWebgl: () => new FakeAddon(), ...timers });
-  const addon = terminal.loaded[0]!;
+  const first = terminal.loaded[0]!;
+  first.loseContext();
+  expect(timers.queue).toHaveLength(1);
   handle.dispose();
-  expect(addon.disposed).toBe(false);
-  addon.loseContext();
   expect(timers.queue).toHaveLength(0);
   timers.flush();
   expect(terminal.loaded).toHaveLength(1);
+  const second = new FakeAddon();
+  const other = fakeTerminal();
+  const live = attachTerminalRenderer(other, { createWebgl: () => second, ...timers });
+  live.dispose();
+  expect(second.disposed).toBe(false);
+});
+
+test("挂起时释放 WebGL 并取消重建，恢复时重新获取并重置重建次数", () => {
+  const terminal = fakeTerminal();
+  const timers = manualTimers();
+  let attempts = 0;
+  const handle = attachTerminalRenderer(terminal, {
+    createWebgl: () => { attempts += 1; if (attempts === 2) throw new Error("context unavailable"); return new FakeAddon(); },
+    maxRestoreAttempts: 1,
+    ...timers,
+  });
+  const first = terminal.loaded[0]!;
+  first.loseContext();
+  timers.flush();
+  expect(handle.kind).toBe("dom");
+  expect(timers.queue).toHaveLength(0);
+  handle.suspend();
+  expect(handle.kind).toBe("dom");
+  handle.resume();
+  expect(handle.kind).toBe("webgl");
+  expect(terminal.refreshes.at(-1)).toBe(23);
+  const second = terminal.loaded.at(-1)!;
+  handle.suspend();
+  expect(second.disposed).toBe(true);
+  second.loseContext();
+  expect(timers.queue).toHaveLength(0);
+  handle.resume();
+  handle.resume();
+  expect(terminal.loaded).toHaveLength(3);
+});
+
+test("挂起时显式交还 WebGL 上下文，名额不用等垃圾回收", () => {
+  const terminal = fakeTerminal();
+  let lost = 0;
+  const addon = Object.assign(new FakeAddon(), {
+    _renderer: { _gl: { getExtension: (name: string) => name === "WEBGL_lose_context" ? { loseContext: () => { lost += 1; } } : null } },
+  });
+  const handle = attachTerminalRenderer(terminal, { createWebgl: () => addon });
+  handle.suspend();
+  expect(lost).toBe(1);
+  expect(addon.disposed).toBe(true);
+});
+
+test("未挂起时恢复不做任何事，挂起期间的上下文丢失不排队重建", () => {
+  const terminal = fakeTerminal();
+  const timers = manualTimers();
+  const handle = attachTerminalRenderer(terminal, { createWebgl: () => new FakeAddon(), ...timers });
+  handle.resume();
+  expect(terminal.loaded).toHaveLength(1);
+  const first = terminal.loaded[0]!;
+  first.loseContext();
+  expect(timers.queue).toHaveLength(1);
+  handle.suspend();
+  expect(timers.queue).toHaveLength(0);
+  expect(handle.kind).toBe("dom");
 });

@@ -2,7 +2,7 @@ import { createTerminalMessages, type TerminalMessages } from "./terminal-i18n";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { attachTerminalRenderer } from "./terminal-renderer";
+import { attachTerminalRenderer, type TerminalRendererHandle } from "./terminal-renderer";
 import type {
   TerminalSessionClient,
   TerminalSessionEvent,
@@ -46,6 +46,7 @@ interface PaneView {
   token: string;
   terminal: Terminal;
   fit: FitAddon;
+  renderer: TerminalRendererHandle | null;
   element: HTMLElement;
   host: HTMLElement;
   observer: ResizeObserver;
@@ -305,6 +306,7 @@ export async function mountTerminalWorkspace(
       token: attachment.token,
       terminal,
       fit,
+      renderer: null,
       element,
       host,
       observer,
@@ -365,9 +367,11 @@ export async function mountTerminalWorkspace(
     path.textContent = pane.cwd || messages.t("defaultDirectory");
     path.title = pane.cwd || "";
     view.element.querySelector<HTMLElement>(".terminal-renderer")!.append(view.host);
-    if (!view.host.hasChildNodes()) {
-      view.terminal.open(view.host);
-      view.disposables.push(attachTerminalRenderer(view.terminal));
+    if (!view.host.hasChildNodes()) view.terminal.open(view.host);
+    if (view.renderer) view.renderer.resume();
+    else {
+      view.renderer = attachTerminalRenderer(view.terminal);
+      view.disposables.push(view.renderer);
     }
     compactFace.onclick = () => {
       replaceTab({ ...activateTerminalPane(tab, pane.id), focusedPaneId: pane.id });
@@ -521,6 +525,9 @@ export async function mountTerminalWorkspace(
     renderTabs();
     const tab = activeTab();
     workspaceElement.replaceChildren();
+    // 先让不在当前标签里的窗格释放 WebGL 上下文，再渲染可见窗格；切回时在 renderPane 里重新获取。
+    const visible = new Set(tab ? Object.values(tab.panes).map((pane) => pane.sessionId) : []);
+    for (const [sessionId, view] of views) if (!visible.has(sessionId)) view.renderer?.suspend();
     if (tab) {
       const layout = renderLayout(tab, tab.root);
       layout.classList.add("terminal-layout-root");

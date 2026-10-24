@@ -19,7 +19,7 @@ const bridge: HostBridge = {
     return {} as never;
   },
   notify(method) {
-    if (method === "surface.ready") setTimeout(split, 800);
+    if (method === "surface.ready") setTimeout(() => void split(), 800);
   },
   subscribe(handler) { receive = handler; return () => {}; },
 };
@@ -28,10 +28,22 @@ receive({ type: "activate", runtimeSessionId: "rt", locale: { locale: "zh", revi
 receive({ type: "surface.presentation", runtimeSessionId: "rt", surfaceMountId: "m1", presentationToken: "p" } as HostMessage);
 receive({ type: "surface.mount", surfaceId: "main", surfaceMountId: "m1", root: document.getElementById("app")! } as HostMessage);
 
-// 分屏后两个窗格都应各自用 WebGL 画出彩色输出。
-function split() {
+const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+// 分屏后两个窗格都应各自用 WebGL 画出彩色输出；再新建 18 个标签（共 20 个会话，超过 WebKit
+// 每页 16 个 WebGL 上下文的上限）后切回第一个标签，后台标签必须交还上下文，不能把可见窗格挤成无色。
+async function split() {
   document.querySelector<HTMLButtonElement>('[data-split="horizontal"]')?.click();
-  setTimeout(report, 1200);
+  await wait(1200);
+  for (let index = 0; index < 18; index += 1) {
+    document.querySelector<HTMLButtonElement>(".terminal-tab-add")?.click();
+    await wait(50);
+    document.querySelector<HTMLButtonElement>(".terminal-tab-name-dialog button.primary")?.click();
+    await wait(400);
+  }
+  document.querySelector<HTMLButtonElement>(".terminal-tab-main")?.click();
+  await wait(1500);
+  report();
 }
 
 function report() {
@@ -39,6 +51,7 @@ function report() {
     mode: "app",
     renderer: document.querySelector(".xterm canvas") ? "webgl" : "dom",
     panes: document.querySelectorAll(".terminal-pane .xterm").length,
+    tabs: document.querySelectorAll(".terminal-tab-main").length,
     styleElements: document.querySelectorAll(".xterm style").length,
     blocked,
   };

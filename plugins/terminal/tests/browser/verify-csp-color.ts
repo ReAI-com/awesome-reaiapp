@@ -4,7 +4,7 @@
 // 三种页面都带与宿主 bootstrap 相同的 CSP：
 // - dom：只用 xterm DOM 渲染器，复现修复前的无色问题（预期无色）；
 // - auto：插件实际使用的渲染选择（预期有色）；
-// - app：加载构建产物 dist/app.js 的完整终端界面（预期有色）。
+// - app：加载构建产物 dist/app.js 的完整终端界面，分屏并开 19 个标签后切回第一个（预期有色、无上下文驱逐）。
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
@@ -65,7 +65,12 @@ for (const item of cases) {
   const tab = await browser.newPage({ viewport: { width: 940, height: 560 }, deviceScaleFactor: 1, colorScheme: "dark" });
   const errors: string[] = [];
   tab.on("pageerror", (error: Error) => errors.push(String(error)));
-  tab.on("console", (message: any) => { if (/context/i.test(message.text())) errors.push(`console: ${message.text()}`); });
+  let evictions = 0;
+  tab.on("console", (message: any) => {
+    const text = message.text();
+    if (/too many (active )?webgl contexts/i.test(text)) evictions += 1;
+    if (/context/i.test(text)) errors.push(`console: ${text}`);
+  });
   await tab.goto(`http://127.0.0.1:${server.port}${item.url}`);
   await tab.waitForFunction(() => (window as any).__cspColor, null, { timeout: 20000 });
   const state = await tab.evaluate(() => (window as any).__cspColor);
@@ -83,11 +88,12 @@ for (const item of cases) {
     }
   }
   const colored = Object.values(counts).every((count) => count > 20)
-    && (item.mode !== "app" || (panes.length === 2 && panes.every((pane) => Object.values(pane).every((count) => count > 20))));
+    && (item.mode !== "app" || (panes.length === 2 && state.tabs === 19 && evictions === 0
+      && panes.every((pane) => Object.values(pane).every((count) => count > 20))));
   if (colored !== item.expectColor) failed = true;
   const features = item.mode === "auto" ? await checkFeatures(tab) : undefined;
   if (features && !Object.values(features).every((feature) => feature.ok)) failed = true;
-  report[item.mode] = { ...state, screenshot: png, colorPixels: counts, ...(panes.length ? { paneColorPixels: panes } : {}), colored, expectColor: item.expectColor, features, errors };
+  report[item.mode] = { ...state, screenshot: png, colorPixels: counts, ...(panes.length ? { paneColorPixels: panes } : {}), webglEvictionWarnings: evictions, colored, expectColor: item.expectColor, features, errors };
   await tab.close();
 }
 await browser.close();
@@ -158,6 +164,9 @@ async function checkFeatures(tab: any) {
   const results: Record<string, { ok: boolean; detail: unknown }> = {};
   const theme = await step(tab, "theme", `terminal.options.theme = { ...terminal.options.theme, red: "#2060ff" }; terminal.clear(); ${write("\x1b[2J\x1b[H\x1b[31mBLUE\x1b[0m")}`, { blue });
   results.themeSwitch = { ok: theme.counts.blue! > 20, detail: theme };
+  // 256 色：前景 38;5;21 为 (0,0,255)，背景 48;5;46 为 (0,255,0)。
+  const palette = await step(tab, "palette-256", write("\x1b[2J\x1b[H\x1b[38;5;21mPALETTE\x1b[0m \x1b[48;5;46m      \x1b[0m"), { fg256: [0, 0, 255], bg256: [0, 255, 0] });
+  results.palette256 = { ok: palette.counts.fg256! > 20 && palette.counts.bg256! > 100, detail: palette };
   const underline = await step(tab, "underline", write("\x1b[2J\x1b[H\x1b[4m          \x1b[0m"), { fg });
   results.underline = { ok: underline.counts.fg! > 20, detail: underline };
   const selection = await step(tab, "selection", `terminal.options.theme = { ...terminal.options.theme, selectionBackground: "#ff00ff" }; terminal.write("\x1b[2J\x1b[HSELECT ME", () => { terminal.selectAll(); finish(); }); return "async";`, { magenta });
