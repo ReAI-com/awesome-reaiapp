@@ -71,7 +71,7 @@ export const SUMMARY_BACKEND_PREFERENCE: SummaryBackend = "dsh";
 export const SEGMENT_SUMMARY_REGEN_TEXT =
   "请基于这个会话里同一段转写重新总结一次：规则与输出格式同上，只输出要点，每行一条。";
 export const DAY_DIGEST_REGEN_TEXT =
-  "请基于这个会话里今天全部转写重新总结一次：规则与输出格式同上，只输出要点，每行一条。";
+  "请基于这个会话里今天全部转写重新总结一次：规则与输出格式同上，只输出要点，每行一条，每条末尾用〔HH:MM〕标出依据的转写时刻。";
 
 type VoiceSummaryDshAgentClient = Omit<
   Pick<DshAgentClient, "status" | "createSession" | "send" | "cancel" | "deleteSession">,
@@ -250,7 +250,7 @@ export function buildDayDigestAppendText(
     `<<<${fence}>>>`,
     ...newSegments.flatMap(segmentSourceLines),
     `<<<END_${fence}>>>`,
-    "请基于这个会话里今天全部转写，给出更新后的今天完整总结要点：规则与输出格式同上，只输出要点，每行一条。",
+    "请基于这个会话里今天全部转写，给出更新后的今天完整总结要点：规则与输出格式同上，只输出要点，每行一条，每条末尾用〔HH:MM〕标出依据的转写时刻。",
   ].join("\n\n");
 }
 

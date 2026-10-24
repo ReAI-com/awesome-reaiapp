@@ -134,3 +134,20 @@ export function contextTime(value: number, precise = false): string {
   const clock = [date.getHours(), date.getMinutes(), date.getSeconds()].map((n) => String(n).padStart(2, "0")).join(":");
   return clock + (precise ? `.${String(date.getMilliseconds()).padStart(3, "0")}` : "");
 }
+
+/**
+ * Timeline grouping: consecutive completed empty recordings form one run.
+ * Pending or speech-bearing segments always stand alone, so nothing waiting
+ * for transcription is hidden inside a "silence" row.
+ */
+export function contextSegmentRuns(items: readonly VoiceRecordingSegment[]): VoiceRecordingSegment[][] {
+  const runs: VoiceRecordingSegment[][] = [];
+  let previousEmpty = false;
+  for (const item of items) {
+    const empty = isEmptyContextRecording(item);
+    if (empty && previousEmpty) runs.at(-1)!.push(item);
+    else runs.push([item]);
+    previousEmpty = empty;
+  }
+  return runs;
+}
