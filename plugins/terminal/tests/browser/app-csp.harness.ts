@@ -1,0 +1,45 @@
+// 整包验证夹具：在 CSP 页面里加载构建产物 dist/app.js，用模拟宿主挂载终端界面，
+// 由 terminal.session.attach 回放一段彩色输出。
+import { runApp, type HostBridge, type HostMessage } from "@reai/app-sdk/v1";
+
+const COLORED = "\x1b[31mRED\x1b[32mGREEN\x1b[38;2;255;128;0mTRUE\x1b[0m\r\n";
+const blocked: string[] = [];
+document.addEventListener("securitypolicyviolation", (event) => blocked.push(event.violatedDirective));
+const { default: app } = await import("/dist/app.js" as string);
+let receive!: (message: HostMessage) => void;
+let created = 0;
+const bridge: HostBridge = {
+  async request(method) {
+    if (method === "locale.get") return { runtimeSessionId: "rt", locale: "zh", revision: 0 } as never;
+    if (method === "terminal.session.list") return [{ id: "csp-pty", sequence: 0, cwd: "~" }] as never;
+    if (method === "terminal.session.create") return { id: `csp-pty-${++created}`, sequence: 0, cwd: "~" } as never;
+    if (method === "terminal.session.attach") return { token: "t", replayBase64: btoa(COLORED), truncated: false, sequence: 0 } as never;
+    if (method === "storage.get") return { value: undefined } as never;
+    if (method.startsWith("surface.navigation.")) return { accepted: true } as never;
+    return {} as never;
+  },
+  notify(method) {
+    if (method === "surface.ready") setTimeout(split, 800);
+  },
+  subscribe(handler) { receive = handler; return () => {}; },
+};
+runApp(app, bridge);
+receive({ type: "activate", runtimeSessionId: "rt", locale: { locale: "zh", revision: 0 } } as HostMessage);
+receive({ type: "surface.presentation", runtimeSessionId: "rt", surfaceMountId: "m1", presentationToken: "p" } as HostMessage);
+receive({ type: "surface.mount", surfaceId: "main", surfaceMountId: "m1", root: document.getElementById("app")! } as HostMessage);
+
+// 分屏后两个窗格都应各自用 WebGL 画出彩色输出。
+function split() {
+  document.querySelector<HTMLButtonElement>('[data-split="horizontal"]')?.click();
+  setTimeout(report, 1200);
+}
+
+function report() {
+  (window as unknown as { __cspColor: unknown }).__cspColor = {
+    mode: "app",
+    renderer: document.querySelector(".xterm canvas") ? "webgl" : "dom",
+    panes: document.querySelectorAll(".terminal-pane .xterm").length,
+    styleElements: document.querySelectorAll(".xterm style").length,
+    blocked,
+  };
+}

@@ -2,6 +2,7 @@ import { createTerminalMessages, type TerminalMessages } from "./terminal-i18n";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
+import { attachTerminalRenderer } from "./terminal-renderer";
 import type {
   TerminalSessionClient,
   TerminalSessionEvent,
@@ -364,7 +365,10 @@ export async function mountTerminalWorkspace(
     path.textContent = pane.cwd || messages.t("defaultDirectory");
     path.title = pane.cwd || "";
     view.element.querySelector<HTMLElement>(".terminal-renderer")!.append(view.host);
-    if (!view.host.hasChildNodes()) view.terminal.open(view.host);
+    if (!view.host.hasChildNodes()) {
+      view.terminal.open(view.host);
+      view.disposables.push(attachTerminalRenderer(view.terminal));
+    }
     compactFace.onclick = () => {
       replaceTab({ ...activateTerminalPane(tab, pane.id), focusedPaneId: pane.id });
       render();

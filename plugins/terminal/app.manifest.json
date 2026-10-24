@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.reai.terminal",
-  "version": "1.0.5-dev.2",
+  "version": "1.0.5",
   "publisherId": "reai",
   "oauthAppId": "TPbwDuJFlSIPdMlA2xiB4wRMHaMk3262",
   "name": "终端",

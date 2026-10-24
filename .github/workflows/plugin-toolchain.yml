@@ -153,7 +153,7 @@ jobs:
           - wishing-wall
     env:
       # 受控插件的当前候选尚未通过源码审核：只要求按审批门被拒。审核通过、平台包带上批准记录后从这里移除。
-      AWAITING_REVIEW: ${{ contains(fromJSON('["voice"]'), matrix.plugin) }}
+      AWAITING_REVIEW: ${{ contains(fromJSON('["voice","terminal"]'), matrix.plugin) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
