@@ -41,17 +41,23 @@ export function parseVoiceWorkMode(value: unknown): VoiceWorkMode | undefined {
 export function createVoiceCommandSessionConfig(options: {
   workspace?: AgentWorkspace; scopedExecution?: boolean; mode?: VoiceWorkMode;
 } = {}): AgentConfig {
+  const mode = options.mode ?? ("chat" as const);
+  // Host 的工具 × 档位矩阵只在 yolo 档接受 `command`（chat / plan 直接拒绝建会话，不是执行时才拦）：
+  // 非 yolo 档不申请它。文件工具照常申请——chat 不写、plan 只写计划文件由 Host 在执行时按档位把关。
+  const executionTools = options.scopedExecution
+    ? EXECUTION_TOOLS.filter(tool => mode === "yolo" || tool !== "command")
+    : [];
   return {
     schemaVersion: 2,
     // Agent 由 Host 决定：Voice 永远传 auto，不选也不展示引擎。
     runtime: "auto",
     // featureRef 由调用方按 Host 支持探测附带（withVoiceFeatureRef），见 agent-features.ts。
     systemPrompt: VOICE_COMMAND_SYSTEM_PROMPT,
-    tools: [...BASE_TOOLS, ...(options.scopedExecution ? EXECUTION_TOOLS : [])].map(ref => ({ ref })),
+    tools: [...BASE_TOOLS, ...executionTools].map(ref => ({ ref })),
     skills: [],
     workspace: options.workspace ?? { kind: "app-private" },
     memory: "session",
-    ...(options.scopedExecution ? { mode: options.mode ?? ("chat" as const) } : {}),
+    ...(options.scopedExecution ? { mode } : {}),
   };
 }
 

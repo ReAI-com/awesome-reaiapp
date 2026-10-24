@@ -49,20 +49,25 @@ describe("Voice 的当前对话工作范围与 Agent", () => {
     } finally { setVoiceLocale("zh"); }
   });
 
-  test("普通命令沿用默认 Agent，范围执行时明确授权 17 个工具并按拨杆定档（缺省 chat）", () => {
+  test("普通命令沿用默认 Agent，范围执行时按拨杆定档（缺省 chat）；command 只在 yolo 档申请", () => {
     const config = createVoiceCommandSessionConfig({ scopedExecution: true });
     expect(config.schemaVersion).toBe(2);
     expect(config.runtime).toBe("auto");
     expect(config.workspace).toEqual({ kind: "app-private" });
     expect(config.mode).toBe("chat");
-    expect(createVoiceCommandSessionConfig({ scopedExecution: true, mode: "yolo" }).mode).toBe("yolo");
     expect(config.memory).toBe("session");
-    const tools = config.tools ?? [];
-    expect(tools).toHaveLength(17);
-    expect(new Set(tools.map(tool => tool.ref)).size).toBe(17);
-    expect(tools.map(tool => tool.ref)).toEqual(expect.arrayContaining([
-      "web_search", "web_fetch", "read", "write", "edit", "list", "glob", "grep", "command",
-    ]));
+    // chat 档：10 个 Host 工具 + 6 个文件工具；Host 的工具 × 档位矩阵只在 yolo 接受 command，
+    // 带上它会在建会话时被拒（AGENT_SESSION_INVALID_REQUEST），不是执行时才拦。
+    const tools = (config.tools ?? []).map(tool => tool.ref);
+    expect(tools).toHaveLength(16);
+    expect(new Set(tools).size).toBe(16);
+    expect(tools).toEqual(expect.arrayContaining(["web_search", "web_fetch", "read", "write", "edit", "list", "glob", "grep"]));
+    expect(tools).not.toContain("command");
+    expect(createVoiceCommandSessionConfig({ scopedExecution: true, mode: "plan" }).tools?.map(tool => tool.ref)).not.toContain("command");
+    const yolo = createVoiceCommandSessionConfig({ scopedExecution: true, mode: "yolo" });
+    expect(yolo.mode).toBe("yolo");
+    expect(yolo.tools).toHaveLength(17);
+    expect(yolo.tools?.map(tool => tool.ref)).toContain("command");
     // 没有范围执行：只有 10 个 Host 工具，不写档位。
     const plain = createVoiceCommandSessionConfig();
     expect(plain.tools).toHaveLength(10);

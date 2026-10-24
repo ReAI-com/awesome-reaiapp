@@ -110,7 +110,8 @@ async function mount(options: {
             ownedSessions.push(sessionId);
             const runtime = config.runtime === "dsh" || config.runtime === "codex" ? config.runtime : "pi";
             runtimeOf.set(sessionId, runtime);
-            const scoped = config.tools.some(tool => tool.ref === "command");
+            // 范围执行的会话以文件工具为标志：`command` 只在 yolo 档申请，不能拿它判定。
+            const scoped = config.tools.some(tool => tool.ref === "read");
             return { schemaVersion: 2, sessionId, backend: runtime, runtime,
               ...(options.scopeProof === false || !scoped ? {} : {
                 workspace: config.workspace,
@@ -230,15 +231,17 @@ async function mount(options: {
 
 const failure = { kind: "engine", code: "AGENT_RUNTIME_FAILED", stage: "runtime", retry: "new-turn", message: "engine failed" } as unknown as AgentTurnResult["failure"];
 
-test("存量对话第一次升级到 v2 会话：新会话带 17 项工具、没有拨杆信息按 chat，第一条续接可见聊天；受理后失败的重试不重放背景", async () => {
+test("存量对话第一次升级到 v2 会话：新会话带 16 项工具（chat 不申请 command）、没有拨杆信息按 chat，第一条续接可见聊天；受理后失败的重试不重放背景", async () => {
   const h = await mount({ choices: { "pi-old": {} } });
   try {
     h.send("新的问题");
     await until(() => h.starts.length === 1);
     expect(h.configs).toHaveLength(1);
     expect(h.configs[0]).toMatchObject({ runtime: "auto", mode: "chat", workspace: { kind: "app-private" } });
-    expect(h.configs[0]!.tools).toHaveLength(17);
-    expect(h.configs[0]!.tools.map(tool => tool.ref)).toEqual(expect.arrayContaining(["read", "write", "edit", "list", "glob", "grep", "command"]));
+    // Host 的工具 × 档位矩阵只在 yolo 接受 command；chat 会话带上它会在建会话时被拒。
+    expect(h.configs[0]!.tools).toHaveLength(16);
+    expect(h.configs[0]!.tools.map(tool => tool.ref)).toEqual(expect.arrayContaining(["read", "write", "edit", "list", "glob", "grep"]));
+    expect(h.configs[0]!.tools.map(tool => tool.ref)).not.toContain("command");
     expect(h.starts[0]!.text).toContain("PI_OLD_ANSWER");
     expect(h.starts[0]!.text).toContain("不重放已执行动作");
     // 工具卡、用量等元数据永远不进续接种子；用户界面也看不到这段引用资料。

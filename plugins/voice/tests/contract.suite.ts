@@ -960,6 +960,8 @@ export default configuredVoiceSuite({
         await waitUntil(() => creates().length > before, "带 yolo 的语音任务没有新建 Agent 会话");
         const first = creates()[before]!.params as { config?: { mode?: string } };
         if (first.config?.mode !== "yolo") throw new Error(`拨杆 yolo 应落到会话档位，实际 ${String(first.config?.mode)}`);
+        const firstTools = ((first.config as { tools?: { ref: string }[] }).tools ?? []).map((tool) => tool.ref);
+        if (!firstTools.includes("command")) throw new Error("yolo 会话应申请 command 工具");
         await waitUntil(
           () => host.voiceCommandRequests.filter((request) => request.method === "voice.command.present-answer").length >= 1,
           "第一段没有弹结果面板",
@@ -970,6 +972,8 @@ export default configuredVoiceSuite({
         await host.invokeCommand("com.reai.voice.command.agent");
         await waitUntil(() => creates().length > before + 1, "没带档位的语音任务没有新建 Agent 会话");
         const second = creates()[before + 1]!.params as { config?: { mode?: string } };
+        const secondTools = ((second.config as { tools?: { ref: string }[] }).tools ?? []).map((tool) => tool.ref);
+        if (secondTools.includes("command")) throw new Error("chat 会话不得申请 command：Host 的工具 × 档位矩阵只在 yolo 接受它，带上会在建会话时被拒");
         if (second.config?.mode !== "chat") {
           const modes = creates().slice(before).map((request) => String((request.params as { config?: { mode?: string } }).config?.mode));
           throw new Error(`没有拨杆信息的新任务应按 chat，实际 ${String(second.config?.mode)}（不得沿用上一次的 yolo）；本场景建的会话档位依次：${modes.join(",")}`);
