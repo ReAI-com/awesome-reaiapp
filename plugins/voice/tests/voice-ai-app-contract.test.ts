@@ -174,7 +174,7 @@ describe("Voice Command 应用层合同", () => {
       "segmentSummary",
     ]);
     for (const [name, prompt] of Object.entries(VOICE_PROMPT_CATALOG)) {
-      expect(prompt.ref.version).toBe(name === "polish" ? "2" : "1");
+      expect(prompt.ref.version).toBe(name === "polish" ? "3" : "1");
       expect(prompt.output).toBe("plain_text");
       expect(prompt.system).toContain("只输出");
     }

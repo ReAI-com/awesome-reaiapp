@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 
-import { polishTranscriptWithAgent } from "../src/voice-polish";
+import { polishTranscriptWithAgent, wrapTranscript } from "../src/voice-polish";
 
 test("Agent 润色创建 one-shot 无工具会话并返回有效短文本", async () => {
   const calls: Array<{ method: string; value: unknown }> = [];
@@ -21,7 +21,7 @@ test("Agent 润色创建 one-shot 无工具会话并返回有效短文本", asyn
         async events(options) { return { schemaVersion: 2 as const, ...options, runtime: "dsh" as const, status: "running" as const, expired: false, result: null, createdAt: 0, updatedAt: 0, events: [], gap: false, nextSequence: 0 }; },
         async waitForTurn() {
           calls.push({ method: "wait", value: {} });
-          return { schemaVersion: 2, sessionId: "agent2-one", turnId: "native-one", status: "completed", runtime: "dsh", channel: "external-brain", content: [{ type: "text", text: "你好，世界。" }], usage: null, toolAttempts: [], text: "你好，世界。", failure: null };
+          return { schemaVersion: 2, sessionId: "agent2-one", turnId: "native-one", status: "completed", runtime: "dsh", channel: "external-brain", content: [{ type: "text", text: "你好世界，我们开始吧。" }], usage: null, toolAttempts: [], text: "你好世界，我们开始吧。", failure: null };
         },
         async cancel(options) {
           calls.push({ method: "cancel", value: options });
@@ -33,10 +33,14 @@ test("Agent 润色创建 one-shot 无工具会话并返回有效短文本", asyn
         },
       },
     },
-    { level: "light", transcript: "你好世界" },
+    { level: "light", transcript: "你好世界我们开始吧" },
   );
 
-  expect(result).toEqual({ text: "你好，世界。", applied: true, changed: true });
+  expect(result).toEqual({ text: "你好世界，我们开始吧。", applied: true, changed: true });
+  // 转写套在围栏里交给 Agent，避免被当成在跟它对话。
+  expect(calls.find((call) => call.method === "start")?.value).toMatchObject({
+    text: wrapTranscript("你好世界我们开始吧", "turn1"),
+  });
   expect(calls[0]?.value).toMatchObject({
     schemaVersion: 2,
     runtime: "dsh",
@@ -79,14 +83,14 @@ test("Agent 润色的 4 秒预算覆盖 create/send，超时精确取消并回�
         },
       },
     },
-    { level: "formal", transcript: "原话" },
+    { level: "formal", transcript: "这是我刚才说的原话" },
   );
   await new Promise(resolve => setTimeout(resolve, 0));
   fireTimeout?.();
   const result = await pending;
   await Promise.resolve();
 
-  expect(result.text).toBe("原话");
+  expect(result.text).toBe("这是我刚才说的原话");
   expect(result.failure?.code).toBe("POLISH_TIMEOUT");
   expect(cancelled).toEqual([{ sessionId: "agent2-timeout", turnId: "native-timeout" }]);
   expect(deleted).toEqual([{ sessionId: "agent2-timeout" }]);
@@ -109,7 +113,7 @@ test("create completing after the polish budget is cleaned up without starting a
       async cancel() { throw new Error("no native turn was accepted"); },
       async deleteSession({ sessionId }) { deleted.push(sessionId); return { deleted: true }; },
     },
-  }, { level: "light", transcript: "原话" });
+  }, { level: "light", transcript: "这是我刚才说的原话" });
   await Promise.resolve();
   fireTimeout();
   expect((await pending).failure?.code).toBe("POLISH_TIMEOUT");

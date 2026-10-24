@@ -6,7 +6,7 @@ import {
   type VoiceContextHost,
   type VoiceContextSettings,
 } from "../src/voice-context";
-import { buildPolishMessages } from "../src/voice-polish";
+import { buildPolishMessages, wrapTranscript } from "../src/voice-polish";
 
 const SETTINGS: VoiceContextSettings = {
   windowEnabled: true,
@@ -110,7 +110,8 @@ describe("D-5 多模态润色消息", () => {
       { type: "text", text: expect.stringContaining("邮件正文") },
       { type: "image", mime: "image/jpeg", dataBase64: SHOT.dataBase64, detail: "low" },
     ]);
-    expect(messages.at(-1)).toEqual({ role: "user", content: "发给 Alex" });
+    expect(messages.at(-1)?.role).toBe("user");
+    expect(messages.at(-1)?.content).toBe(wrapTranscript("发给 Alex", "CTX"));
   });
 
   test("越过 Host 截图合同的自定义图片只丢图，文字润色仍继续", () => {
@@ -128,6 +129,7 @@ describe("D-5 多模态润色消息", () => {
       role: "user",
       content: expect.stringContaining("邮件正文"),
     });
-    expect(messages.at(-1)).toEqual({ role: "user", content: "发给 Alex" });
+    expect(messages.at(-1)?.role).toBe("user");
+    expect(messages.at(-1)?.content).toBe(wrapTranscript("发给 Alex", "CTX"));
   });
 });
