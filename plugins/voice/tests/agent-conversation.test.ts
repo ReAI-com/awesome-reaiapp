@@ -7,6 +7,7 @@ import {
   canChangeConversation,
   continuationPrompt,
   createVoiceCommandSessionConfig,
+  parseVoiceWorkMode,
   scopeUnavailableMessage,
   visibleConversationContext,
 } from "../src/agent-conversation";
@@ -23,7 +24,7 @@ describe("Voice 的当前对话工作范围与 Agent", () => {
       capabilities: { hostTools: true, fileTools: false, turnModes: [], modelSelection: "host-settings", commandExecution: false },
     };
     setVoiceLocale("zh");
-    expect(scopeUnavailableMessage(status, "Localized fallback")).toBe("需要更新 DSH 运行组件后才能使用文件和命令：工作范围支持缺失、不兼容或已损坏。不会自动换用其他 Agent。");
+    expect(scopeUnavailableMessage(status, "Localized fallback")).toBe("需要更新 Agent 运行组件后才能使用文件和命令：工作范围支持缺失、不兼容或已损坏。不会自动换用其他 Agent。");
     expect(scopeUnavailableMessage({ ...status, detail: "  " }, "Localized fallback")).toBe("Localized fallback");
     expect(scopeUnavailableMessage({ ...status, capabilities: { ...status.capabilities!, fileTools: true } }, "平台暂不支持")).toBe("平台暂不支持");
     expect(scopeUnavailableMessage({ ...status, available: false }, "Localized fallback")).toBe("Localized fallback");
@@ -40,20 +41,21 @@ describe("Voice 的当前对话工作范围与 Agent", () => {
     const before = structuredClone(status);
     try {
       setVoiceLocale("en");
-      expect(scopeUnavailableMessage(status, "Localized fallback")).toBe("Update the Pi runtime to use files and commands: its workspace support is missing, incompatible, or damaged. No other Agent will be selected automatically.");
+      expect(scopeUnavailableMessage(status, "Localized fallback")).toBe("Update the Agent runtime to use files and commands: its workspace support is missing, incompatible, or damaged. No other Agent will be selected automatically.");
       expect(scopeUnavailableMessage(status, "Localized fallback")).not.toMatch(/[一-鿿]/);
       setVoiceLocale("zh");
-      expect(scopeUnavailableMessage(status, "本地后备文案")).toContain("需要更新 Pi 运行组件后才能使用文件和命令");
+      expect(scopeUnavailableMessage(status, "本地后备文案")).toContain("需要更新 Agent 运行组件后才能使用文件和命令");
       expect(status).toEqual(before);
     } finally { setVoiceLocale("zh"); }
   });
 
-  test("普通命令沿用默认 Agent，范围执行时明确授权 17 个工具并显式 yolo", () => {
+  test("普通命令沿用默认 Agent，范围执行时明确授权 17 个工具并按拨杆定档（缺省 chat）", () => {
     const config = createVoiceCommandSessionConfig({ scopedExecution: true });
     expect(config.schemaVersion).toBe(2);
     expect(config.runtime).toBe("auto");
     expect(config.workspace).toEqual({ kind: "app-private" });
-    expect(config.mode).toBe("yolo");
+    expect(config.mode).toBe("chat");
+    expect(createVoiceCommandSessionConfig({ scopedExecution: true, mode: "yolo" }).mode).toBe("yolo");
     expect(config.memory).toBe("session");
     const tools = config.tools ?? [];
     expect(tools).toHaveLength(17);
@@ -61,16 +63,16 @@ describe("Voice 的当前对话工作范围与 Agent", () => {
     expect(tools.map(tool => tool.ref)).toEqual(expect.arrayContaining([
       "web_search", "web_fetch", "read", "write", "edit", "list", "glob", "grep", "command",
     ]));
-    // 没有范围执行：只有 10 个 Host 工具，不显式提权到 yolo。
+    // 没有范围执行：只有 10 个 Host 工具，不写档位。
     const plain = createVoiceCommandSessionConfig();
     expect(plain.tools).toHaveLength(10);
     expect(plain.mode).toBeUndefined();
   });
 
-  test("明确选择的目录使用 direct，不偷偷改成镜像或改变全局默认", () => {
-    const options = { backend: "dsh" as const, workspace: { kind: "direct" as const, path: "/Users/example/Project" }, scopedExecution: true };
+  test("明确选择的目录使用 direct，不偷偷改成镜像；Agent 永远交给 Host 决定（runtime 恒为 auto）", () => {
+    const options = { workspace: { kind: "direct" as const, path: "/Users/example/Project" }, scopedExecution: true };
     const config = createVoiceCommandSessionConfig(options);
-    expect(config.runtime).toBe("dsh");
+    expect(config.runtime).toBe("auto");
     expect(config.workspace).toEqual(options.workspace);
     expect(createVoiceCommandSessionConfig().runtime).toBe("auto");
     expect(createVoiceCommandSessionConfig().workspace).toEqual({ kind: "app-private" });
@@ -141,5 +143,14 @@ describe("Voice 的当前对话工作范围与 Agent", () => {
     const huge = Array.from({ length: 30 }, (_, i) => ({ role: "assistant" as const, text: "x".repeat(2000) + i }));
     expect(continuationPrompt(huge, "新输入").length).toBeLessThanOrEqual(24000);
     expect(() => continuationPrompt([], "y".repeat(24001))).toThrow(RangeError);
+  });
+  test("拨杆档位决定新会话档位；没拨杆默认 chat 只读；不带文件工具的会话不写档位", () => {
+    expect(createVoiceCommandSessionConfig({ scopedExecution: true, mode: "yolo" }).mode).toBe("yolo");
+    expect(createVoiceCommandSessionConfig({ scopedExecution: true, mode: "plan" }).mode).toBe("plan");
+    expect(createVoiceCommandSessionConfig({ scopedExecution: true }).mode).toBe("chat");
+    expect(createVoiceCommandSessionConfig({ mode: "chat" }).mode).toBeUndefined();
+    expect(parseVoiceWorkMode("plan")).toBe("plan");
+    expect(parseVoiceWorkMode("turbo")).toBeUndefined();
+    expect(parseVoiceWorkMode(undefined)).toBeUndefined();
   });
 });

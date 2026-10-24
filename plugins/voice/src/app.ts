@@ -20,9 +20,9 @@ import { chooseRecognitionEngine, RecognitionSetupRollbackError } from "./recogn
 import { assertFreeOnlyCloudExecution, preferredCloudOption, cloudSelectionBillingPolicy, selectedCloudOption, validCloudOptionId } from "./cloud-selection";
 import { cloudModelsFailureRetryable, cloudModelsRetryDelay, cloudModelsRetryTiming } from "./cloud-models-retry";
 import { agentReadiness } from "./agent-readiness";
-import { availableConversationBackends, canChangeConversation, conversationKey, conversationMembers, continuationPrompt, createVoiceCommandSessionConfig, scopeUnavailableMessage, visibleConversationContext, type VoiceConversationOptions } from "./agent-conversation";
+import { availableConversationBackends, canChangeConversation, conversationKey, conversationMembers, continuationPrompt, createVoiceCommandSessionConfig, scopeUnavailableMessage, visibleConversationContext, type VoiceConversationOptions, parseVoiceWorkMode, type VoiceWorkMode } from "./agent-conversation";
 import { VOICE_SUMMARY_SYSTEM_PROMPT, noteHostAgentBackendStatuses, withVoiceFeatureRef } from "./agent-features";
-import type { AgentBackend, AgentHistoryItem, AudioTimelineStatus, CloudModelOption, ResolvedAgentBackend, VoiceInputStatus } from "@reai/app-sdk/v1";
+import type { AgentBackend, AgentHistoryItem, AudioTimelineStatus, CloudModelOption, VoiceInputStatus } from "@reai/app-sdk/v1";
 import { sanitizeAgentUsage } from "./agent-metadata";
 import { LocalModelDownloads } from "./local-model-download";
 import {
@@ -47,7 +47,6 @@ import {
 import {
   DEFAULT_SETTINGS,
   DEFAULT_VOICE_FEATURE_SETTINGS,
-  DEFAULT_AGENT_EXPERIMENT,
   COMMAND_HISTORY_KEY,
   EMPTY_PERMISSIONS,
   SOURCE_MIGRATION_NOTICE,
@@ -72,7 +71,6 @@ import {
   type VoiceChatCard,
   type VoiceChatMessage,
   type VoiceViewState,
-  type VoiceAgentExperimentSettings,
   type VoiceAgentConversationRef,
   type VoiceFeatureSettings,
   type VoiceRecordingRef,
@@ -277,6 +275,8 @@ interface CommandRunOptions {
   context?: Promise<VoiceContextEnvelope | undefined>;
   /** Host 录音会话 id：转文本 / 翻译交付完成（不弹结果框）时凭它收掉中央「处理中」胶囊。 */
   resultSessionId?: string;
+  /** 触发这次命令时键盘拨杆的档位（Host API 1.26）：新建 Agent 会话时据此定 chat / plan / yolo。 */
+  workMode?: VoiceWorkMode;
   /**
    * 来自 `asyncFinish` 录音（胶囊叠放）时的同一会话 id：任务帧与前台结果带上它，Host 才认得栈里
    * 那一枚胶囊，并可要求前台结果转后台。同步收尾的录音不带，行为不变。
@@ -359,7 +359,6 @@ let state: VoiceViewState = {
   featureSettings: { ...DEFAULT_VOICE_FEATURE_SETTINGS },
   cloudModels: [],
   cloudModelsLoading: true,
-  agentExperiment: { ...DEFAULT_AGENT_EXPERIMENT },
   history: [],
   models: [],
   permissions: { ...EMPTY_PERMISSIONS },
@@ -456,7 +455,6 @@ export default defineApp({
       recognitionSetupError: undefined,
       settings: stored.settings ?? { ...DEFAULT_SETTINGS },
       featureSettings: stored.featureSettings,
-      agentExperiment: stored.agentExperiment ?? { ...DEFAULT_AGENT_EXPERIMENT },
       conversationOptions: stored.conversationOptions,
       history: stored.history ?? [],
       commandHistory: stored.commandHistory ?? [],
@@ -3153,6 +3151,50 @@ export default defineApp({
     };
 
     /**
+     * 前台结果面板上 `runId`（Host 回执的回合 id）→ 这条命令的 taskId。Host 的 `visibleAnswer`
+     * 回的是 present-answer 时传的 runId，续接要靠它找回历史条目与 Agent 会话。迟到结果框的
+     * runId 本来就是 taskId，不用记。
+     */
+    const answerRunTasks = new Map<string, string>();
+    const rememberAnswerRun = (runId: string, taskId: string) => {
+      answerRunTasks.delete(runId);
+      answerRunTasks.set(runId, taskId);
+      while (answerRunTasks.size > 32) {
+        const oldest = answerRunTasks.keys().next().value;
+        if (oldest === undefined) break;
+        answerRunTasks.delete(oldest);
+      }
+    };
+
+    /**
+     * 结果弹窗上此刻正显示的那条 Agent 对话（Host API 1.26 `voiceCommand.visibleAnswer`）。
+     * 弹窗关掉、被顶掉、显示的不是本插件的 Agent 结果，或旧 Host 没有这个方法，都返回 undefined
+     * （= 新任务）。对话曾改过目录 / 等待切换时按追问同一口径：新建会话并附上有界可见聊天。
+     */
+    const continuationFromVisibleAnswer = async (): Promise<
+      Pick<CommandRunOptions, "agentSessionId" | "conversationId" | "conversationOptions" | "visibleContext"> | undefined
+    > => {
+      const query = (ctx.voiceCommand as { visibleAnswer?: () => Promise<{ visible: boolean; runId?: string }> }).visibleAnswer;
+      if (typeof query !== "function") return undefined;
+      const shown = await query.call(ctx.voiceCommand).catch(() => undefined);
+      if (!shown?.visible || !shown.runId) return undefined;
+      const taskId = answerRunTasks.get(shown.runId) ?? shown.runId;
+      const item = state.commandHistory.find((entry) => entry.id === taskId
+        && entry.commandId === BUILTIN_VOICE_COMMANDS.agent && Boolean(entry.agentSessionId));
+      if (!item?.agentSessionId) return undefined;
+      const key = conversationKey(item);
+      const choices = state.conversationOptions?.[key];
+      const sessionId = choices ? choices.sessionId : item.agentSessionId;
+      const members = conversationMembers(item, state.commandHistory);
+      return {
+        ...(sessionId ? { agentSessionId: sessionId } : {}),
+        conversationId: key,
+        conversationOptions: choices,
+        visibleContext: !sessionId || choices?.continuationPending ? visibleConversationContext(members) : [],
+      };
+    };
+
+    /**
      * Agent 的只读结果框。3 秒内完成走前台面板；转入后台胶囊之后才完成的走迟到结果框
      * （Host API 1.22 `deferred`：被动显示、不抢键盘；runId 必须是后台任务的 taskId，
      * 且调用前已报终态帧）。「继续」由 Host 打开主窗口里这条任务的会话详情。
@@ -3228,7 +3270,7 @@ export default defineApp({
      * 确认目标 Agent 可用。`requireScope` = 用户显式选了某个 Agent 且这次要用文件 / 命令：
      * 该 Agent 没有范围执行时明确报错，不偷换成别的 Agent。
      */
-    const requireUnifiedAgentReady = async (requestedBackend: AgentBackend = state.agentExperiment.backend, requireScope = false) => {
+    const requireUnifiedAgentReady = async (requestedBackend: AgentBackend = "auto", requireScope = false) => {
       const snapshot = await ctx.agent.backends({ schemaVersion: 2 });
       const readiness = agentReadiness(requestedBackend, snapshot);
       if (readiness.kind === "ready") {
@@ -3246,7 +3288,8 @@ export default defineApp({
         }, undefined, { constantMessage: true });
       }
       const blocked = readiness.status;
-      const backend = blocked?.backend === "dsh" ? "DSH" : blocked?.backend === "codex" ? "Codex" : "Pi";
+      // 用户视角只有一个「Agent」，不出现任何引擎名。
+      const backend = "Agent";
       if (blocked?.downloadRequired) {
         // Called only for an explicit Agent/translation action. Host binds the source
         // app identity and owns preview, consent, verification and attachment. Opening
@@ -3450,18 +3493,17 @@ export default defineApp({
                   // F02/F04：本对话的显式选择优先；否则沿用 Driver 默认。文件 / 命令
                   // 工具只在 Host 宣称范围执行可用时授予；用户显式选的 Agent 不支持时
                   // 明确报错，不偷换；沿用默认时退化为不带文件工具的普通聊天。
-                  const backend = options.conversationOptions?.backend ?? state.agentExperiment.backend;
                   const backendSnapshot = await ctx.agent.backends({ schemaVersion: 2 });
                   noteHostAgentBackendStatuses(backendSnapshot.backends);
-                  const readiness = agentReadiness(backend, backendSnapshot);
+                  const readiness = agentReadiness("auto", backendSnapshot);
                   const status = readiness.kind === "ready" ? backendSnapshot.backends.find((item) => item.backend === readiness.backend) : undefined;
                   const scopedExecution = availableConversationBackends(status ? [status] : []).length > 0;
-                  if (!scopedExecution && (options.conversationOptions?.backend || options.conversationOptions?.workspace?.kind === "direct")) {
+                  if (!scopedExecution && options.conversationOptions?.workspace?.kind === "direct") {
                     throw new VoiceAppError({ code: "AGENT_SCOPE_UNAVAILABLE", userMessage: scopeUnavailableMessage(status, t("chat.scopeUnavailable")), retryable: false }, undefined, { constantMessage: true });
                   }
                   const created = await ctx.agent.createSession(await withVoiceFeatureRef(
                     createVoiceCommandSessionConfig({
-                      backend, workspace: options.conversationOptions?.workspace, scopedExecution,
+                      workspace: options.conversationOptions?.workspace, scopedExecution, mode: options.workMode ?? lastKnownWorkMode,
                     }),
                     "command",
                     undefined,
@@ -3474,7 +3516,7 @@ export default defineApp({
                   try {
                     // 用户显式选了目录 / Agent 时，Host 必须给出真实工作根与范围版本作为
                     // 系统边界证明，否则不发任何模型请求；默认流程以 Host 的能力声明为准。
-                    const explicitScope = Boolean(options.conversationOptions?.backend || options.conversationOptions?.workspace?.kind === "direct");
+                    const explicitScope = options.conversationOptions?.workspace?.kind === "direct";
                     if (scopedExecution && explicitScope && (created.scopeVersion !== 1 || !created.workspaceRoot || !created.workspace)) {
                       throw new VoiceAppError({ code: "AGENT_SCOPE_UNAVAILABLE", userMessage: t("chat.scopeUnavailable"), retryable: false }, undefined, { constantMessage: true });
                     }
@@ -3504,7 +3546,7 @@ export default defineApp({
               } else {
                 oneShotSessionId = (await ctx.agent.createSession(await withVoiceFeatureRef({
                     schemaVersion: 2,
-                    runtime: state.agentExperiment.backend,
+                    runtime: "auto",
                     // 指认 manifest 声明的「翻译」功能；目标语言作为参数交给 Host
                     // 渲染/核验（systemPrompt 与模板渲染结果逐字节一致）。
                     systemPrompt: translationPrompt(targetLanguage),
@@ -3752,6 +3794,7 @@ export default defineApp({
           } else if (writesBack) {
             finishWriteBackInForeground(taskId, options.resultSessionId);
           } else {
+            rememberAnswerRun(result.runId, taskId);
             const presented = await presentAgentResult({
               runId: result.runId,
               commandId,
@@ -4022,6 +4065,13 @@ export default defineApp({
     ): Promise<string> => {
       const taskId = crypto.randomUUID();
       const controller = new AbortController();
+      // 2026-10-24：Agent 结果弹窗还显示着时再按语音键 = 续接那条对话，不是新任务；弹窗关掉
+      // （或被别的面板顶掉）之后才新开。只对没有显式对话目标的新语音任务生效。
+      if (commandId === BUILTIN_VOICE_COMMANDS.agent && !options.agentSessionId && !options.conversationId
+        && !options.recovery && !options.resume && !options.readOnlyTranslation) {
+        const continued = await continuationFromVisibleAnswer();
+        if (continued) options = { ...options, ...continued };
+      }
       // F04：Agent 对话的可见身份从第一条起固定；旧条目沿用 session id 作键。
       if (commandId === BUILTIN_VOICE_COMMANDS.agent) options = { ...options, conversationId: options.conversationId ?? options.agentSessionId ?? options.dshSessionId ?? taskId };
       if (options.conversationId && conversationChanges.has(options.conversationId)) {
@@ -4113,6 +4163,10 @@ export default defineApp({
      * 交付目标同理：它是录音开始时 Host 捕获的那个应用，跑完再取就已经晚了。
      */
     let activeCommandId: VoiceCommandId = BUILTIN_VOICE_COMMANDS.agent;
+    /** 这次硬件触发带来的拨杆档位（Host API 1.26 `workMode`）；软件入口与旧 Host 为 undefined。 */
+    let activeCommandWorkMode: VoiceWorkMode | undefined;
+    /** 最近一次从硬件触发看到的拨杆档位：对话页追问等没有拨杆上下文的新会话沿用它；从没见过则按 chat。 */
+    let lastKnownWorkMode: VoiceWorkMode | undefined;
     let activeAgentConversation: VoiceAgentConversationRef | undefined;
     // 命令链的引擎/云端模型快照：与输入链的 pendingInputSelection 同一规则——
     // 引擎与云端模型在**录音开始**那一刻定下（命令类型同理，见上），收工那次
@@ -4215,18 +4269,17 @@ export default defineApp({
         if(conversationChanges.has(key)||!canChangeConversation(conversationMembers(item,state.commandHistory)))throw new VoiceAttachmentContentError("VOICE_ATTACHMENT_MODEL_UNCONFIRMED");
         const assertIdle=()=>{if(state.commandPhase!=="idle"||state.phase!=="idle"||state.dictationPhase!=="idle"||state.conversationOptions?.[key]!==previous||conversationChanges.has(key))throw new VoiceAttachmentContentError("VOICE_ATTACHMENT_MODEL_UNCONFIRMED");};
         const backends=await ctx.agent.backends({schemaVersion:2});assertIdle();
-        const backend=previous?.backend??state.agentExperiment.backend;
-        const ready=agentReadiness(backend,backends);
+        const ready=agentReadiness("auto",backends);
         const status=ready.kind==="ready"?backends.backends.find(row=>row.backend===ready.backend):undefined;
         if(status?.capabilities?.configuration?.attachmentInputVersion!==1)throw new VoiceAttachmentContentError("VOICE_ATTACHMENT_MODEL_UNCONFIRMED");
         let sessionId=previous?previous.sessionId:item.agentSessionId;
         if(!sessionId || !sessionId.startsWith("agent2-")){
           const scopedExecution=availableConversationBackends(status?[status]:[]).length>0;
-          if(!scopedExecution&&(previous?.backend||previous?.workspace?.kind==="direct"))throw new VoiceAttachmentContentError("VOICE_ATTACHMENT_MODEL_UNCONFIRMED");
-          const created=await ctx.agent.createSession(await withVoiceFeatureRef(createVoiceCommandSessionConfig({backend,workspace:previous?.workspace,scopedExecution}),"command",undefined,ctx.agent,backends.backends));
+          if(!scopedExecution&&previous?.workspace?.kind==="direct")throw new VoiceAttachmentContentError("VOICE_ATTACHMENT_MODEL_UNCONFIRMED");
+          const created=await ctx.agent.createSession(await withVoiceFeatureRef(createVoiceCommandSessionConfig({workspace:previous?.workspace,scopedExecution}),"command",undefined,ctx.agent,backends.backends));
           try{
             assertIdle();
-            if(scopedExecution&&(previous?.backend||previous?.workspace?.kind==="direct")&&(created.scopeVersion!==1||!created.workspaceRoot||!created.workspace))throw new VoiceAttachmentContentError("VOICE_ATTACHMENT_MODEL_UNCONFIRMED");
+            if(scopedExecution&&previous?.workspace?.kind==="direct"&&(created.scopeVersion!==1||!created.workspaceRoot||!created.workspace))throw new VoiceAttachmentContentError("VOICE_ATTACHMENT_MODEL_UNCONFIRMED");
             await registerCommandAgentSession(created.sessionId);assertIdle();
             const options=await repository.saveConversationOptions(key,{...previous,sessionId:created.sessionId,resolvedBackend:created.backend,...(created.workspace?{workspace:created.workspace}:{}),...(created.workspaceRoot?{workspaceRoot:created.workspaceRoot}:{}),...(created.scopeVersion===1?{scopeVersion:1 as const}:{}),continuationPending:true});
             publish({conversationOptions:options});sessionId=created.sessionId;
@@ -4311,10 +4364,10 @@ export default defineApp({
       const attachmentTurnText = attachmentInput ? continuationPrompt(visibleContext,trimmed) : undefined;
       followUpAdmissionInFlight = true;
       try {
-        // 旧会话不静默提权：没有显式改过 Agent / 目录的对话继续用原会话；用户在范围
-        // 面板里改过选择后 sessionId 已被清空，下一条才新建带范围的会话并续接可见聊天。
-        if (!sessionId) await requireUnifiedAgentReady(translationScene ? undefined : choices?.backend,
-          !translationScene && Boolean(choices?.backend || choices?.workspace?.kind === "direct"));
+        // 旧会话不静默提权：没有显式改过目录的对话继续用原会话；改过选择后 sessionId
+        // 已被清空，下一条才新建带范围的会话并续接可见聊天。Agent 由 Host 决定。
+        if (!sessionId) await requireUnifiedAgentReady(undefined,
+          !translationScene && choices?.workspace?.kind === "direct");
         if ((key && (conversationChanges.has(key) || state.conversationOptions?.[key] !== savedChoices)) || state.commandPhase !== "idle" || state.phase !== "idle" || state.dictationPhase !== "idle") {
           throw new VoiceAppError({ code: "com.reai.voice/VOICE_BUSY", userMessage: t("chat.scopeSaving"), retryable: true }, undefined, { constantMessage: true });
         }
@@ -4332,41 +4385,6 @@ export default defineApp({
           visibleContext,
         });
       } finally { followUpAdmissionInFlight = false; }
-    };
-
-    const currentConversationForChange = (id: string) => {
-      const item = state.commandHistory.find((entry) => entry.id === id);
-      if (!item) throw new VoiceAppError({ code: "VOICE_CONVERSATION_MISSING", userMessage: t("chat.conversationMissing"), retryable: false }, undefined, { constantMessage: true });
-      if (!canChangeConversation(conversationMembers(item, state.commandHistory)) || [...activeCommandRuns.values()].some((run) => run.conversationId === conversationKey(item))) {
-        throw new VoiceAppError({ code: "com.reai.voice/VOICE_BUSY", userMessage: t("chat.finishBeforeSwitch"), retryable: true }, undefined, { constantMessage: true });
-      }
-      return item;
-    };
-
-    const refreshConversationBackends = async () => {
-      const snapshot = await ctx.agent.backends({ schemaVersion: 2 });
-      publish({ agentBackends: snapshot.backends });
-    };
-
-    /** 只改当前对话的 Agent；不写 Driver 默认，不动正在跑的任务。 */
-    const changeConversationBackend = async (id: string, backend: ResolvedAgentBackend | "auto") => {
-      const item = currentConversationForChange(id);
-      const key = conversationKey(item);
-      if (conversationChanges.has(key)) return;
-      conversationChanges.add(key);
-      try {
-        const snapshot = await ctx.agent.backends({ schemaVersion: 2 });
-        if (backend !== "auto" && !availableConversationBackends(snapshot.backends).some((status) => status.backend === backend)) {
-          const installed = snapshot.backends.find(status => status.backend === backend && status.available && status.downloadRequired !== true);
-          throw new VoiceAppError({ code: installed ? "AGENT_SCOPE_UNAVAILABLE" : "AGENT_BACKEND_UNAVAILABLE", userMessage: installed ? scopeUnavailableMessage(installed, t("chat.scopeUnavailable")) : t("chat.agentUnavailable"), retryable: !installed }, undefined, { constantMessage: true });
-        }
-        if (backend === "auto") await requireUnifiedAgentReady();
-        currentConversationForChange(id);
-        const current = state.conversationOptions?.[key];
-        if ((current?.backend ?? "auto") === backend) return;
-        const conversationOptions = await repository.saveConversationOptions(key, { ...current, backend: backend === "auto" ? undefined : backend, sessionId: undefined, workspaceRoot: undefined, scopeVersion: undefined, resolvedBackend: undefined });
-        publish({ conversationOptions, agentBackends: snapshot.backends });
-      } finally { conversationChanges.delete(key); }
     };
 
 
@@ -4412,10 +4430,15 @@ export default defineApp({
     const summaryDeps = (): VoiceSummaryDeps => ({
       dshAgent: {
         status: async () => {
-          const dsh = (await ctx.agent.backends({ schemaVersion: 2 })).backends.find((item) => item.backend === "dsh");
+          // 总结跟随 Host 默认 Agent；不可用时由 voice-summary-dsh 诚实回退云端一次性生成。
+          const snapshot = await ctx.agent.backends({ schemaVersion: 2 });
+          const readiness = agentReadiness("auto", snapshot);
+          const status = readiness.kind === "ready"
+            ? snapshot.backends.find((item) => item.backend === readiness.backend)
+            : readiness.kind === "blocked" ? readiness.status : undefined;
           return {
-            available: dsh?.available ?? false,
-            detail: dsh?.detail ?? t("app.theHostDoesNotProvideADsh"),
+            available: readiness.kind === "ready",
+            detail: status?.detail ?? t("app.theHostDoesNotProvideADsh"),
             // 通用合同把账户/额度门禁收在 agent.session@1 请求本身；能读到 backend
             // 目录就已经过门，不能再伪造两条已从 DTO 收掉的独立状态。
             loggedIn: true,
@@ -4425,19 +4448,14 @@ export default defineApp({
         createSession: async () => {
           const created = await ctx.agent.createSession(await withVoiceFeatureRef({
             schemaVersion: 2,
-            runtime: "dsh",
-            // 指认 manifest 声明的「总结」功能（引擎锁定 DSH，模板集中在 agent-features.ts）。
+            runtime: "auto",
+            // 指认 manifest 声明的「总结」功能（模板集中在 agent-features.ts；Agent 由 Host 决定）。
             systemPrompt: VOICE_SUMMARY_SYSTEM_PROMPT,
             tools: [],
             skills: [],
             workspace: { kind: "app-private" },
             memory: "session",
           }, "summary", undefined, ctx.agent));
-          if (created.backend !== "dsh") {
-            throw Object.assign(new Error(t("app.theHostDidNotSelectTheRequested")), {
-              code: "AGENT_SESSION_INVALID_REQUEST",
-            });
-          }
           return { sessionId: created.sessionId };
         },
         send: async (options) => {
@@ -4711,6 +4729,8 @@ export default defineApp({
       selection: SavedInputSelection | undefined;
       polish: VoicePolishSetting;
       translationTarget: VoiceFeatureSettings["translationTarget"];
+      /** 开录时键盘拨杆的档位（Host 随 command.invoke 带来；没拨杆就没有）。 */
+      workMode: VoiceWorkMode | undefined;
     }
     const frozenCommandContext = (): CommandSessionContext => ({
       commandId: activeCommandId,
@@ -4720,6 +4740,7 @@ export default defineApp({
       selection: pendingCommandSelection,
       polish: activeCommandPolish,
       translationTarget: activeCommandTranslationTarget,
+      workMode: activeCommandWorkMode,
     });
 
     /** 命令段在 Agent 实际起跑前失败（识别为空、云端转写失败、门禁失败等）的收口。 */
@@ -4839,6 +4860,7 @@ export default defineApp({
         await startCommandAgent(transcript, session.commandId, session.deliveryTarget, {
           ...session.conversation,
           context: session.context,
+          ...(session.workMode ? { workMode: session.workMode } : {}),
           ...(result.sessionId ? { resultSessionId: result.sessionId } : {}),
           // 后台收尾段用开录时冻结的润色档与翻译目标（同步收尾照旧读当下设置）。
           ...(voiceSessionId ? { voiceSessionId, polish: session.polish, translationTarget: session.translationTarget } : {}),
@@ -5122,8 +5144,11 @@ export default defineApp({
      * ——否则用户按下时想的是「翻译」，松手前换了绑定，同一次说话会变成另一件事。
      */
     const registerCommandEvent = (eventId: string, defaultCommandId: VoiceCommandId) => {
-      ctx.commands.register(eventId, guardCommand(async ({ signal, input, operation, triggerRef }) => {
+      ctx.commands.register(eventId, guardCommand(async ({ signal, input, operation, triggerRef, ...rest }) => {
         throwIfAborted(signal);
+        // 拨杆档位随这次触发冻结：接下来这段录音起的 Agent 会话按它定 chat / plan / yolo。
+        activeCommandWorkMode = parseVoiceWorkMode((rest as { workMode?: unknown }).workMode);
+        if (activeCommandWorkMode) lastKnownWorkMode = activeCommandWorkMode;
         if (operation) return invokeCaptureOperation(operation, signal, () => runVoiceStart(signal, bounded => toggleCommand(bounded, resolveCommandId(input, defaultCommandId), undefined, undefined, true, triggerRef)));
         const finishing = finishActiveVoiceCapture();
         if (finishing) {
@@ -5317,12 +5342,6 @@ export default defineApp({
             ctx.systemTasks.open({
               target: "keymap",
               returnIntent: { reason: "voice-keymap-jump" },
-            }).then(() => undefined),
-          // C-AC PR4：直达 Host「插件 Agent 配置」固定模式（锁定到本插件）。
-          onOpenAgentConfig: () =>
-            ctx.systemTasks.open({
-              target: "agent-config",
-              returnIntent: { reason: "voice-agent-config" },
             }).then(() => undefined),
           onOpenAccountLogin: () =>
             ctx.systemTasks.open({
@@ -5599,12 +5618,6 @@ export default defineApp({
             settingsSaveChain = operation.catch(() => undefined);
             return operation;
           },
-          onAgentExperimentChanged: async (settings: VoiceAgentExperimentSettings) => {
-            await repository.saveAgentExperiment(settings);
-            publish({ agentExperiment: settings, error: undefined });
-          },
-          onRefreshConversationBackends: refreshConversationBackends,
-          onChangeConversationBackend: changeConversationBackend,
           onDownloadModel: async (modelId) => {
             await localDownloads.start(modelId, true);
           },

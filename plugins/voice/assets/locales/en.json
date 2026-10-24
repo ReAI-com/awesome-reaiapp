@@ -178,9 +178,9 @@
   },
   "summary": {
     "message1": "Using one-time cloud generation as configured",
-    "message2": "Could not read Dsh status",
-    "message3": "Dsh is unavailable",
-    "message4": "Sign in to use a Dsh session",
+    "message2": "Could not read the Agent status",
+    "message3": "The Agent is unavailable",
+    "message4": "Sign in to use an Agent session",
     "message5": "This plugin is not allowed to use account credits",
     "message6": "This segment's summary was not generated within {seconds} seconds (timed out). You can try again.",
     "message7": "This segment has no transcript yet. Summarize it after transcription finishes.",
@@ -260,7 +260,7 @@
     "voiceInputIsPausedEnableTextInsertion": "Voice input is paused. Enable text insertion permission, then change the polish level to retry.",
     "valueResult": "{value0} result",
     "valueIncomplete": "{value0} incomplete",
-    "theAgentRuntimeIsNotInstalledYet": "Allow Voice to use {backend} in its Runtime Components section. Driver will download and install it if needed. Return to Voice and retry when ready.",
+    "theAgentRuntimeIsNotInstalledYet": "The Agent service is not ready yet. Finish the installation in Driver, then return to Voice and retry.",
     "agentIsWorking": "Agent is working",
     "waitingForYou": "Waiting for you",
     "waitingForYouValue": "Waiting for you: {value0}",
@@ -288,9 +288,8 @@
     "enterSomethingToSend": "Enter something to send",
     "thePreviousVoiceCommandIsStillProcessing": "The previous voice command is still processing",
     "voiceInputIsInProgressWaitFor": "Voice input is in progress. Wait for it to finish before sending.",
-    "theHostDoesNotProvideADsh": "The Host does not provide a Dsh Agent backend",
-    "theHostDidNotSelectTheRequested": "The Host did not select the requested Dsh backend",
-    "dshAgentExecutionFailed": "Dsh Agent execution failed",
+    "theHostDoesNotProvideADsh": "The Host does not provide an Agent service",
+    "dshAgentExecutionFailed": "Agent execution failed",
     "anotherSegmentIsBeingSummarizedPleaseWait": "Another segment is being summarized (one at a time). Summarize this one after it finishes.",
     "thisSegmentHasNoTranscriptYetWait2": "This segment has no transcript yet. Wait for transcription before summarizing.",
     "summaryIsTemporarilyUnavailableTryAgainLater": "Summary is temporarily unavailable. Try again later.",
@@ -355,7 +354,7 @@
     "chooseCloudModelBeforeTranscribing": "Choose a cloud model in Voice settings before transcribing",
     "cloudOptionsUnavailable": "Cloud transcription options could not be loaded. Refresh them in settings and try again.",
     "cloudOptionRequired": "Choose and save an available cloud transcription option in Settings → Recording and recognition first.",
-    "agentRuntimeSetupUnavailable": "Could not open runtime settings. Open Voice in Driver’s Installed page, allow it to use {backend} under Runtime Components, then retry.",
+    "agentRuntimeSetupUnavailable": "Could not open the installation page. Finish installing the Agent service in Driver, then retry.",
     "agentDefaultUnavailable": "Could not read the default Agent selection. Select a default Agent again in Driver settings, then retry.",
     "agentReceiptUnknown": "The request may have started, but its receipt is missing. Use “Retry this request” in this record to avoid running it twice.",
     "notCompletedTryAgainLater": "This could not be completed right now. Please try again later."
@@ -369,7 +368,6 @@
     "translationTitle": "Translation",
     "sourceText": "Original",
     "translatedText": "Translation · {language}",
-    "agentKernelTag": "Agent kernel",
     "translationCharacterCount": "Characters: {source} → {result}",
     "copied": "Copied",
     "copyFailed": "Copy failed",
@@ -494,7 +492,7 @@
     "summaryThroughValue": "Summary through {value0}",
     "aiGeneratedNotYourOriginalWordsSegments": "AI-generated, not your original words · Segments: {value0} · {value1}–{value2}",
     "charactersValuePointsValue": " · Characters: {value0} · Points: {value1}",
-    "dshUnavailableGeneratedDirectlyByTheCloud": " · Dsh unavailable; generated directly by the cloud model",
+    "dshUnavailableGeneratedDirectlyByTheCloud": " · Agent unavailable; generated directly by the cloud model",
     "summarizing": "Summarizing…",
     "summarizeAgain": "Summarize again",
     "sendToAgent": "Send to Agent",
@@ -529,7 +527,7 @@
     "generateSummary": "Generate summary",
     "fromSegmentValueValueCharactersValue": "From segment {value0}–{value1} · Characters: {value2}",
     "aiSummary": "AI summary",
-    "valueDshUnavailableGeneratedDirectlyByThe": "{value0} · Dsh unavailable; generated directly by the cloud model",
+    "valueDshUnavailableGeneratedDirectlyByThe": "{value0} · Agent unavailable; generated directly by the cloud model",
     "thisSegmentHasNoSummaryYet": "This segment has no summary yet.",
     "thisSegmentIsStillBeingTranscribedWait": "This segment is still being transcribed. Wait for it to finish before requesting a summary.",
     "sendTheSegmentFromValueToAgent": "Send the segment from {value0} to Agent",
@@ -796,10 +794,6 @@
     "transcribeAgainLocally": "Transcribe again locally",
     "refresh": "Refresh options",
     "transcribeAgainCloud": "Transcribe again with cloud",
-    "agentConfig": "Agent settings",
-    "agentConfigTitle": "Plugin Agent settings",
-    "agentConfigSub": "Default engine, prompt templates and tools (opens in Host settings)",
-    "agentConfigValue": "Open",
     "keyboardDisconnectedHint": "Check that the keyboard is connected, or choose another recording source in Settings.",
     "aiBoardUnavailableHint": "Try again in a moment, or choose another recording source in Settings.",
     "reconnectCloud": "Reconnect",
@@ -822,17 +816,11 @@
     "message8": "Play audio {duration}"
   },
   "chat": {
-    "changeAgent": "Change Agent",
-    "driverDefault": "Use Driver default",
-    "actualAgent": "Current Agent: {name}",
-    "nextAgent": "Next message: {name}",
     "scopeUpdating": "Reading or saving settings…",
-    "switchContextNote": "Only this conversation changes. The new Agent receives recent visible chat; earlier replies keep their source. Internal state is not transferred.",
     "finishBeforeSwitch": "Wait for the current task to finish, or stop it before switching.",
     "scopeUnavailable": "This system or Agent does not yet support scoped file and command execution. No other Agent will be selected automatically; existing older conversations can continue.",
     "runtimeUpdateRequired": "Update the {name} runtime to use files and commands: its workspace support is missing, incompatible, or damaged. No other Agent will be selected automatically.",
     "agentUnavailable": "This Agent is unavailable. Your previous selection is unchanged.",
-    "currentAgentUnavailable": "{name} (unavailable)",
     "conversationMissing": "This conversation is no longer in history. Settings were not changed.",
     "scopeChangeFailed": "Could not save settings. Your previous selection is unchanged.",
     "scopeSaving": "This conversation's settings are updating. Try again shortly.",
@@ -1045,7 +1033,7 @@
         "purpose": "When polishing context is enabled, read text from the current input field to help AI match names and tone. Does not read window titles or file paths."
       },
       "agentSession": {
-        "purpose": "Allow Voice to select Pi Agent or DSH Harness through the shared Agent service and use your account credits for commands and polishing."
+        "purpose": "Allow Voice to handle commands and polishing through the shared Agent service using your account credits."
       },
       "audioCapture": {
         "purpose": "Subscribes to the Host's shared audio so voice input can include what you said just before pressing the voice key"
@@ -1055,13 +1043,9 @@
       }
     },
     "requirements": {
-      "dsh": {
-        "displayName": "ReAI DSH Runtime",
-        "remediationLabel": "Download and install the DSH runtime"
-      },
       "piFallback": {
-        "displayName": "ReAI Pi Runtime",
-        "remediationLabel": "Download and install the Pi fallback runtime"
+        "displayName": "ReAI Agent Runtime",
+        "remediationLabel": "Download and install the Agent runtime"
       }
     },
     "surfaces": {
@@ -1239,11 +1223,9 @@
     "permission1": "Uses your account credits to call Wainao models when you choose cloud recognition or use a voice Agent (usage is billed)",
     "permission2": "Inserts the prepared text into the input field where the cursor is at that moment, including voice input, transcription, and translation",
     "permission3": "When polishing context is enabled, reads text in the current input field to help AI match names and tone; does not read window titles or file paths",
-    "permission4": "Lets Voice use your selected Pi, DSH, or Codex and account credits for commands and polishing, and read/write files or run commands within its workspace; operations outside it require individual confirmation",
+    "permission4": "Lets Voice use the shared Agent service and your account credits for commands and polishing, and read/write files or run commands within its workspace; operations outside it require individual confirmation",
     "permission5": "Lets the Agent run commands inside your authorized workspace (the system restricts reads and writes to that folder); paths outside it are confirmed each time, and no shell is opened elsewhere",
-    "requirement0": "ReAI DSH Runtime",
-    "requirement1": "ReAI Pi Runtime",
-    "requirement2": "ReAI Codex Runtime",
+    "requirement1": "ReAI Agent Runtime",
     "permission6": "Subscribes to the Host's shared audio so voice input can include what you said just before pressing the voice key",
     "permission7": "Takes the shared audio from key press to release (plus about 1.5 seconds afterwards) and transcribes it on this computer; the clip is held only during this recognition and released right after"
   },

@@ -119,8 +119,8 @@ async function mount(options: {
               }) };
           },
           listSessions: async () => ({ sessions: [
-            ...(options.knownSessions ?? []).map(sessionId => ({ sessionId, backend: "pi", memory: "session", createdMs: 1, updatedMs: 1, stale: false })),
-            { sessionId: "pi-old", backend: "pi", memory: "session", createdMs: 1, updatedMs: 1, stale: false },
+            ...(options.knownSessions ?? []).map(sessionId => ({ sessionId, memory: "session", createdMs: 1, updatedMs: 1, stale: false })),
+            { sessionId: "pi-old", memory: "session", createdMs: 1, updatedMs: 1, stale: false },
             ...[...runtimeOf].map(([sessionId, backend]) => ({ sessionId, backend, runtime: backend, memory: "session", createdMs: 1, updatedMs: 1, stale: false })),
           ] }),
           startTurn: async (input: Start) => {
@@ -153,7 +153,8 @@ async function mount(options: {
           };
           ctx.agent.attachmentUploads = {
             async start(request) {
-              expect(runtimeOf.get(request.sessionId)).toBe("dsh");
+              // 图片上传归属发起会话；Agent 由 Host 决定，这里的 mock 一律解析成 pi。
+              expect(runtimeOf.get(request.sessionId)).toBe("pi");
               expect(request.admission).toEqual({ schemaVersion: 1, opaqueBinding: attachmentSnapshot.opaqueBinding,
                 revision: attachmentSnapshot.revision, modes: ["image"] });
               expect([...imageLeases.values()].some(lease => lease.bytes.length < lease.owner.byteLength)).toBeFalse();
@@ -229,13 +230,13 @@ async function mount(options: {
 
 const failure = { kind: "engine", code: "AGENT_RUNTIME_FAILED", stage: "runtime", retry: "new-turn", message: "engine failed" } as unknown as AgentTurnResult["failure"];
 
-test("存量 DSH 选择只属于本对话：新会话带 17 项工具与 yolo，第一条续接可见聊天；受理后失败的重试不重放背景", async () => {
-  const h = await mount({ choices: { "pi-old": { backend: "dsh" } } });
+test("存量对话第一次升级到 v2 会话：新会话带 17 项工具、没有拨杆信息按 chat，第一条续接可见聊天；受理后失败的重试不重放背景", async () => {
+  const h = await mount({ choices: { "pi-old": {} } });
   try {
     h.send("新的问题");
     await until(() => h.starts.length === 1);
     expect(h.configs).toHaveLength(1);
-    expect(h.configs[0]).toMatchObject({ runtime: "dsh", mode: "yolo", workspace: { kind: "app-private" } });
+    expect(h.configs[0]).toMatchObject({ runtime: "auto", mode: "chat", workspace: { kind: "app-private" } });
     expect(h.configs[0]!.tools).toHaveLength(17);
     expect(h.configs[0]!.tools.map(tool => tool.ref)).toEqual(expect.arrayContaining(["read", "write", "edit", "list", "glob", "grep", "command"]));
     expect(h.starts[0]!.text).toContain("PI_OLD_ANSWER");
@@ -258,8 +259,7 @@ test("存量 DSH 选择只属于本对话：新会话带 17 项工具与 yolo，
     await h.settle();
     const loaded = await h.load();
     // 只改本对话，不写 Driver 全局默认；旧条目的运行归属与用量原样保留。
-    expect(loaded.agentExperiment?.backend).toBe("auto");
-    expect(loaded.conversationOptions["pi-old"]).toMatchObject({ backend: "dsh", resolvedBackend: "dsh", sessionId: "agent2-new-1", scopeVersion: 1 });
+    expect(loaded.conversationOptions["pi-old"]).toMatchObject({ resolvedBackend: "pi", sessionId: "agent2-new-1", scopeVersion: 1 });
     expect(loaded.commandHistory!.find(item => item.id === "seed")).toMatchObject({ agentSessionId: "pi-old" });
     expect(loaded.commandHistory!.find(item => item.id === "seed")!.messages!.at(-1)).toMatchObject({ runtime: "pi", usage: { totalTokens: 12 } });
     expect(loaded.commandHistory!.filter(item => item.conversationId === "pi-old" || item.id === "seed")).toHaveLength(3);
@@ -270,7 +270,7 @@ test("存量 DSH 选择只属于本对话：新会话带 17 项工具与 yolo，
 });
 
 test("纯文本双 ACK 丢失后显式恢复沿用原正文和幂等键", async () => {
-  const h = await mount({ choices: { "pi-old": { backend: "dsh" } }, lostAcks: 2 });
+  const h = await mount({ choices: { "pi-old": {} }, lostAcks: 2 });
   try {
     h.send("SYNTHETIC_ACK_MARKER");
     await until(() => h.starts.length === 2 && Boolean(h.root.querySelector(".chat-retry-request")));
@@ -312,7 +312,7 @@ test("historical attachment receipt recovery cannot bypass unknown model admissi
 });
 
 test("切换后的第一条在 Host 受理前就失败：同一会话的重试仍附上续接上下文，受理后才清标记", async () => {
-  const h = await mount({ rejectFirstStart: true, choices: { "pi-old": { backend: "codex" } } });
+  const h = await mount({ rejectFirstStart: true, choices: { "pi-old": {} } });
   try {
     h.send("第一次尝试");
     await until(() => h.starts.length === 1);
@@ -338,7 +338,7 @@ test("切换后的第一条在 Host 受理前就失败：同一会话的重试�
 for (const locale of ["zh", "en"] as const) {
   test(`${locale} 对话详情不再提供 Agent 展示条与更换入口，也不提供工作目录入口`, async () => {
     setVoiceLocale(locale);
-    const h = await mount({ choices: { "pi-old": { backend: "dsh", resolvedBackend: "dsh" } } });
+    const h = await mount({ choices: { "pi-old": { resolvedBackend: "dsh" } } });
     try {
       expect(h.root.querySelector(".chat-folder-pick, .chat-scope-path")).toBeNull();
       expect(h.root.querySelector(".chat-scope, .chat-current-agent, .chat-scope-toggle, .chat-agent-select")).toBeNull();
@@ -346,24 +346,24 @@ for (const locale of ["zh", "en"] as const) {
       expect(h.root.textContent).toContain("PI_OLD_ANSWER");
       expect(h.root.querySelector<HTMLInputElement>(".chat-input")?.disabled).toBeFalse();
       expect(h.root.querySelector<HTMLButtonElement>(".chat-mic")?.disabled).toBeFalse();
-      expect((await h.load()).conversationOptions["pi-old"]).toMatchObject({ backend: "dsh", resolvedBackend: "dsh" });
+      expect((await h.load()).conversationOptions["pi-old"]).toMatchObject({ resolvedBackend: "dsh" });
       expect(h.picks()).toBe(0);
     } finally { await h.close(); setVoiceLocale("zh"); }
   });
 }
 
 test("存量对话此前选过的 direct 工作目录仍生效：撤的只是 UI 入口，不清洗既有选择", async () => {
-  const h = await mount({ choices: { "pi-old": { backend: "dsh", workspace: { kind: "direct", path: "/Users/example/project" } } } });
+  const h = await mount({ choices: { "pi-old": { workspace: { kind: "direct", path: "/Users/example/project" } } } });
   try {
     h.send("写入一个测试文件");
     await until(() => h.starts.length === 1);
-    expect(h.configs[0]).toMatchObject({ runtime: "dsh", workspace: { kind: "direct", path: "/Users/example/project" }, mode: "yolo" });
+    expect(h.configs[0]).toMatchObject({ runtime: "auto", workspace: { kind: "direct", path: "/Users/example/project" }, mode: "chat" });
     expect(h.picks()).toBe(0);
   } finally { await h.close(); }
 });
 
-test("Host 没给范围执行证明时，显式选择的会话不发任何模型请求并删掉刚建的会话", async () => {
-  const h = await mount({ scopeProof: false, choices: { "pi-old": { backend: "codex" } } });
+test("Host 没给范围执行证明时，显式选了目录的会话不发任何模型请求并删掉刚建的会话", async () => {
+  const h = await mount({ scopeProof: false, choices: { "pi-old": { workspace: { kind: "direct", path: "/Users/example/project" } } } });
   try {
     h.send("write a file");
     await until(() => h.configs.length === 1);
@@ -385,8 +385,8 @@ test("没改过选择的旧对话继续用原会话：不新建会话、不追�
   } finally { await h.close(); }
 });
 
-test("显式选的 Agent 在当前平台没有范围执行：零 create/send，也不偷换成其它 Agent", async () => {
-  const h = await mount({ unsupportedBackends: ["pi"], choices: { "pi-old": { backend: "pi" } } });
+test("显式选了目录但当前平台没有范围执行：零 create/send，也不偷换成别的工作范围", async () => {
+  const h = await mount({ unsupportedBackends: ["pi"], choices: { "pi-old": { workspace: { kind: "direct", path: "/Users/example/project" } } } });
   try {
     h.send("读取文件");
     await h.settle();
@@ -394,12 +394,12 @@ test("显式选的 Agent 在当前平台没有范围执行：零 create/send，�
     expect(h.starts).toHaveLength(0);
     expect(h.legacy).toHaveLength(0);
     expect(h.root.querySelector(".chat-send-error")).not.toBeNull();
-    expect((await h.load()).conversationOptions["pi-old"]?.backend).toBe("pi");
+    expect((await h.load()).conversationOptions["pi-old"]?.workspace).toEqual({ kind: "direct", path: "/Users/example/project" });
   } finally { await h.close(); }
 });
 
 test("越界审批只显示「等待 Host 确认」：挂在正在运行的那条上，插件里没有批准入口；解决后消失", async () => {
-  const h = await mount({ choices: { "pi-old": { backend: "pi" } } });
+  const h = await mount({ choices: { "pi-old": {} } });
   try {
     h.send("改一下项目外的文件");
     await until(() => h.waitingFor("native-1"));
@@ -433,8 +433,8 @@ function selectSyntheticFiles(root: HTMLElement, files: { name: string; type: st
 
 // Without a confirmed current capability the visible entry is absent. A synthetic
 // event on the hidden native picker still cannot bypass the local admission gate.
-for (const backend of ["dsh", "pi", "codex"] as const) for (const format of ["txt", "html", "pdf", "xlsx", "xls", "png"] as const) test(`${backend}: unknown ${format} admission hides plus and rejects before file read or Agent dispatch`, async () => {
-  const h = await mount({ choices: { "pi-old": { backend } } });
+for (const format of ["txt", "html", "pdf", "xlsx", "xls", "png"] as const) test(`unknown ${format} admission hides plus and rejects before file read or Agent dispatch`, async () => {
+  const h = await mount({ choices: { "pi-old": { workspace: { kind: "direct", path: "/Users/example/project" } } } });
   try {
     expect(h.root.querySelector(".chat-attach")).toBeNull();
     let reads = 0;
@@ -466,7 +466,7 @@ for (const reason of ["not-initialized", "readers-disabled"] as const) test(`imp
       inputs: { text: true, image: true, nativePdf: false } },
       readers: { text: false, extractedPdfText: false, extractedSpreadsheetText: false, images: false, nativePdf: false },
       transports: { textEnvelope: true, imageInput: true, nativePdfInput: false } };
-  const h = await mount({ readyAttachments: true, localAttachmentAdmission, choices: { "pi-old": { backend: "dsh" } } });
+  const h = await mount({ readyAttachments: true, localAttachmentAdmission, choices: { "pi-old": {} } });
   try {
     await until(() => h.attachmentCapabilityReads() > 0);
     expect(h.root.querySelector(".chat-attach")).toBeNull();
@@ -483,11 +483,11 @@ for (const reason of ["not-initialized", "readers-disabled"] as const) test(`imp
 });
 
 test("confirmed Task text/HTML enters the owned v2 session once as typed untrusted data", async () => {
-  const h = await mount({ readyAttachments: true, choices: { "pi-old": { backend: "dsh" } } });
+  const h = await mount({ readyAttachments: true, choices: { "pi-old": {} } });
   try {
     await until(() => Boolean(h.root.querySelector(".chat-attach")));
     expect(h.configs).toHaveLength(1);
-    expect(h.configs[0]).toMatchObject({ runtime: "dsh", featureRef: "command", workspace: { kind: "app-private" } });
+    expect(h.configs[0]).toMatchObject({ runtime: "auto", featureRef: "command", workspace: { kind: "app-private" } });
     expect(h.starts).toHaveLength(0);
     const html = '<h1>HTML_REFERENCE_MARKER</h1><script>globalThis.__voiceSyntheticScriptRan = true</script>';
     selectSyntheticFiles(h.root, [
@@ -527,7 +527,7 @@ test("confirmed Task text/HTML enters the owned v2 session once as typed untrust
 const SYNTHETIC_PNG = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="), value => value.charCodeAt(0));
 
 test("confirmed Task uploads two images sequentially and navigation does not cancel admitted leases", async () => {
-  const h = await mount({ readyAttachments: true, choices: { "pi-old": { backend: "dsh" } } });
+  const h = await mount({ readyAttachments: true, choices: { "pi-old": {} } });
   try {
     await until(() => Boolean(h.root.querySelector(".chat-attach")));
     selectSyntheticFiles(h.root, [
@@ -562,7 +562,7 @@ test("confirmed Task uploads two images sequentially and navigation does not can
 });
 
 test("typed image double ACK recovery preserves the exact lease identity without uploading again", async () => {
-  const h = await mount({ readyAttachments: true, choices: { "pi-old": { backend: "dsh" } }, lostAcks: 2 });
+  const h = await mount({ readyAttachments: true, choices: { "pi-old": {} }, lostAcks: 2 });
   try {
     await until(() => Boolean(h.root.querySelector(".chat-attach")));
     selectSyntheticFiles(h.root, [{ name: "recover.png", type: "image/png", content: SYNTHETIC_PNG }]);

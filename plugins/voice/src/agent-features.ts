@@ -78,8 +78,7 @@ export const VOICE_AGENT_FEATURES: readonly VoiceAgentFeature[] = [
   {
     id: "summary",
     name: "总结",
-    description: "当日总结与分段摘要（DSH 持续会话，引擎锁定）",
-    runtime: "dsh",
+    description: "当日总结与分段摘要（持续会话，由 Host 默认 Agent 承担）",
     promptTemplate: VOICE_SUMMARY_SYSTEM_PROMPT,
     promptParams: [],
     toolBase: [],

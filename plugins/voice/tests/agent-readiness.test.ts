@@ -6,15 +6,17 @@ import manifest from "../app.manifest.json";
 const status = (backend: AgentBackendStatus["backend"], available = false, downloadRequired = true): AgentBackendStatus =>
   ({ backend, available, downloadRequired, detail: "" });
 
-describe("Voice respects Host selection and per-app runtime access", () => {
-  test("a shared Pi process cannot pass readiness without Voice access; remediation uses Host DSH-first order", () => {
-    const dsh = status("dsh");
-    expect(agentReadiness("auto", { backends: [status("pi", true), dsh] })).toEqual({ kind: "blocked", status: dsh });
+describe("Voice follows the Host Agent selection and never ranks engines itself", () => {
+  test("auto blocks on the first backend the Host lists when none is ready for Voice", () => {
+    const pi = status("pi");
+    expect(agentReadiness("auto", { backends: [pi, status("dsh")] })).toEqual({ kind: "blocked", status: pi });
   });
 
-  test("auto can use one ready backend without requiring every optional runtime", () => {
+  test("auto uses whichever backend the Host reports ready, in Host order", () => {
     expect(agentReadiness("auto", { backends: [status("pi"), status("dsh", true, false), status("codex")] }))
       .toEqual({ kind: "ready", backend: "dsh" });
+    expect(agentReadiness("auto", { backends: [status("pi", true, false)] }))
+      .toEqual({ kind: "ready", backend: "pi" });
   });
 
   test("Host's explicit default cannot silently fall back to another ready runtime", () => {
@@ -25,29 +27,24 @@ describe("Voice respects Host selection and per-app runtime access", () => {
   });
 
   test("corrupt Host preferences block auto, but do not override an explicit plugin selection", () => {
-    const snapshot = { backends: [status("dsh", true, false)], defaultBackendError: "AGENT_PREFERENCE_INVALID" };
+    const snapshot = { backends: [status("pi", true, false)], defaultBackendError: "AGENT_PREFERENCE_INVALID" };
     expect(agentReadiness("auto", snapshot)).toEqual({ kind: "preference-invalid" });
-    expect(agentReadiness("dsh", snapshot)).toEqual({ kind: "ready", backend: "dsh" });
+    expect(agentReadiness("pi", snapshot)).toEqual({ kind: "ready", backend: "pi" });
   });
 
-  test("Codex default has a consent-gated optional requirement so the Host can grant Voice access", () => {
-    const codex = status("codex");
-    expect(agentReadiness("auto", { backends: [status("dsh", true, false), codex], defaultBackend: "codex" }))
-      .toEqual({ kind: "blocked", status: codex });
-    const requirement = manifest.requirements.find((item) => item.provision.resourceId === "com.reai.runtime.codex");
-    expect(requirement).toMatchObject({
+  test("the only runtime requirement left is the Agent runtime, consent-gated and optional", () => {
+    expect(manifest.requirements.map((item) => item.provision.resourceId)).toEqual(["com.reai.runtime.pi"]);
+    expect(manifest.requirements[0]).toMatchObject({
       required: false,
       requiredFor: ["capability:agent.session@1", "capability:agent.session@2"],
       provision: { installPolicy: "optional_on_demand", requiresConsent: true },
     });
-    expect(agentReadiness("auto", { backends: [status("codex", true, false)], defaultBackend: "codex" }))
-      .toEqual({ kind: "ready", backend: "codex" });
   });
 
   test("unknown or absent backend status stays blocked; a runtime fault is not recast as installation", () => {
     expect(agentReadiness("dsh", { backends: [status("pi", true, false)] })).toEqual({ kind: "blocked", status: undefined });
     expect(agentReadiness("auto", { backends: [] })).toEqual({ kind: "blocked", status: undefined });
-    const broken = status("dsh", false, false);
-    expect(agentReadiness("dsh", { backends: [broken, status("pi")] })).toEqual({ kind: "blocked", status: broken });
+    const broken = status("pi", false, false);
+    expect(agentReadiness("pi", { backends: [broken, status("dsh")] })).toEqual({ kind: "blocked", status: broken });
   });
 });

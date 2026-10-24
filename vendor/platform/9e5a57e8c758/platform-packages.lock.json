@@ -1,0 +1,125 @@
+{
+  "externalDependencies": [
+    {
+      "dependency": "@happy-dom/global-registrator",
+      "field": "dependencies",
+      "package": "@reai/app-cli",
+      "range": "^20.0.0"
+    },
+    {
+      "dependency": "fflate",
+      "field": "dependencies",
+      "package": "@reai/app-i18n-cli",
+      "range": "0.8.3"
+    }
+  ],
+  "internalDependencies": [
+    {
+      "dependency": "@reai/app-contract",
+      "field": "dependencies",
+      "package": "@reai/app-sdk",
+      "version": "1.26.0-v106.5"
+    },
+    {
+      "dependency": "@reai/app-contract",
+      "field": "dependencies",
+      "package": "@reai/app-test",
+      "version": "1.26.0-v106.5"
+    },
+    {
+      "dependency": "@reai/app-sdk",
+      "field": "dependencies",
+      "package": "@reai/app-test",
+      "version": "1.27.0-v106.5"
+    },
+    {
+      "dependency": "@reai/app-contract",
+      "field": "dependencies",
+      "package": "@reai/app-cli",
+      "version": "1.26.0-v106.5"
+    },
+    {
+      "dependency": "@reai/app-sdk",
+      "field": "dependencies",
+      "package": "@reai/app-cli",
+      "version": "1.27.0-v106.5"
+    },
+    {
+      "dependency": "@reai/app-test",
+      "field": "dependencies",
+      "package": "@reai/app-cli",
+      "version": "1.5.0-v106.5"
+    },
+    {
+      "dependency": "@reai/app-cli",
+      "field": "dependencies",
+      "package": "@reai/app-i18n-cli",
+      "version": "1.4.2-v106.5"
+    },
+    {
+      "dependency": "@reai/app-contract",
+      "field": "dependencies",
+      "package": "@reai/app-i18n-cli",
+      "version": "1.26.0-v106.5"
+    }
+  ],
+  "kind": "reai-platform-packages",
+  "overrides": {
+    "@reai/agent-ui": "packs/agent-ui.tgz",
+    "@reai/app-cli": "packs/app-cli.tgz",
+    "@reai/app-contract": "packs/app-contract.tgz",
+    "@reai/app-i18n-cli": "packs/app-i18n-cli.tgz",
+    "@reai/app-sdk": "packs/app-sdk.tgz",
+    "@reai/app-test": "packs/app-test.tgz"
+  },
+  "packages": [
+    {
+      "bytes": 40733,
+      "file": "packs/app-contract.tgz",
+      "name": "@reai/app-contract",
+      "sha256": "9660128699d83df0dde8e9b550366ae4e80575a2bdd6f86e043484cc40635e82",
+      "version": "1.26.0-v106.5"
+    },
+    {
+      "bytes": 106606,
+      "file": "packs/app-sdk.tgz",
+      "name": "@reai/app-sdk",
+      "sha256": "4a31cdf8bbd28e62585b9475e82b739ecebbc76d36eb6edc4c789c6aa05a78ca",
+      "version": "1.27.0-v106.5"
+    },
+    {
+      "bytes": 50837,
+      "file": "packs/app-test.tgz",
+      "name": "@reai/app-test",
+      "sha256": "54915bf0fa5dbcb3cab3a522a09cb086a90f1f0e734b99340ba856bdf1b735a3",
+      "version": "1.5.0-v106.5"
+    },
+    {
+      "bytes": 33121,
+      "file": "packs/app-cli.tgz",
+      "name": "@reai/app-cli",
+      "sha256": "e00cebb415432ac89f6533c3851b96f49f5eeb75d677ecc02fd2993127910987",
+      "version": "1.4.2-v106.5"
+    },
+    {
+      "bytes": 43332,
+      "file": "packs/app-i18n-cli.tgz",
+      "name": "@reai/app-i18n-cli",
+      "sha256": "8e445cc729aff718f53372509bf380ccf6afd24d5e52861e893b2e9a03c17e99",
+      "version": "1.2.0-v106.5"
+    },
+    {
+      "bytes": 22561,
+      "file": "packs/agent-ui.tgz",
+      "name": "@reai/agent-ui",
+      "sha256": "42b0448f2d8797ecb5105101e9827d140c2c32e099f60d9b539c865fa184c84d",
+      "version": "0.1.1-v106.5"
+    }
+  ],
+  "schemaVersion": 1,
+  "sourceHead": "9e5a57e8c758e3916b98a9b7aa093968a3227534",
+  "toolchainReceipt": {
+    "file": "toolchain.json",
+    "sha256": "29b1fcabb5635412482d9833853412d092988b87ca56e419b2555cb0182974f0"
+  }
+}

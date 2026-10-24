@@ -35,7 +35,6 @@ import type {
 } from "./data";
 import { BUILTIN_VOICE_COMMANDS } from "./voice-ai-contract";
 import { conversationKey, conversationMembers } from "./agent-conversation";
-import type { ResolvedAgentBackend } from "@reai/app-sdk/v1";
 import type { VoiceErrorDetail } from "./data";
 import { elapsedNode, errorDetailFrom, failureState, stepText, structuredToken, type VoiceDiagnosticDetail, type VoiceDiagnosticEntry } from "./voice-diagnostics";
 import { mergeToolProgress, userWaitLabel } from "./voice-agent-presentation";
@@ -163,8 +162,6 @@ export interface VoiceChatDetailDeps {
     onReleaseAttachment?(file: PreparedVoiceAttachment): Promise<void>;
     onSendCommandFollowUp(text: string, conversation?: VoiceAgentConversationRef, attachments?: readonly PreparedVoiceAttachment[]): Promise<string>;
     onCancelCommand?(taskId: string): Promise<void>;
-    onRefreshConversationBackends?(): Promise<void>;
-    onChangeConversationBackend?(itemId: string, backend: ResolvedAgentBackend | "auto"): Promise<void>;
     onRetryAgentRequest?(taskId: string): Promise<string>;
     onDictateDraft(): Promise<
       { phase: "listening"; sessionId?: string }

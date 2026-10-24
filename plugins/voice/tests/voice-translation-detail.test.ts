@@ -90,11 +90,12 @@ describe("翻译详情：一次性的「原文 → 译文」，不借用 Agent �
     expect(copied).toEqual([SOURCE, RESULT]);
   });
 
-  test("译文下只标本次实际用的 Agent 内核；没记录内核就不写、也不猜", () => {
+  test("译文下不再标注引擎：用户视角只有一个 Agent，不显示内核名", () => {
     const withKernel = mount({ commandHistory: [translationItem()] });
     openFirstCommand(withKernel.root);
-    expect(withKernel.root.querySelector(".input-detail-chips")?.textContent).toBe("Agent 内核DSH");
-    expect(withKernel.root.querySelector(".input-detail-chip b")?.textContent).toBe("DSH");
+    expect(withKernel.root.querySelector(".translation-detail")).not.toBeNull();
+    expect(withKernel.root.querySelector(".input-detail-chips")).toBeNull();
+    expect(withKernel.root.textContent).not.toMatch(/Agent 内核|\bDSH\b|\bCodex\b/);
     document.body.replaceChildren();
 
     const withoutKernel = mount({ commandHistory: [translationItem({ messages: undefined })] });

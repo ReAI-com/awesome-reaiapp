@@ -70,7 +70,6 @@ function mount(overrides: Record<string, unknown> = {}, extraActions: Partial<Vo
     onOpenSystemTask: calls.firmware,
     onRefresh: calls.refresh,
     onSettingsChanged: async () => undefined,
-    onAgentExperimentChanged: async () => undefined,
     onDownloadModel: async () => undefined,
     onCancelModelDownload: async () => undefined,
     onRequestPermission: async () => undefined,

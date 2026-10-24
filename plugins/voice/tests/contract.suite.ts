@@ -1066,15 +1066,15 @@ export default configuredVoiceSuite({
         if (setups.length !== 2) throw new Error("每次明确动作应且仅应发起一次来源插件修复导航");
         for (const setup of setups) {
           const params = setup.params as { target?: string; appId?: string; returnIntent?: { reason?: string; backend?: string } };
-          if (params.target !== "app-managed-resources" || params.appId !== undefined || params.returnIntent?.reason !== "voice-agent-runtime" || params.returnIntent.backend !== "dsh") {
-            throw new Error("Voice 必须使用 Host 注入的来源身份与自动选择顺序，不能指定其他插件或替代授权");
+          if (params.target !== "app-managed-resources" || params.appId !== undefined || params.returnIntent?.reason !== "voice-agent-runtime" || typeof params.returnIntent.backend !== "string") {
+            throw new Error("Voice 必须使用 Host 注入的来源身份与 Host 自己的选择顺序，不能指定其他插件或替代授权");
           }
         }
         await host.sendIntent(main.surfaceMountId, { type: "system-task.return", taskId: "mock-system-task", target: "app-managed-resources", outcome: "cancelled" });
         await new Promise((resolve) => setTimeout(resolve, 30));
         if (started() !== startsBefore || sends() !== sendsBefore) throw new Error("授权前或取消后不得录音、创建会话或发送模型请求");
         const answer = host.voiceCommandRequests.filter((request) => request.method === "voice.command.present-answer").at(-1)?.params as { text?: string } | undefined;
-        if (!answer?.text?.includes("Voice 的运行组件中允许使用 DSH") || answer.text.includes("生命周期")) throw new Error("缺少 Voice 授权不能误报 DSH 全局未安装");
+        if (!answer?.text?.includes("Agent") || /\b(DSH|Dsh|Pi|Codex)\b/.test(answer.text) || answer.text.includes("生命周期")) throw new Error("缺少 Voice 授权时只提示 Agent 服务未就绪，不出现引擎名，也不能误报全局未安装");
 
         // The mock only models the subsequent authoritative status. Native acceptance
         // must separately prove Host preview/confirmation/attachment, not forge a receipt.
@@ -1096,7 +1096,8 @@ export default configuredVoiceSuite({
         await host.invokeCommand("com.reai.voice.command.agent");
         await waitUntil(() => host.voiceCommandRequests.some((request) => request.method === "voice.command.present-answer"), "导航失败没有可操作反馈");
         const answer = host.voiceCommandRequests.filter((request) => request.method === "voice.command.present-answer").at(-1)?.params as { text?: string } | undefined;
-        if (!answer?.text?.includes("未能打开运行组件设置") || answer.text.includes("private-error-details")) throw new Error("导航失败文案必须说明手动入口并隐藏内部细节");
+        // 2026-10-24 起文案不再提「运行组件 / 引擎名」：说明到 Driver 里完成 Agent 服务安装即可，内部错误不透传。
+        if (!answer?.text?.includes("未能打开安装页面") || !answer.text.includes("Driver") || answer.text.includes("private-error-details")) throw new Error("导航失败文案必须说明手动入口并隐藏内部细节");
         if (host.agentRequests.some((request) => request.method === "agent.v2.session.create") || host.voiceInputRequests.some((request) => request.method === "voice.toggle")) throw new Error("导航失败不得继续请求");
       },
     },
@@ -2068,7 +2069,7 @@ export default configuredVoiceSuite({
       },
     },
     {
-      name: "段总结（R11）：「生成总结」经通用 Agent Session 选择 Dsh backend，并经 set-summary 交回 Host 持久化；重新总结复用同一会话",
+      name: "段总结（R11）：「生成总结」经通用 Agent Session 由 Host 默认 Agent 承担，并经 set-summary 交回 Host 持久化；重新总结复用同一会话",
       async run({ host }) {
         const start = new Date();
         start.setHours(14, 3, 0, 0);
@@ -2146,8 +2147,8 @@ export default configuredVoiceSuite({
           .find((request) => request.method === "agent.v2.session.create")?.params as {
             config?: { runtime?: string; memory?: string; tools?: unknown[] };
           } | undefined;
-        if (created?.config?.runtime !== "dsh" || created.config.memory !== "session") {
-          throw new Error("段总结必须在通用 Agent Session 上明确选择 Dsh 持久会话");
+        if (created?.config?.runtime !== "auto" || created.config.memory !== "session") {
+          throw new Error("段总结必须在通用 Agent Session 上以 Host 默认 Agent 建持久会话（runtime=auto）");
         }
         if ((created.config.tools?.length ?? -1) !== 0) {
           throw new Error("总结会话不需要读取 Host 工具");
@@ -2157,7 +2158,7 @@ export default configuredVoiceSuite({
           .find((request) => request.method === "agent.v2.turn.start");
         const firstText = String((firstSend?.params as { text?: unknown } | undefined)?.text ?? "");
         if (!firstText.includes("[14:03:00] 我们先把发布节奏定下来。")) {
-          throw new Error("首轮应把逐句带时刻的转写夹在围栏里发给 Dsh");
+          throw new Error("首轮应把逐句带时刻的转写夹在围栏里发给 Agent");
         }
         const saved = host.voiceInputRequests
           .filter((request) => request.method === "voice.recordings.set-summary")
@@ -2168,13 +2169,13 @@ export default configuredVoiceSuite({
             basedOnTranscribedAtMs?: number;
           } | undefined;
         if (saved?.recordingId !== "seg-1" || saved.dshSessionId !== "agent2-mock-1") {
-          throw new Error("set-summary 必须带上段 id 与生成它的 Dsh 会话");
+          throw new Error("set-summary 必须带上段 id 与生成它的 Agent 会话");
         }
         if (saved.basedOnTranscribedAtMs !== start.getTime() + 60_000) {
           throw new Error("set-summary 必须带上生成时所依据的转写版本，避免迟到总结覆盖新转写");
         }
         if (!Array.isArray(saved.points) || saved.points[0] !== "这是测试工作流回复") {
-          throw new Error("交回 Host 的要点应是 Dsh 回复解析出的内容");
+          throw new Error("交回 Host 的要点应是 Agent 回复解析出的内容");
         }
         await waitUntil(
           () => root.querySelector(".ctx-sum-lb")?.textContent === "AI 总结",
@@ -2291,9 +2292,10 @@ export default configuredVoiceSuite({
       },
     },
     {
-      name: "段总结：Dsh 引擎不可用时回退云端一次性生成，结果不带会话并在界面说明来路",
+      name: "段总结：Agent 不可用时回退云端一次性生成，结果不带会话并在界面说明来路",
       async run({ host }) {
-        // 这个场景用「Dsh backend 不可用」的 Host：回退云端一次性生成，不创建会话。
+        // 这个场景用「没有任何 Agent 可用」的 Host（runtime 恒 auto，任一后端可用都会走会话）：
+        // 回退云端一次性生成，不创建会话。
         const start = new Date();
         start.setHours(11, 20, 0, 0);
         host.setVoiceRecordings([
@@ -2309,6 +2311,11 @@ export default configuredVoiceSuite({
         host.setAgentDshStatus({
           available: false,
           detail: "未设置 REAI_DSH_ROOT（测试注入）",
+        });
+        host.setAgentPiStatus({
+          available: false,
+          detail: "download_required: com.reai.runtime.pi（测试注入）",
+          downloadRequired: true,
         });
         const main = await host.openSurface("main");
         const root = main.root;
