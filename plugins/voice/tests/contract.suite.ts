@@ -1006,6 +1006,25 @@ export default configuredVoiceSuite({
         await waitUntil(() => creates().length > createsBefore + 1, "弹窗不在时再按语音键应新建会话");
         const fresh = (starts().at(-1)!.params as { sessionId?: string }).sessionId;
         if (fresh === firstSession) throw new Error("弹窗不在时不得续接旧会话");
+        await waitUntil(() => answers().length > answersBefore + 2, "新任务那段没有弹结果面板");
+        const freshRun = (answers().at(-1)!.params as { runId?: string }).runId;
+        if (!freshRun) throw new Error("新任务的结果面板没有 runId");
+        // 判定在按键开录那一刻冻结（第 2 轮审查）：按键时弹窗在、录音期间被关掉 → 仍续接那条对话。
+        host.setVisibleAnswer({ visible: true, runId: freshRun });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        host.setVisibleAnswer({ visible: false });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => answers().length > answersBefore + 3, "按键时弹窗在的那段没有弹结果面板");
+        if (creates().length !== createsBefore + 2) throw new Error("按键时弹窗在：录音期间关掉也应续接，不得新建会话");
+        if ((starts().at(-1)!.params as { sessionId?: string }).sessionId !== fresh) throw new Error("应续接按键那一刻显示着的那条对话");
+        // 按键时弹窗不在、录音期间才弹出来 → 仍是新任务，不把新语音并进去。
+        host.setVisibleAnswer({ visible: false });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        host.setVisibleAnswer({ visible: true, runId: freshRun });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => creates().length > createsBefore + 2, "按键时没弹窗的那段应新建会话");
+        if ((starts().at(-1)!.params as { sessionId?: string }).sessionId === fresh) throw new Error("录音期间才弹出来的结果不得把新语音并进去");
+        await waitUntil(() => answers().length > answersBefore + 4, "最后一段没有弹结果面板");
       },
     },
     {

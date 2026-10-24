@@ -25,8 +25,8 @@ export interface VoiceAgentFeature {
 }
 
 /**
- * 总结（当日/分段摘要）走 Host 默认 Agent（runtime 恒 auto，2026-10-24 起不再锁定 DSH）：持续会话，
- * 换引擎等于换记忆载体，因此 runtime 锁定、配置页只读。
+ * 总结（当日/分段摘要）走 Host 默认 Agent（runtime 恒 auto，2026-10-24 起不再指定引擎）：持续会话，
+ * 中途换 Agent 等于换记忆载体，因此会话建立后不再改 runtime，也没有可改的配置页。
  * 原先内联在 app.ts 的 Dsh 总结适配器里；集中到这里供 manifest 与运行时共用。
  */
 export const VOICE_SUMMARY_SYSTEM_PROMPT =

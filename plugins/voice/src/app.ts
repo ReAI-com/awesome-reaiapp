@@ -3175,7 +3175,8 @@ export default defineApp({
     const continuationRefFromVisibleAnswer = async (): Promise<VoiceAgentConversationRef | undefined> => {
       const query = (ctx.voiceCommand as { visibleAnswer?: () => Promise<{ visible: boolean; runId?: string }> }).visibleAnswer;
       if (typeof query !== "function") return undefined;
-      const shown = await query.call(ctx.voiceCommand).catch(() => undefined);
+      // 同步抛错与 Promise 拒绝都按「查不到」处理：续接只是便利，不能让开录失败。
+      const shown = await Promise.resolve().then(() => query.call(ctx.voiceCommand)).catch(() => undefined);
       if (!shown?.visible || typeof shown.runId !== "string" || !shown.runId) return undefined;
       const taskId = answerRunTasks.get(shown.runId) ?? shown.runId;
       const item = state.commandHistory.find((entry) => entry.id === taskId
@@ -4908,15 +4909,12 @@ export default defineApp({
         const completing = state.commandPhase === "listening";
         if (!completing) {
           const requestedCommand = commandId ?? BUILTIN_VOICE_COMMANDS.agent;
-          // 按键已受理：立刻给「正在准备」反馈再跑就绪检查——3 秒窗口内任何一步
-          // 慢，用户看到的不再是死键；录音浮层出现后自然替换（链③）。
-          publish({ commandPhase: "preparing" });
           const prepareStartedAt = Date.now();
           commandPrepareStartedAt = prepareStartedAt;
-          const timedStage = async (name: string, run: () => Promise<unknown>) => {
+          const timedStage = async <T,>(name: string, run: () => Promise<T>): Promise<T> => {
             const stageStartedAt = Date.now();
             try {
-              await awaitVoicePreparation(signal, run);
+              return await awaitVoicePreparation(signal, run);
             } finally {
               // 分段耗时（链③定位）：只记阶段名与毫秒数，不记内容。
               console.info("[voice-start]", name, {
@@ -4925,13 +4923,28 @@ export default defineApp({
               });
             }
           };
+          // 2026-10-24：结果弹窗还显示着时按语音键 = 续接那条对话。只在没有显式对话目标的 Agent 命令上
+          // 判定，并且是开录分支的**第一步**——在「正在准备」反馈、就绪检查、设置保存、录音配置等任何
+          // await 之前查，判定对象就是按键那一刻的窗口；准备 / 录音 / 识别期间后弹出来或被关掉的结果不算。
+          // 与其他准备阶段一样受 deadline / 取消保护：Host 不回也不会把这次开录卡死。
+          const continued = requestedCommand === BUILTIN_VOICE_COMMANDS.agent && !conversation
+            ? await timedStage("visible_answer", () => continuationRefFromVisibleAnswer())
+            : undefined;
+          throwIfAborted(signal);
+          const effectiveConversation = requestedCommand === BUILTIN_VOICE_COMMANDS.agent
+            ? (conversation ?? continued)
+            : undefined;
+          // 按键已受理：立刻给「正在准备」反馈再跑就绪检查——3 秒窗口内任何一步
+          // 慢，用户看到的不再是死键；录音浮层出现后自然替换（链③）。
+          publish({ commandPhase: "preparing" });
           // Host 的独立全局胶囊只显示固定准备文案，不开麦。Voice 页面不在前台
           // （例如用户还在设置页）时，也能立即看到这次按键已被受理。
           globalPreparingRequestId = crypto.randomUUID();
           await timedStage("global_feedback", () => ctx.voiceInput.beginPreparing(
             globalPreparingRequestId!, commandOverlayKind(requestedCommand),
           ));
-          if (requestedCommand !== BUILTIN_VOICE_COMMANDS.transcribe && !conversation?.agentSessionId) {
+          // 续接已有会话（显式对话目标或按键时还显示着的结果）不必再做就绪检查：会话已经在跑。
+          if (requestedCommand !== BUILTIN_VOICE_COMMANDS.transcribe && !effectiveConversation?.agentSessionId) {
             await timedStage("agent_ready", () => requireUnifiedAgentReady());
           }
           await timedStage("settings_save", () => settingsSaveChain);
@@ -4941,16 +4954,8 @@ export default defineApp({
           if (pendingCommandSelection.engine === "cloud") await timedStage("cloud_model", () => selectedCloudModel(pendingCommandSelection!));
           await timedStage("configure", () => configuration.prepare(state.settings));
           throwIfAborted(signal);
-          // 2026-10-24：结果弹窗还显示着时按语音键 = 续接那条对话。只在没有显式对话目标的 Agent 命令上
-          // 判定，并在按键开录这一刻冻结（不是识别完再查）：录音 / 识别期间后弹出来的别的结果不算。
-          const continued = requestedCommand === BUILTIN_VOICE_COMMANDS.agent && !conversation
-            ? await continuationRefFromVisibleAnswer()
-            : undefined;
-          throwIfAborted(signal);
           activeCommandId = requestedCommand;
-          activeAgentConversation = requestedCommand === BUILTIN_VOICE_COMMANDS.agent
-            ? (conversation ?? continued)
-            : undefined;
+          activeAgentConversation = effectiveConversation;
           // 拨杆档位随这次按键冻结；软件入口 / 无拨杆 = undefined，新会话按 chat。
           activeCommandWorkMode = workMode;
           activeDeliveryTarget = undefined;
