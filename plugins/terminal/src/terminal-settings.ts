@@ -237,6 +237,8 @@ export function mountTerminalSettings(
       const body = document.createElement("pre");
       body.className = "terminal-changelog";
       body.textContent = section ?? messages.t("changelogMissing", { version: info.version });
+      // 日志正文只有中文，标注语言让英文界面的读屏按中文朗读。
+      if (section) body.lang = "zh";
       infoBody.replaceChildren(body, ...(section ? [paragraph(messages.t("changelogLanguageNote"))] : []));
       return;
     }

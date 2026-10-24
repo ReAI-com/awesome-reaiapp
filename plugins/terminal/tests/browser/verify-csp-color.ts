@@ -71,9 +71,31 @@ for (const item of cases) {
   const state = await tab.evaluate(() => (window as any).__cspColor);
   const png = join(outDir, `${item.mode}.png`);
   await tab.locator(item.selector).screenshot({ path: png });
-  // 用浏览器自带解码按色相统计像素，主题配色不同也能判断红、绿、橙是否画出。
+  const counts = await hueCounts(tab, png);
+  // 整包模式逐个窗格截图取色：分屏后每个窗格都必须各自画出三种颜色。
+  const panes: Array<Record<string, number>> = [];
+  if (item.mode === "app") {
+    const locators = await tab.locator(".terminal-pane").all();
+    for (const [index, pane] of locators.entries()) {
+      const panePng = join(outDir, `app-pane-${index + 1}.png`);
+      await pane.screenshot({ path: panePng });
+      panes.push(await hueCounts(tab, panePng));
+    }
+  }
+  const colored = Object.values(counts).every((count) => count > 20)
+    && (item.mode !== "app" || (panes.length === 2 && panes.every((pane) => Object.values(pane).every((count) => count > 20))));
+  if (colored !== item.expectColor) failed = true;
+  const features = item.mode === "auto" ? await checkFeatures(tab) : undefined;
+  if (features && !Object.values(features).every((feature) => feature.ok)) failed = true;
+  report[item.mode] = { ...state, screenshot: png, colorPixels: counts, ...(panes.length ? { paneColorPixels: panes } : {}), colored, expectColor: item.expectColor, features, errors };
+  await tab.close();
+}
+await browser.close();
+
+// 用浏览器自带解码按色相统计像素，主题配色不同也能判断红、绿、橙是否画出。
+async function hueCounts(tab: any, png: string): Promise<Record<string, number>> {
   const bytes = Buffer.from(await Bun.file(png).arrayBuffer()).toString("base64");
-  const counts: Record<string, number> = await tab.evaluate(async (data: string) => {
+  return tab.evaluate(async (data: string) => {
     const image = new Image();
     image.src = `data:image/png;base64,${data}`;
     await image.decode();
@@ -91,14 +113,7 @@ for (const item of cases) {
     }
     return result;
   }, bytes);
-  const colored = Object.values(counts).every((count) => count > 20);
-  if (colored !== item.expectColor) failed = true;
-  const features = item.mode === "auto" ? await checkFeatures(tab) : undefined;
-  if (features && !Object.values(features).every((feature) => feature.ok)) failed = true;
-  report[item.mode] = { ...state, screenshot: png, colorPixels: counts, colored, expectColor: item.expectColor, features, errors };
-  await tab.close();
 }
-await browser.close();
 
 type Rgb = readonly [number, number, number];
 // 在页面里执行一步操作，等两帧后截图，按指定颜色统计像素。
