@@ -27,20 +27,20 @@
   },
   "devDependencies": {
     "@happy-dom/global-registrator": "^20.0.0",
-    "@reai/app-cli": "file:../../vendor/platform/9e5a57e8c758/packs/app-cli.tgz",
-    "@reai/app-contract": "file:../../vendor/platform/9e5a57e8c758/packs/app-contract.tgz",
-    "@reai/app-i18n-cli": "file:../../vendor/platform/9e5a57e8c758/packs/app-i18n-cli.tgz",
-    "@reai/app-sdk": "file:../../vendor/platform/9e5a57e8c758/packs/app-sdk.tgz",
-    "@reai/app-test": "file:../../vendor/platform/9e5a57e8c758/packs/app-test.tgz",
+    "@reai/app-cli": "file:../../vendor/platform/3fbf36be0af7/packs/app-cli.tgz",
+    "@reai/app-contract": "file:../../vendor/platform/3fbf36be0af7/packs/app-contract.tgz",
+    "@reai/app-i18n-cli": "file:../../vendor/platform/3fbf36be0af7/packs/app-i18n-cli.tgz",
+    "@reai/app-sdk": "file:../../vendor/platform/3fbf36be0af7/packs/app-sdk.tgz",
+    "@reai/app-test": "file:../../vendor/platform/3fbf36be0af7/packs/app-test.tgz",
     "@reai/chat-ui": "file:./packages/chat-ui",
     "@types/bun": "^1.3.14",
     "typescript": "~5.6.0"
   },
   "overrides": {
-    "@reai/app-cli": "file:../../vendor/platform/9e5a57e8c758/packs/app-cli.tgz",
-    "@reai/app-contract": "file:../../vendor/platform/9e5a57e8c758/packs/app-contract.tgz",
-    "@reai/app-sdk": "file:../../vendor/platform/9e5a57e8c758/packs/app-sdk.tgz",
-    "@reai/app-test": "file:../../vendor/platform/9e5a57e8c758/packs/app-test.tgz",
-    "@reai/app-i18n-cli": "file:../../vendor/platform/9e5a57e8c758/packs/app-i18n-cli.tgz"
+    "@reai/app-cli": "file:../../vendor/platform/3fbf36be0af7/packs/app-cli.tgz",
+    "@reai/app-contract": "file:../../vendor/platform/3fbf36be0af7/packs/app-contract.tgz",
+    "@reai/app-sdk": "file:../../vendor/platform/3fbf36be0af7/packs/app-sdk.tgz",
+    "@reai/app-test": "file:../../vendor/platform/3fbf36be0af7/packs/app-test.tgz",
+    "@reai/app-i18n-cli": "file:../../vendor/platform/3fbf36be0af7/packs/app-i18n-cli.tgz"
   }
 }

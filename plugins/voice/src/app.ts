@@ -3167,17 +3167,16 @@ export default defineApp({
     };
 
     /**
-     * 结果弹窗上此刻正显示的那条 Agent 对话（Host API 1.26 `voiceCommand.visibleAnswer`）。
-     * 弹窗关掉、被顶掉、显示的不是本插件的 Agent 结果，或旧 Host 没有这个方法，都返回 undefined
-     * （= 新任务）。对话曾改过目录 / 等待切换时按追问同一口径：新建会话并附上有界可见聊天。
+     * 结果弹窗上此刻正显示的那条 Agent 对话（Host API 1.26 `voiceCommand.visibleAnswer`），在**按键开录那一刻**
+     * 查询并冻结成本次录音的对话目标。弹窗关掉、被顶掉、显示的不是本插件的 Agent 结果、runId 对不上本地
+     * 历史，或旧 Host 没有这个方法，都返回 undefined（= 新任务）。对话正等待切换目录（没有有效会话）时
+     * 也按新任务处理，不猜用户要哪一条。
      */
-    const continuationFromVisibleAnswer = async (): Promise<
-      Pick<CommandRunOptions, "agentSessionId" | "conversationId" | "conversationOptions" | "visibleContext"> | undefined
-    > => {
+    const continuationRefFromVisibleAnswer = async (): Promise<VoiceAgentConversationRef | undefined> => {
       const query = (ctx.voiceCommand as { visibleAnswer?: () => Promise<{ visible: boolean; runId?: string }> }).visibleAnswer;
       if (typeof query !== "function") return undefined;
       const shown = await query.call(ctx.voiceCommand).catch(() => undefined);
-      if (!shown?.visible || !shown.runId) return undefined;
+      if (!shown?.visible || typeof shown.runId !== "string" || !shown.runId) return undefined;
       const taskId = answerRunTasks.get(shown.runId) ?? shown.runId;
       const item = state.commandHistory.find((entry) => entry.id === taskId
         && entry.commandId === BUILTIN_VOICE_COMMANDS.agent && Boolean(entry.agentSessionId));
@@ -3185,13 +3184,8 @@ export default defineApp({
       const key = conversationKey(item);
       const choices = state.conversationOptions?.[key];
       const sessionId = choices ? choices.sessionId : item.agentSessionId;
-      const members = conversationMembers(item, state.commandHistory);
-      return {
-        ...(sessionId ? { agentSessionId: sessionId } : {}),
-        conversationId: key,
-        conversationOptions: choices,
-        visibleContext: !sessionId || choices?.continuationPending ? visibleConversationContext(members) : [],
-      };
+      if (!sessionId) return undefined;
+      return { agentSessionId: sessionId, conversationId: key };
     };
 
     /**
@@ -3503,7 +3497,7 @@ export default defineApp({
                   }
                   const created = await ctx.agent.createSession(await withVoiceFeatureRef(
                     createVoiceCommandSessionConfig({
-                      workspace: options.conversationOptions?.workspace, scopedExecution, mode: options.workMode ?? lastKnownWorkMode,
+                      workspace: options.conversationOptions?.workspace, scopedExecution, mode: options.workMode,
                     }),
                     "command",
                     undefined,
@@ -4065,14 +4059,9 @@ export default defineApp({
     ): Promise<string> => {
       const taskId = crypto.randomUUID();
       const controller = new AbortController();
-      // 2026-10-24：Agent 结果弹窗还显示着时再按语音键 = 续接那条对话，不是新任务；弹窗关掉
-      // （或被别的面板顶掉）之后才新开。只对没有显式对话目标的新语音任务生效。
-      if (commandId === BUILTIN_VOICE_COMMANDS.agent && !options.agentSessionId && !options.conversationId
-        && !options.recovery && !options.resume && !options.readOnlyTranslation) {
-        const continued = await continuationFromVisibleAnswer();
-        if (continued) options = { ...options, ...continued };
-      }
       // F04：Agent 对话的可见身份从第一条起固定；旧条目沿用 session id 作键。
+      // （结果弹窗续接的判定在按键开录那一刻完成，见 toggleCommand；这里不再回头查，避免并进
+      // 录音 / 识别期间才弹出来的别的结果。）
       if (commandId === BUILTIN_VOICE_COMMANDS.agent) options = { ...options, conversationId: options.conversationId ?? options.agentSessionId ?? options.dshSessionId ?? taskId };
       if (options.conversationId && conversationChanges.has(options.conversationId)) {
         throw new VoiceAppError({ code: "com.reai.voice/VOICE_BUSY", userMessage: t("chat.scopeSaving"), retryable: true }, undefined, { constantMessage: true });
@@ -4163,10 +4152,12 @@ export default defineApp({
      * 交付目标同理：它是录音开始时 Host 捕获的那个应用，跑完再取就已经晚了。
      */
     let activeCommandId: VoiceCommandId = BUILTIN_VOICE_COMMANDS.agent;
-    /** 这次硬件触发带来的拨杆档位（Host API 1.26 `workMode`）；软件入口与旧 Host 为 undefined。 */
+    /**
+     * 这次按键带来的拨杆档位（Host API 1.26 `workMode`），在 toggleCommand 开录那一刻冻结；软件入口、
+     * 没有拨杆的设备与旧 Host 为 undefined → 新会话按 chat（只读）。不沿用「最近一次见过的档位」：
+     * 否则一次 yolo 触发后，后续没带档位的新任务都会被升到可写可执行。
+     */
     let activeCommandWorkMode: VoiceWorkMode | undefined;
-    /** 最近一次从硬件触发看到的拨杆档位：对话页追问等没有拨杆上下文的新会话沿用它；从没见过则按 chat。 */
-    let lastKnownWorkMode: VoiceWorkMode | undefined;
     let activeAgentConversation: VoiceAgentConversationRef | undefined;
     // 命令链的引擎/云端模型快照：与输入链的 pendingInputSelection 同一规则——
     // 引擎与云端模型在**录音开始**那一刻定下（命令类型同理，见上），收工那次
@@ -4894,6 +4885,8 @@ export default defineApp({
       startOnly = false,
       /** 同 {@link toggleInput} 的 triggerRef。 */
       triggerRef?: string,
+      /** 这次按键带来的拨杆档位（Host API 1.26）；软件入口与没有拨杆的设备不传。 */
+      workMode?: VoiceWorkMode,
     ): Promise<VoiceInputResult | { phase: "processing"; transcript: string }> => {
       // 已确认 Host 支持多段：上一条命令还在跑（含前台 3 秒）不再挡新录音，只让正在录的听写段。
       const busy = hostAsyncFinish
@@ -4948,10 +4941,18 @@ export default defineApp({
           if (pendingCommandSelection.engine === "cloud") await timedStage("cloud_model", () => selectedCloudModel(pendingCommandSelection!));
           await timedStage("configure", () => configuration.prepare(state.settings));
           throwIfAborted(signal);
+          // 2026-10-24：结果弹窗还显示着时按语音键 = 续接那条对话。只在没有显式对话目标的 Agent 命令上
+          // 判定，并在按键开录这一刻冻结（不是识别完再查）：录音 / 识别期间后弹出来的别的结果不算。
+          const continued = requestedCommand === BUILTIN_VOICE_COMMANDS.agent && !conversation
+            ? await continuationRefFromVisibleAnswer()
+            : undefined;
+          throwIfAborted(signal);
           activeCommandId = requestedCommand;
           activeAgentConversation = requestedCommand === BUILTIN_VOICE_COMMANDS.agent
-            ? conversation
+            ? (conversation ?? continued)
             : undefined;
+          // 拨杆档位随这次按键冻结；软件入口 / 无拨杆 = undefined，新会话按 chat。
+          activeCommandWorkMode = workMode;
           activeDeliveryTarget = undefined;
         }
         if (completing) {
@@ -5146,10 +5147,9 @@ export default defineApp({
     const registerCommandEvent = (eventId: string, defaultCommandId: VoiceCommandId) => {
       ctx.commands.register(eventId, guardCommand(async ({ signal, input, operation, triggerRef, ...rest }) => {
         throwIfAborted(signal);
-        // 拨杆档位随这次触发冻结：接下来这段录音起的 Agent 会话按它定 chat / plan / yolo。
-        activeCommandWorkMode = parseVoiceWorkMode((rest as { workMode?: unknown }).workMode);
-        if (activeCommandWorkMode) lastKnownWorkMode = activeCommandWorkMode;
-        if (operation) return invokeCaptureOperation(operation, signal, () => runVoiceStart(signal, bounded => toggleCommand(bounded, resolveCommandId(input, defaultCommandId), undefined, undefined, true, triggerRef)));
+        // 拨杆档位只随这次触发走（toggleCommand 开录时冻结），不留到下一次没带档位的触发。
+        const workMode = parseVoiceWorkMode((rest as { workMode?: unknown }).workMode);
+        if (operation) return invokeCaptureOperation(operation, signal, () => runVoiceStart(signal, bounded => toggleCommand(bounded, resolveCommandId(input, defaultCommandId), undefined, undefined, true, triggerRef, workMode)));
         const finishing = finishActiveVoiceCapture();
         if (finishing) {
           // 与普通输入一致：识别与后续 Agent 不受 Command dispatcher deadline 取消。
@@ -5161,7 +5161,7 @@ export default defineApp({
         const cancel = () => void ctx.voiceInput.cancel(state.sessionId).catch(() => undefined);
         signal.addEventListener("abort", cancel, { once: true });
         try {
-          return await runVoiceStart(signal, bounded => toggleCommand(bounded, commandId, undefined, undefined, true, triggerRef));
+          return await runVoiceStart(signal, bounded => toggleCommand(bounded, commandId, undefined, undefined, true, triggerRef, workMode));
         } finally {
           signal.removeEventListener("abort", cancel);
         }

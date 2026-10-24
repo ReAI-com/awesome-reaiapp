@@ -944,6 +944,71 @@ export default configuredVoiceSuite({
       },
     },
     {
+      name: "拨杆档位：按键带 yolo 的新会话按 yolo；下一次没带档位的独立新任务回到 chat，不沿用上次",
+      async run({ host }) {
+        await pinRawPolish(host, "contract-workmode-raw-settings");
+        // 档位只在带文件 / 命令工具（范围执行可用）的会话上有意义：按 Host 真实能力声明注入 Pi。
+        host.setAgentPiStatus({
+          available: true, downloadRequired: false, detail: "",
+          capabilities: { hostTools: true, fileTools: true, turnModes: ["chat", "plan", "yolo"], modelSelection: "host-settings", scopedExecutionVersion: 1, commandExecution: true },
+        });
+        const creates = () => host.agentRequests.filter((request) => request.method === "agent.v2.session.create");
+        const before = creates().length;
+        // 第一段：硬件按键带 yolo（两次 invoke = 开录 / 结束）。
+        await host.invokeCommand("com.reai.voice.command.agent", {}, { workMode: "yolo" });
+        await host.invokeCommand("com.reai.voice.command.agent", {}, { workMode: "yolo" });
+        await waitUntil(() => creates().length > before, "带 yolo 的语音任务没有新建 Agent 会话");
+        const first = creates()[before]!.params as { config?: { mode?: string } };
+        if (first.config?.mode !== "yolo") throw new Error(`拨杆 yolo 应落到会话档位，实际 ${String(first.config?.mode)}`);
+        await waitUntil(
+          () => host.voiceCommandRequests.filter((request) => request.method === "voice.command.present-answer").length >= 1,
+          "第一段没有弹结果面板",
+        );
+        // 第二段：没有拨杆信息（软件入口 / 无拨杆设备 / 旧 Host），弹窗已关掉 → 独立新任务，必须是 chat。
+        host.setVisibleAnswer({ visible: false });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => creates().length > before + 1, "没带档位的语音任务没有新建 Agent 会话");
+        const second = creates()[before + 1]!.params as { config?: { mode?: string } };
+        if (second.config?.mode !== "chat") {
+          const modes = creates().slice(before).map((request) => String((request.params as { config?: { mode?: string } }).config?.mode));
+          throw new Error(`没有拨杆信息的新任务应按 chat，实际 ${String(second.config?.mode)}（不得沿用上一次的 yolo）；本场景建的会话档位依次：${modes.join(",")}`);
+        }
+      },
+    },
+    {
+      name: "结果弹窗还显示着时再按语音键 = 续接同一对话；弹窗不在就是新任务",
+      async run({ host }) {
+        await pinRawPolish(host, "contract-continue-raw-settings");
+        const creates = () => host.agentRequests.filter((request) => request.method === "agent.v2.session.create");
+        const starts = () => host.agentRequests.filter((request) => request.method === "agent.v2.turn.start");
+        const answers = () => host.voiceCommandRequests.filter((request) => request.method === "voice.command.present-answer");
+        const createsBefore = creates().length;
+        const answersBefore = answers().length;
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => answers().length > answersBefore, "第一段没有弹结果面板");
+        const shown = answers()[answersBefore]!.params as { runId?: string };
+        if (!shown.runId) throw new Error("结果面板没有 runId");
+        const firstSession = (starts().at(-1)!.params as { sessionId?: string }).sessionId;
+        // 弹窗还显示着：Host 回同一 runId → 再按语音键续接同一会话，不新建。
+        host.setVisibleAnswer({ visible: true, runId: shown.runId });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => answers().length > answersBefore + 1, "续接的那段没有弹结果面板");
+        if (creates().length !== createsBefore + 1) throw new Error("弹窗还在时再按语音键应续接同一会话，不得新建会话");
+        const continued = (starts().at(-1)!.params as { sessionId?: string }).sessionId;
+        if (continued !== firstSession) throw new Error("续接应送进同一会话");
+        // 弹窗关掉 / 顶掉：Host 回 visible=false → 新任务新会话。
+        host.setVisibleAnswer({ visible: false });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => creates().length > createsBefore + 1, "弹窗不在时再按语音键应新建会话");
+        const fresh = (starts().at(-1)!.params as { sessionId?: string }).sessionId;
+        if (fresh === firstSession) throw new Error("弹窗不在时不得续接旧会话");
+      },
+    },
+    {
       name: "Agent 提问弹面板给人看，不往目标应用写字；失败时也不写",
       async run({ host }) {
         await pinRawPolish(host, "contract-agent-question-raw-settings");

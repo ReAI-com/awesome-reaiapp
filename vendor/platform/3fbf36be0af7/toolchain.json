@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "state": "LOCAL_TOOLCHAIN_VERIFIED",
-  "sourceHead": "9e5a57e8c758e3916b98a9b7aa093968a3227534",
+  "sourceHead": "3fbf36be0af7258137f5210d641085e56ccd4c20",
   "sourceDirty": false,
   "bunVersion": "1.3.14",
   "artifacts": [
@@ -189,13 +189,13 @@
       "name": "@reai/app-test",
       "version": "1.5.0-v106.5",
       "file": "packs/app-test.tgz",
-      "bytes": 50837,
-      "sha256": "54915bf0fa5dbcb3cab3a522a09cb086a90f1f0e734b99340ba856bdf1b735a3",
+      "bytes": 51160,
+      "sha256": "dd545dbe9ad09b209ccce1564f68f83e1d891295381d47e92baa948167b638c6",
       "sourceFiles": {
         "platform/test-kit/package.json": "6c3972cf55ca6dfa48e27c03b1b571da2d5c93460c21bf6a395a496257498512",
         "platform/test-kit/src/v1/contract.ts": "ef985583b70acb76b8fb59e89ed8b257ce0349911ad6ba86f5f414ff2a95aa93",
         "platform/test-kit/src/v1/index.ts": "628c2050845557e00f69bbcc7ce82154c9e4059b7ee3a6c707e404d005b77564",
-        "platform/test-kit/src/v1/mock-host.ts": "26b87aa07458b18344a69a6968d9c4b7aed218594ede6014492f167822436827",
+        "platform/test-kit/src/v1/mock-host.ts": "003d46abfe7e4ba4892a9e0fdf68f58fac8923abb4fb03811b2714a13869e3f4",
         "platform/test-kit/src/v1/mock-platform-services.ts": "289373d34ce74cf3f19a6ec79fe0f5bf68d731ac5576081e5eb7dc42308c3cee",
         "platform/test-kit/src/v1/network-upload.ts": "07e316fc49ae9bd8f327993276340c5fd93b9937934df09838b8c87a5b107b73",
         "platform/test-kit/src/v1/platform-contracts.ts": "67943d7d84bf7b7f885b7f6bd8d9e11fae8ab7d7b65fcaf541ecbbe524218295"
@@ -289,7 +289,7 @@
   "compatibilityPolicy": null,
   "frozenDeclaredEdges": [],
   "installedResolution": "strict direct/transitive selected versions and one realpath-confined instance; explicit relative tarball overrides",
-  "consumerLockSha256": "1951e8b2ea02723d2fa984d838973b293d432acd804a8c80a4293a9a38cc2a42",
+  "consumerLockSha256": "67e6b5ccf494f82957fb5868983771858c5bdbd38c0a0df0162c415e8177108c",
   "app": {
     "appId": "com.synthetic.v105.toolchain",
     "version": "1.0.0",

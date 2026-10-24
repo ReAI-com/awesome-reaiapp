@@ -25,7 +25,7 @@ export interface VoiceAgentFeature {
 }
 
 /**
- * 总结（当日/分段摘要）固定走 DSH：协议上是「重放前缀字节级稳定」的持续会话，
+ * 总结（当日/分段摘要）走 Host 默认 Agent（runtime 恒 auto，2026-10-24 起不再锁定 DSH）：持续会话，
  * 换引擎等于换记忆载体，因此 runtime 锁定、配置页只读。
  * 原先内联在 app.ts 的 Dsh 总结适配器里；集中到这里供 manifest 与运行时共用。
  */

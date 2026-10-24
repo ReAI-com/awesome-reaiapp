@@ -817,7 +817,7 @@
   },
   "chat": {
     "scopeUpdating": "正在读取或保存设置…",
-    "finishBeforeSwitch": "请先等当前任务完成，或停止任务后再切换。",
+    "finishBeforeSwitch": "请先等当前任务完成，或停止任务后再发送。",
     "scopeUnavailable": "当前系统或此 Agent 暂不支持受工作范围保护的文件与命令操作。不会自动换用其他 Agent；已有旧对话仍可继续。",
     "runtimeUpdateRequired": "需要更新 {name} 运行组件后才能使用文件和命令：工作范围支持缺失、不兼容或已损坏。不会自动换用其他 Agent。",
     "agentUnavailable": "这个 Agent 当前不可用，原选择没有改变。",

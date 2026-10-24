@@ -817,7 +817,7 @@
   },
   "chat": {
     "scopeUpdating": "Reading or saving settings…",
-    "finishBeforeSwitch": "Wait for the current task to finish, or stop it before switching.",
+    "finishBeforeSwitch": "Wait for the current task to finish, or stop it before sending.",
     "scopeUnavailable": "This system or Agent does not yet support scoped file and command execution. No other Agent will be selected automatically; existing older conversations can continue.",
     "runtimeUpdateRequired": "Update the {name} runtime to use files and commands: its workspace support is missing, incompatible, or damaged. No other Agent will be selected automatically.",
     "agentUnavailable": "This Agent is unavailable. Your previous selection is unchanged.",
