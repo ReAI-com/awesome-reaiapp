@@ -119,6 +119,10 @@ export function planDigestWork(input: DigestPlanInput): DigestPlan {
   const todayKey = dayKeyOf(new Date(input.nowMs));
   const plan: DigestPlan = { generate: [], finalize: [], drop: [] };
   const days = groupByDay(input.recordings, segmentDayKey).map((group) => group.dayKey);
+  // 列表新到旧分页：不完整时最早那一天只翻到了它较晚的一截。拿这一截去重合，
+  // 会把一份完整的总结覆盖成残缺的；过去的天不再增长，等翻到全貌再说。
+  // 今天例外：素材预算本来就从最新的段保留，截断前后的总结口径一致。
+  const partialDay = input.listComplete ? undefined : days.at(-1);
 
   for (const dayKey of days) {
     const segments = collectDaySegmentsFor(input.recordings, dayKey);
@@ -141,6 +145,7 @@ export function planDigestWork(input: DigestPlanInput): DigestPlan {
       typeof lastFailureMs === "number" && Number.isFinite(lastFailureMs) ? lastFailureMs : 0,
     );
     if (lastMs > 0 && input.nowMs - lastMs < DIGEST_REFRESH_INTERVAL_MS) continue;
+    if (dayKey === partialDay && !isToday) continue;
     plan.generate.push({ dayKey, segments, final: !isToday });
   }
 

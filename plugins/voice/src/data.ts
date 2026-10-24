@@ -561,6 +561,8 @@ export interface VoiceViewState {
   systemInputs: SystemInputEndpoint[];
   recordings: VoiceRecordingSegment[];
   recordingsTotal: number;
+  /** Context 档「加载更早的记录」进行中；只管按钮的忙态。 */
+  recordingsLoadingMore?: boolean;
   /**
    * 润色上下文的宿主事实快照。
    *

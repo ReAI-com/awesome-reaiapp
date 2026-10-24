@@ -71,7 +71,7 @@ export const DEFAULT_VOICE_PROMPTS = {
   polish: { id: "voice.polish.spoken-text", version: "3" },
   translate: { id: "voice.translate.realtime", version: "1" },
   promptify: { id: "voice.promptify.agent-request", version: "1" },
-  digest: { id: "voice.digest.day-summary", version: "1" },
+  digest: { id: "voice.digest.day-summary", version: "2" },
   segmentSummary: { id: "voice.digest.segment-summary", version: "1" },
 } as const satisfies Readonly<
   Record<"polish" | "translate" | "promptify" | "digest" | "segmentSummary", VoicePromptRef>
