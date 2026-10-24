@@ -3,6 +3,7 @@
   "appId": "com.example.capability-probe",
   "version": "0.2.1",
   "publisherId": "example",
+  "oauthAppId": "qleiIAQKVEquQVvGntmQ6iB6j8mDNvq9",
   "name": "能力探针",
   "description": "列出 Driver 插件平台的全部能力，并用按钮逐项实测本机真实结果",
   "icon": "assets/icon.png",
@@ -131,6 +132,43 @@
         "providerMode": "vendor_only",
         "auth": {
           "mode": "none"
+        }
+      },
+      {
+        "id": "wainao-api",
+        "componentId": "ui",
+        "origins": [
+          "https://block2-api.wainao.chat"
+        ],
+        "pathPrefixes": [
+          "/oauth/userinfo",
+          "/projects",
+          "/storage/",
+          "/documents",
+          "/runs",
+          "/api/model-gateway/v1/"
+        ],
+        "methods": [
+          "GET",
+          "POST",
+          "PATCH",
+          "DELETE"
+        ],
+        "owner": "reai",
+        "purpose": [
+          "sync"
+        ],
+        "dataCategories": [
+          "account_identifier",
+          "user_prompt"
+        ],
+        "retention": {
+          "mode": "session"
+        },
+        "required": false,
+        "providerMode": "host_brokered",
+        "auth": {
+          "mode": "oauth_app"
         }
       }
     ]

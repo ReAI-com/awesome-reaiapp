@@ -23,6 +23,7 @@ export function h<K extends keyof HTMLElementTagNameMap>(
 const ICON_PATHS = {
   play: "M7 4.5v15l12-7.5z",
   check: "M20 6 9 17l-5-5",
+  trash: "M4 7h16 M10 11v6 M14 11v6 M6 7l1 13h10l1-13 M9 7V4h6v3",
   x: "M18 6 6 18 M6 6l12 12",
   alert: "M12 3 2 20h20z M12 10v4 M12 17v.01",
   clock: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 7v5l3 2",

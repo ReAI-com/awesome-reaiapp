@@ -7,7 +7,7 @@ import { h, icon, type IconName } from "./dom";
 import { OFFICIAL_PLUGINS_SNAPSHOT } from "./generated/official-plugins";
 import { BAD_SPECS, DEMO_SPEC, parsePageSpec } from "./page-spec";
 import { PageActionError, renderPage, type RenderedPage } from "./page-renderer";
-import type { ProbePort } from "./port";
+import type { KvPort, ProbePort } from "./port";
 import { acceptanceOrder, passed, systemTaskReturnResult, PROBES, runnableProbes, runProbe, safeProbes, SECTION_LABELS, VERDICT_LABELS, VERDICT_ORDER, verdictOf, type ProbeDefinition, type ProbeResult, type ProbeSection, type Verdict } from "./probes";
 import { CHANGELOG_TEXT } from "./release-notes";
 import { describeError, scrub } from "./errors";
@@ -15,6 +15,8 @@ import { buildReport } from "./report";
 import { diskLocation, manualDelete, manualRead, manualWrite, MANUAL_KEY, type ManualView } from "./kv-manual";
 import { DICTATION_PHASE_LABELS, DICTATION_TIMEOUT_MS, isActive, VoiceDictation } from "./voice-dictation";
 import { clearSavedResults, loadSavedResults, saveResult } from "./saved-results";
+import { cleanCloud, cleanLocal, type CleanupItem, type CleanupStatus } from "./cleanup";
+import { PROBE_KB_MARKER, PROBE_ROW_NAME, TEST_PROJECT_NAME } from "./cloud-probes";
 
 export type PageId = "overview" | ProbeSection | "capabilities" | "official" | "records" | "settings" | "changelog" | "about";
 
@@ -64,6 +66,9 @@ function clock(iso: string): string {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+const CLEANUP_LABELS: Record<CleanupStatus, string> = { deleted: "已删除", none: "没有", partial: "没扫完", manual: "需手动删", failed: "失败", skipped: "没清理" };
+const CLEANUP_TONES: Record<CleanupStatus, string> = { deleted: "ok", none: "muted", partial: "waiting", manual: "waiting", failed: "failed", skipped: "waiting" };
+
 const VERDICT_ICON: Record<Verdict, IconName> = { ok: "check", expected: "shield", blocked: "shield", unexpected: "alert", failed: "x", waiting: "clock" };
 
 export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): ProbeView {
@@ -79,6 +84,10 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   /** 本次界面里点过「清空」的时间；比它早的保存结果不再恢复。 */
   let clearedAt: number | null = null;
   let clearError = false;
+  /** 「清理测试数据」的状态：先确认，再删本地和外脑 test 项目里探针留下的数据，逐项如实报告。 */
+  let cleanup: { phase: "idle" | "confirm" | "busy" | "done"; items: CleanupItem[] } = { phase: "idle", items: [] };
+  /** 清理进行中：探针、批量测试、单步存储验证都先停着，免得一边删一边又写进新的测试数据。 */
+  const cleaning = () => cleanup.phase === "busy";
   /** 记录结果时用的 Driver 版本；读不到时为 null：这次的结果不保存，也不恢复任何历史结果。 */
   const hostVersionKey: Promise<string | null> = options.hostVersion.then((value) => (value.ok ? value.version : null));
   let page: PageId = "overview";
@@ -259,6 +268,8 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   function execute(probe: ProbeDefinition): Promise<ProbeResult> {
     const existing = running.get(probe.id);
     if (existing) return existing.promise;
+    // 清理进行中不开始新测试：不记录、不保存。
+    if (cleaning()) return Promise.resolve({ probeId: probe.id, outcome: "waiting", summary: "正在清理测试数据，清理完再测", startedAt: new Date().toISOString(), durationMs: 0 });
     const promise = (async () => {
       if (probe.risk === "navigate" && !(await announceJump())) {
         running.delete(probe.id);
@@ -326,7 +337,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   }
 
   async function runList(list: ProbeDefinition[]): Promise<void> {
-    if (runAll || navigating()) return;
+    if (runAll || navigating() || cleaning()) return;
     runAll = { index: 0, total: list.length, startedAt: Date.now(), current: list[0]?.title ?? "" };
     ensureTicker();
     try {
@@ -373,11 +384,12 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     const entry = running.get(probe.id);
     const result = results.get(probe.id);
     const label = entry ? "测试中…" : result ? "再测一次" : "测试";
-    const actions = h(doc, "div", { className: "cp-card-actions" }, button(label, () => void execute(probe), { disabled: entry !== undefined || runAll !== null, icon: "play", aria: `${label}：${probe.title}` }));
+    const actions = h(doc, "div", { className: "cp-card-actions" }, button(label, () => void execute(probe), { disabled: entry !== undefined || runAll !== null || cleaning(), icon: "play", aria: `${label}：${probe.title}` }));
     if (entry) actions.append(h(doc, "span", { className: "cp-progress", text: elapsedText(entry.startedAt), attrs: { "data-elapsed-for": probe.id } }));
     if (probe.risk === "navigate") actions.append(h(doc, "span", { className: "cp-hint", text: "会先提示 3 秒再离开当前页面，可以取消" }));
     if (probe.risk === "notify") actions.append(h(doc, "span", { className: "cp-hint", text: "会弹出一条系统通知" }));
     if (probe.risk === "wake") actions.append(h(doc, "span", { className: "cp-hint", text: "会启动 Voice 插件" }));
+    if (probe.risk === "cost") actions.append(h(doc, "span", { className: "cp-hint", text: "会消耗少量外脑账户额度" }));
     card.append(actions);
     const block = resultBlock(probe);
     if (block) card.append(block);
@@ -391,7 +403,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   let manual: { busy: boolean; message: string; tone: "ok" | "failed" | "neutral"; view?: ManualView; written?: string } = { busy: false, message: "", tone: "neutral" };
 
   async function manualAction(kind: "write" | "read" | "delete"): Promise<void> {
-    if (manual.busy) return;
+    if (manual.busy || cleaning()) return;
     manual = { ...manual, busy: true };
     render();
     try {
@@ -425,11 +437,11 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   function manualKvSection(): HTMLElement {
     const wrap = h(doc, "section", { className: "cp-manual", attrs: { "aria-label": "单步验证" } });
     wrap.append(h(doc, "h4", { text: "单步验证：自己看看存在哪" }));
-    wrap.append(h(doc, "p", { className: "cp-card-sub", text: "写入一条固定的测试数据，再查看、删除。查看时对照三处：插件读回的值、键列表、硬盘上的文件。这几个按钮不计入 17 项验收。" }));
+    wrap.append(h(doc, "p", { className: "cp-card-sub", text: "写入一条固定的测试数据，再查看、删除。查看时对照三处：插件读回的值、键列表、硬盘上的文件。这几个按钮不计入验收项。" }));
     const row = h(doc, "div", { className: "cp-card-actions" },
-      button("写入", () => void manualAction("write"), { disabled: manual.busy }),
-      button("查看", () => void manualAction("read"), { disabled: manual.busy }),
-      button("删除", () => void manualAction("delete"), { disabled: manual.busy }),
+      button("写入", () => void manualAction("write"), { disabled: manual.busy || cleaning() }),
+      button("查看", () => void manualAction("read"), { disabled: manual.busy || cleaning() }),
+      button("删除", () => void manualAction("delete"), { disabled: manual.busy || cleaning() }),
     );
     wrap.append(row);
     if (manual.message) wrap.append(h(doc, "p", { className: `cp-manual-msg cp-manual-msg--${manual.tone}`, attrs: { role: "status" }, text: manual.message }));
@@ -451,7 +463,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     return wrap;
   }
 
-  /** 「录一句话」：真的发起一次听写，跟踪状态，拿到识别出的文字。不计入 17 项验收。 */
+  /** 「录一句话」：真的发起一次听写，跟踪状态，拿到识别出的文字。不计入验收项。 */
   const dictation = new VoiceDictation(port, () => { if (!disposed) render(); });
 
   function dictationSection(): HTMLElement {
@@ -459,7 +471,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     const active = isActive(state);
     const wrap = h(doc, "section", { className: "cp-manual", attrs: { "aria-label": "录一句话" } });
     wrap.append(h(doc, "h4", { text: "录一句话：验证真的能拿到文字" }));
-    wrap.append(h(doc, "p", { className: "cp-card-sub", text: `上面的测试只问了一个不存在的请求。这里真的发起一次听写：会打开麦克风，识别走云端、可能消耗账户额度，最长 ${DICTATION_TIMEOUT_MS / 60_000} 分钟。识别出的文字只显示在这里，不保存、不进报告。不计入 17 项验收。` }));
+    wrap.append(h(doc, "p", { className: "cp-card-sub", text: `上面的测试只问了一个不存在的请求。这里真的发起一次听写：会打开麦克风，识别走云端、可能消耗账户额度，最长 ${DICTATION_TIMEOUT_MS / 60_000} 分钟。识别出的文字只显示在这里，不保存、不进报告。不计入验收项。` }));
     wrap.append(h(doc, "div", { className: "cp-card-actions" },
       button(active ? "听写中…" : state.phase === "idle" ? "开始听写" : "再录一次", () => dictation.start(), { tier: "primary", disabled: active, icon: "play" }),
       button("说完了", () => void dictation.finish(), { disabled: !active || state.phase === "processing" }),
@@ -489,7 +501,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   function runAllControl(): HTMLElement {
     const wrap = h(doc, "div", { className: "cp-runall" });
     const safeCount = safeProbes().length;
-    wrap.append(button(runAll ? "测试中…" : `运行全部安全测试（${safeCount} 项）`, () => void runSafe(), { tier: "primary", disabled: runAll !== null || navigating(), icon: "play" }));
+    wrap.append(button(runAll ? "测试中…" : `运行全部安全测试（${safeCount} 项）`, () => void runSafe(), { tier: "primary", disabled: runAll !== null || navigating() || cleaning(), icon: "play" }));
     if (runAll) {
       wrap.append(h(doc, "span", { className: "cp-progress", text: runAllText() }));
     } else {
@@ -548,7 +560,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     }
     if (untested.length > 0 && !runAll) card.append(h(doc, "p", { className: "cp-hint", text: `还没测：${untested.map((probe) => probe.title).join("、")}` }));
     const actions = h(doc, "div", { className: "cp-runall" });
-    actions.append(button(runAll ? "测试中…" : `跑完全部 ${all.length} 项`, () => void runEverything(), { tier: "primary", disabled: runAll !== null || navigating(), icon: "play" }));
+    actions.append(button(runAll ? "测试中…" : `跑完全部 ${all.length} 项`, () => void runEverything(), { tier: "primary", disabled: runAll !== null || navigating() || cleaning(), icon: "play" }));
     if (runAll) actions.append(h(doc, "span", { className: "cp-progress", text: runAllText() }));
     else actions.append(h(doc, "span", { className: "cp-hint", text: `含 ${all.length - safeProbes().length} 项会弹通知、启动 Voice、最后跳到本插件权限页的测试。只想跑不打扰的，用下面的「运行全部安全测试」。` }));
     card.append(actions);
@@ -572,7 +584,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     const p0 = PROBES.filter((probe) => !probe.disabledReason);
     const explain = h(doc, "div", { className: "cp-card cp-explain" },
       h(doc, "h3", { text: "这个插件是做什么的" }),
-      h(doc, "p", { text: "把 Driver 给插件开放的每一项能力讲成人话，能测的点一下就真实调用一次，结果当场显示。外脑云端和需要平台批准的能力，本版只说明「会调什么、预期什么」，不发请求。" }),
+      h(doc, "p", { text: "把 Driver 给插件开放的每一项能力讲成人话，能测的点一下就真实调用一次，结果当场显示。外脑云端用插件自己的 OAuth 身份真实调用；需要平台批准的能力本版只说明「会调什么、预期什么」，不发请求。" }),
       h(doc, "p", { className: "cp-card-sub", text: `能力清单来自插件开发包里的支持矩阵（Host API ${CONTRACT_HOST_API}），是打包那一刻的合同；能不能用，以下面按钮的真实结果为准。` }),
     );
     return [intro("能力探针", ""), acceptanceCard(), explain, tiles, runAllControl(), outcomeSummary(p0) ?? h(doc, "p", { className: "cp-hint", text: `本版有 ${p0.length} 个能实际运行的测试，还没有结果。其中 ${p0.length - safeProbes().length} 个会跳页面、弹通知或启动别的插件，不在「全部测试」里。` })];
@@ -584,7 +596,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       basic: "不需要任何人批准，插件声明了就能用。",
       permission: "插件能声明，但每一项都要用户同意：安装时的权限弹窗里勾选，或者事后到「已安装」点开能力探针，在「权限」里点允许。没同意时测试会显示「被拦下」，这本身就是正确结果。",
       page: "插件页面不允许运行「运行时生成的代码」。下面四项在 Driver 里都应该被拦下；再往下是替代做法：用一份 JSON 描述页面，由插件预置的渲染器画出来。",
-      cloud: "这些是外脑对插件开放的接口。要用插件自己的 OAuth 应用身份去调，本版还没连上，所以按钮是关的。「反例」是外脑没开放的接口，连上后预期会被拒。",
+      cloud: "这些是外脑对插件开放的接口，用插件自己的 OAuth 应用身份去调：Driver 替插件附令牌，插件拿不到令牌原文。写操作只发生在名为「test」的项目里，测试文件、测试行和测试工作流会留在那个项目里（插件没有删除权限）。「反例」是外脑没对插件开放的接口，被拒才算按预期。标着「会消耗额度」的两项（知识库、大模型）不在「运行全部安全测试」里。",
       gated: "这些能力需要平台审核批准。本地开发包只要在清单里声明了其中任何一项，安装时就会整包失败，所以本版只做说明。",
     };
     const nodes: HTMLElement[] = [intro(SECTION_LABELS[section], descriptions[section])];
@@ -593,6 +605,16 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     if (section === "page") nodes.push(renderSpecPlayground());
     return nodes;
   }
+
+  /** 声明式页面用的存储：清理进行中拒绝写入，免得清理刚删完又被写回测试数据。 */
+  const blockWhileCleaning = () => { if (cleaning()) throw new PageActionError("正在清理测试数据，清理完再试"); };
+  const pageKv: KvPort = {
+    get: (key) => port.kv.get(key),
+    keys: () => port.kv.keys(),
+    set: async (key, value) => { blockWhileCleaning(); await port.kv.set(key, value); },
+    compareAndSet: async (key, expected, value) => { blockWhileCleaning(); return port.kv.compareAndSet(key, expected, value); },
+    delete: async (key) => { blockWhileCleaning(); await port.kv.delete(key); },
+  };
 
   function renderSpecPlayground(): HTMLElement {
     const wrap = h(doc, "section", { className: "cp-card cp-spec" }, h(doc, "h3", { text: "声明式页面（替代做法）" }));
@@ -618,7 +640,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       problems.dataset.tone = "ok";
       problems.append(h(doc, "span", { text: `检查通过：${parsed.spec.components.length} 个组件` }));
       renderedSpec = renderPage(canvas, parsed.spec, {
-        kv: port.kv,
+        kv: pageKv,
         developerMode: () => developerMode,
         runProbe: async (probeId) => {
           if (runAll || running.has(probeId)) throw new PageActionError("这个测试正在运行，请等它结束再点");
@@ -692,7 +714,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
   function renderRecords(): HTMLElement[] {
     const nodes: HTMLElement[] = [intro("记录与报告", "测试记录和最近一次结果保存在本插件自己的存储里，跳走再回来、重新打开插件都还在；点「清空测试结果」删掉。")];
     if (log.length === 0) {
-      nodes.push(h(doc, "div", { className: "cp-card cp-empty" }, h(doc, "p", { text: "还没有测试记录。" }), button("运行全部安全测试", () => void runSafe(), { tier: "primary", icon: "play", disabled: runAll !== null || navigating() })));
+      nodes.push(h(doc, "div", { className: "cp-card cp-empty" }, h(doc, "p", { text: "还没有测试记录。" }), button("运行全部安全测试", () => void runSafe(), { tier: "primary", icon: "play", disabled: runAll !== null || navigating() || cleaning() })));
     } else {
       const table = h(doc, "div", { className: "cp-log" });
       for (const entry of log) {
@@ -710,18 +732,7 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
     const area = h(doc, "textarea", { className: "cp-code", attrs: { readonly: "", rows: "12", "aria-label": "测试报告 JSON" } });
     area.value = report;
     const select = button("全选报告文字", () => { area.focus(); area.select(); }, { tier: "secondary" });
-    const clear = button("清空测试结果", () => {
-      const at = Date.now();
-      clearedAt = at;
-      clearError = false;
-      results.clear();
-      log.length = 0;
-      restoredIds.clear();
-      transientIds.clear();
-      jumpBlockedHint = "";
-      clearSavedResults(port.kv, new Date(at).toISOString()).catch(() => { clearError = true; }).finally(() => render());
-      render();
-    }, { tier: "secondary", disabled: runAll !== null || running.size > 0 });
+    const clear = button("清空测试结果", () => { void clearResults(); render(); }, { tier: "secondary", disabled: runAll !== null || running.size > 0 });
     nodes.push(h(doc, "div", { className: "cp-card" },
       h(doc, "h3", { text: "导出报告" }),
       h(doc, "p", { className: "cp-card-sub", text: developerMode
@@ -731,7 +742,78 @@ export function mountProbeView(root: HTMLElement, options: ProbeViewOptions): Pr
       h(doc, "div", { className: "cp-card-actions" }, select, clear),
       clearError ? h(doc, "p", { className: "cp-hint", text: "存储里的旧结果没删掉，重新打开插件后可能还会出现，请再点一次「清空测试结果」。" }) : null,
     ));
+    nodes.push(cleanupCard());
     return nodes;
+  }
+
+  /** 清空界面和存储里的测试结果；存储没清掉时返回 false（界面已清空，提示用户再点一次）。 */
+  function clearResults(): Promise<boolean> {
+    const at = Date.now();
+    clearedAt = at;
+    clearError = false;
+    results.clear();
+    log.length = 0;
+    restoredIds.clear();
+    transientIds.clear();
+    jumpBlockedHint = "";
+    return clearSavedResults(port.kv, new Date(at).toISOString())
+      .then(() => true, () => { clearError = true; return false; })
+      .finally(() => { if (!disposed) render(); });
+  }
+
+
+  async function runCleanup(): Promise<void> {
+    if (cleaning() || runAll !== null || running.size > 0 || manual.busy) return;
+    cleanup = { phase: "busy", items: [] };
+    render();
+    const items: CleanupItem[] = [];
+    const resultsCleared = await clearResults();
+    const local = await cleanLocal(port.kv);
+    items.push(resultsCleared ? local : { ...local, status: "failed", summary: `${local.summary}；但测试结果没清掉，请再点一次` });
+    // 本地清完先显示出来，外脑那几项接着跑。
+    cleanup = { phase: "busy", items: [...items] };
+    if (!disposed) render();
+    items.push(...(await cleanCloud(port, abort.signal)));
+    if (disposed) return;
+    manual = { busy: false, message: "", tone: "neutral" };
+    cleanup = { phase: "done", items };
+    render();
+  }
+
+  function cleanupCard(): HTMLElement {
+    const card = h(doc, "section", { className: "cp-card cp-cleanup", attrs: { "aria-label": "清理测试数据" } });
+    card.append(h(doc, "h3", { text: "清理测试数据" }));
+    card.append(h(doc, "p", { className: "cp-card-sub", text: `测试完一键删掉探针留下的数据。只认探针自己的标记，别的数据不碰；外脑只看「${TEST_PROJECT_NAME}」项目。` }));
+    const blocked = runAll !== null || running.size > 0 || navigating();
+    if (cleanup.phase === "confirm") {
+      card.append(h(doc, "ul", { className: "cp-cleanup-plan" },
+        h(doc, "li", { text: "会删：本插件存储里的测试数据和测试结果" }),
+        h(doc, "li", { text: `会删：外脑「${TEST_PROJECT_NAME}」项目里以「${PROBE_KB_MARKER}」开头的知识库内容` }),
+        h(doc, "li", { text: `会删：外脑「${TEST_PROJECT_NAME}」项目数据表里名字以「${PROBE_ROW_NAME}」开头的行（移到回收站）` }),
+        h(doc, "li", { text: "删不了：测试文件和测试工作流（外脑没对插件开放），清理后会告诉你有几个、去哪删" }),
+      ));
+      card.append(h(doc, "div", { className: "cp-card-actions" },
+        button("确认清理", () => void runCleanup(), { tier: "primary", disabled: blocked }),
+        button("取消", () => { cleanup = { phase: "idle", items: [] }; render(); }, { tier: "secondary" }),
+      ));
+    } else {
+      card.append(h(doc, "div", { className: "cp-card-actions" },
+        button(cleanup.phase === "busy" ? "清理中…" : "清理测试数据", () => { cleanup = { phase: "confirm", items: [] }; render(); }, { tier: "secondary", icon: "trash", disabled: blocked || cleanup.phase === "busy" }),
+      ));
+      if (blocked && cleanup.phase !== "busy") card.append(h(doc, "p", { className: "cp-hint", text: "测试还在进行，跑完再清理。" }));
+    }
+    if (cleanup.items.length > 0) {
+      const list = h(doc, "div", { className: "cp-log", attrs: { role: "status" } });
+      for (const item of cleanup.items) {
+        list.append(h(doc, "div", { className: "cp-log-row", attrs: { "data-cleanup": item.id, "data-status": item.status } },
+          badge(CLEANUP_LABELS[item.status], CLEANUP_TONES[item.status]),
+          h(doc, "span", { className: "cp-log-title", text: item.title }),
+          h(doc, "span", { className: "cp-log-summary", text: developerMode && item.detail ? `${item.summary}（${scrub(item.detail, 200)}）` : item.summary }),
+        ));
+      }
+      card.append(list);
+    }
+    return card;
   }
 
   function renderSettings(): HTMLElement[] {

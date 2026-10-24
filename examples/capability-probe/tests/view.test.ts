@@ -89,7 +89,7 @@ describe("能力探针界面", () => {
     document.body.append(third);
     view = mountProbeView(third, { port, hostVersion: Promise.resolve({ ok: true as const, version: "1.0.5" }) });
     await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(third.querySelector(".cp-accept")?.textContent).toContain("通过 0 / 17 项");
+    expect(third.querySelector(".cp-accept")?.textContent).toContain("通过 0 / 29 项");
   });
 
   test("换了 Driver 版本后，上次保存的结果不再恢复", async () => {
@@ -347,7 +347,7 @@ describe("能力探针界面", () => {
     view!.show("basic");
     const section = () => root.querySelector("[data-probe='voice-service'] .cp-manual")!;
     const click = (label: string) => [...section().querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === label)!.click();
-    expect(section().textContent).toContain("不计入 17 项验收");
+    expect(section().textContent).toContain("不计入验收项");
     click("开始听写");
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(section().textContent).toContain("听写中");
@@ -372,8 +372,9 @@ describe("能力探针界面", () => {
   test("外脑与需要批准的探针按钮是关的，并写明原因", () => {
     const { root } = mount();
     view!.show("cloud");
-    expect(root.querySelectorAll("[data-probe] .cp-locked").length).toBeGreaterThan(5);
-    expect(root.querySelector("[data-probe] button")).toBeNull();
+    // 外脑云端 12 项都已接上
+    const withButtons = [...root.querySelectorAll("[data-probe]")].filter((card) => card.querySelector("button")).map((card) => card.getAttribute("data-probe"));
+    expect(withButtons).toHaveLength(12);
     view!.show("gated");
     expect(root.textContent).toContain("需要平台批准");
     expect(root.textContent).not.toContain("APP_CAPABILITY_NOT_GRANTED");

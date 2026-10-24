@@ -28,7 +28,7 @@ describe("探针清单", () => {
   test("id 唯一；P0 可运行，P1 / P2 都带关闭原因且没有执行步骤", () => {
     expect(new Set(PROBES.map((probe) => probe.id)).size).toBe(PROBES.length);
     for (const probe of PROBES) {
-      if (probe.level === "P0") expect(probe.run && !probe.disabledReason).toBeTruthy();
+      if (probe.level === "P0" || probe.level === "P1") expect(probe.run && !probe.disabledReason).toBeTruthy();
       else expect(probe.disabledReason && !probe.run).toBeTruthy();
     }
   });
@@ -238,9 +238,9 @@ describe("探针结果（假 Host）", () => {
   });
 
   test("关闭的探针不执行，只返回原因", async () => {
-    const result = await run("cloud-model");
+    const result = await run("gated-model");
     expect(result.outcome).toBe("waiting");
-    expect(result.summary).toContain("外脑");
+    expect(result.summary).toContain("平台批准");
   });
 
   test("页面脚本自检在没有 CSP 的环境里如实标「与预期不同」", async () => {
@@ -515,5 +515,80 @@ describe("录一句话：取消与销毁的时序", () => {
     expect(dictation.state.text).toBe("这是预览里的假识别结果");
     for (const key of await port.kv.keys()) expect(JSON.stringify(await port.kv.get(key))).not.toContain("假识别结果");
     expect(buildReport({ mode: "preview", hostVersion: "1.0.5", developerMode: true, results: new Map() })).not.toContain("假识别结果");
+  });
+});
+
+describe("外脑云端（插件自己的 OAuth 身份）", () => {
+  test("读当前用户、列出项目：走 oauth_app 地址，只显示编号前几位", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    const seen: { url: string; endpointId?: string }[] = [];
+    const original = port.fetch.bind(port);
+    port.fetch = async (url, init) => { seen.push({ url, endpointId: init.endpointId }); return original(url, init); };
+    const user = await runProbe(probeById("cloud-userinfo")!, { port, document, signal: new AbortController().signal });
+    expect(user.outcome).toBe("ok");
+    expect(user.summary).toContain("previe…");
+    expect(user.summary).toContain("没有返回邮箱");
+    expect(user.summary).not.toContain("preview-user-0001");
+    const projects = await runProbe(probeById("cloud-projects")!, { port, document, signal: new AbortController().signal });
+    expect(projects.summary).toContain("2 个项目");
+    expect(seen.every((item) => item.endpointId === "wainao-api")).toBe(true);
+  });
+
+  test("Driver 的 OAuth 拒绝码和外脑 401 / 403 翻成人话，算被拦下", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    port.fetch = async () => { throw Object.assign(new Error("reauth"), { code: "PLUGIN_OAUTH_REAUTH_REQUIRED" }); };
+    const reauth = await runProbe(probeById("cloud-userinfo")!, { port, document, signal: new AbortController().signal });
+    expect(reauth.outcome).toBe("blocked");
+    expect(reauth.summary).toContain("重新安装");
+    port.fetch = async () => ({ status: 403, text: "{\"error\":\"insufficient_scope\"}" });
+    const forbidden = await runProbe(probeById("cloud-projects")!, { port, document, signal: new AbortController().signal });
+    expect(forbidden.outcome).toBe("blocked");
+    expect(forbidden.summary).toContain("403");
+  });
+});
+
+describe("外脑云端全部探针（假外脑）", () => {
+  test("正向 9 项成功，反例 4 项按预期被拒", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    const ids = PROBES.filter((probe) => probe.section === "cloud").map((probe) => probe.id);
+    expect(ids).toHaveLength(12);
+    const outcomes: Record<string, string> = {};
+    for (const id of ids) {
+      const result = await runProbe(probeById(id)!, { port, document, signal: new AbortController().signal });
+      outcomes[id] = verdictOf(result);
+    }
+    expect(outcomes).toEqual({
+      "cloud-userinfo": "ok", "cloud-projects": "ok", "cloud-files-list": "ok", "cloud-files-upload": "ok",
+      "cloud-files-delete": "expected", "cloud-folder": "expected", "cloud-kb": "ok", "cloud-data": "ok",
+      "cloud-collections": "expected", "cloud-workflow": "ok", "cloud-model": "ok", "cloud-graph": "expected",
+    });
+  }, 20000);
+
+  test("没有 test 项目时写操作停下，不碰别的项目", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    const original = port.fetch.bind(port);
+    const touched: string[] = [];
+    port.fetch = async (url, init) => {
+      touched.push(`${init.method} ${new URL(url).pathname}`);
+      if (url.endsWith("/projects")) return { status: 200, text: JSON.stringify({ data: [{ id: "p-other", name: "别的项目" }] }) };
+      return original(url, init);
+    };
+    const result = await runProbe(probeById("cloud-files-upload")!, { port, document, signal: new AbortController().signal });
+    expect(result.outcome).toBe("waiting");
+    expect(touched).toEqual(["GET /projects"]);
+  });
+
+  test("反例被外脑接受时算与预期不同", async () => {
+    const port = createPreviewPort({ delayMs: 0 });
+    const original = port.fetch.bind(port);
+    port.fetch = async (url, init) => (init.method === "POST" && url.endsWith("/collections") ? { status: 201, text: "{}" } : original(url, init));
+    const result = await runProbe(probeById("cloud-collections")!, { port, document, signal: new AbortController().signal });
+    expect(result.outcome).toBe("unexpected");
+  });
+
+  test("数据表找不到时提示先去外脑建表", async () => {
+    const { firstCollectionId } = await import("../src/cloud-probes");
+    expect(firstCollectionId({ databaseFolder: [] })).toBeUndefined();
+    expect(firstCollectionId({ databaseFolder: [{ key: "f", label: "目录", type: "folder", children: [{ key: "x", label: "表", type: "table" }] }] })).toEqual({ id: "x", name: "表" });
   });
 });
