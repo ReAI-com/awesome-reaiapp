@@ -6,7 +6,7 @@ import { mountTerminalSettings } from "../src/terminal-settings";
 import { TerminalPreferencesStore } from "../src/terminal-preferences";
 import { importTerminalColorScheme } from "../src/terminal-theme";
 
-beforeAll(() => GlobalRegistrator.register());
+beforeAll(() => { if (typeof document === "undefined") GlobalRegistrator.register(); });
 afterEach(() => document.body.replaceChildren());
 function locale(initial = "zh") {
   let current = initial;

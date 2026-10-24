@@ -11,6 +11,8 @@ import { TerminalPreferencesStore } from "./terminal-preferences";
 import "./terminal.css";
 import "./terminal-settings.css";
 import { mountNavigation } from "./surface-navigation";
+import { CHANGELOG_TEXT } from "./release-notes";
+import manifest from "../app.manifest.json";
 
 interface TerminalAppView {
   openSettings(): void;
@@ -63,7 +65,7 @@ export default defineApp({
         localWorkspace = await mountTerminalWorkspace(rootView, ctx.terminal, preferences, messages, navigation.footer);
         if (generation !== mountGeneration) { await localWorkspace.dispose(); navigation.dispose(); return; }
         workspace = localWorkspace;
-        settings = mountTerminalSettings(settingsView, preferences, messages);
+        settings = mountTerminalSettings(settingsView, preferences, messages, { appId: manifest.appId, version: manifest.version, changelogText: CHANGELOG_TEXT });
         view = {
           openSettings() {
             page = "settings";

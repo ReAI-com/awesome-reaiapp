@@ -119,5 +119,19 @@
   "terminalOutputLimit": "Too much output to announce. Press any key to resume.",
   "navigation": {
     "settingsCommand": "Open settings"
-  }
+  },
+  "version": "Version {version}",
+  "versionLabel": "View release notes for version {version}",
+  "about": "About this plugin",
+  "aboutLabel": "About {name}",
+  "collapse": "Collapse",
+  "changelogTitle": "Release notes for {version}",
+  "changelogMissing": "Release notes for this version ({version}) have not been published yet.",
+  "changelogLanguageNote": "Release notes are written in Chinese.",
+  "aboutTitle": "About {name}",
+  "aboutPlugin": "Plugin",
+  "aboutVersion": "Version",
+  "aboutAppId": "Plugin ID",
+  "aboutDetail": "App details",
+  "aboutBlocked": "Opening external pages from a plugin is not supported yet. Copy the app details address above into a browser."
 }

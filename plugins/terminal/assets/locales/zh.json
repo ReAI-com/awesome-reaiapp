@@ -119,5 +119,19 @@
   "terminalOutputLimit": "输出过多，已暂停朗读。按任意键继续。",
   "navigation": {
     "settingsCommand": "打开设置"
-  }
+  },
+  "version": "版本 {version}",
+  "versionLabel": "查看版本 {version} 的更新日志",
+  "about": "关于插件",
+  "aboutLabel": "关于 {name}",
+  "collapse": "收起",
+  "changelogTitle": "版本 {version} 更新日志",
+  "changelogMissing": "此版本（{version}）的更新日志尚未发布。",
+  "changelogLanguageNote": "更新日志正文以中文撰写。",
+  "aboutTitle": "关于 {name}",
+  "aboutPlugin": "插件",
+  "aboutVersion": "版本",
+  "aboutAppId": "插件标识",
+  "aboutDetail": "应用详情",
+  "aboutBlocked": "平台暂不支持从插件内打开外部页面，可复制上面的应用详情地址在浏览器中查看。"
 }

@@ -16,12 +16,28 @@ export interface TerminalSettingsView {
   dispose(): void;
 }
 
+export interface TerminalPluginInfo {
+  appId: string;
+  version: string;
+  changelogText: string;
+}
+
+/** 从完整日志里取出当前安装版本那一节；找不到时返回 null，不拿别的版本冒充。 */
+export function changelogSection(changelog: string, version: string): string | null {
+  const lines = changelog.split(/\r?\n/);
+  const start = lines.findIndex((line) => /^##\s+(\S+)/.exec(line)?.[1] === version);
+  if (start === -1) return null;
+  const next = lines.findIndex((line, index) => index > start && /^##\s/.test(line));
+  return lines.slice(start, next === -1 ? lines.length : next).join("\n").trim();
+}
+
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export function mountTerminalSettings(
   root: HTMLElement,
   store: TerminalPreferencesStore,
   messages: TerminalMessages = createTerminalMessages(),
+  info?: TerminalPluginInfo,
 ): TerminalSettingsView {
   root.innerHTML = `
     <main class="plugin-main-frame terminal-settings-page">
@@ -48,6 +64,14 @@ export function mountTerminalSettings(
           <section><div class="slbl"><span data-i18n="reset"></span></div><div class="scard"><div class="row"><div class="rl"><div class="rt"><span data-i18n="resetTitle"></span></div><div class="terminal-row-sub"><span data-i18n="resetHint"></span></div></div><button class="terminal-reset" data-reset type="button"><span data-i18n="restore"></span></button></div></div></section>
         </div>
         <p class="terminal-settings-feedback" role="status" hidden></p>
+        <footer class="terminal-settings-footer" data-plugin-info hidden>
+          <button class="terminal-link-btn" data-info="changelog" type="button" aria-expanded="false"></button>
+          <button class="terminal-link-btn" data-info="about" type="button" aria-expanded="false" data-i18n="about"></button>
+        </footer>
+        <section class="scard terminal-info-card" data-info-card hidden>
+          <div class="terminal-info-head"><h2 data-info-title></h2><button class="terminal-link-btn" data-info-close type="button" data-i18n="collapse"></button></div>
+          <div class="terminal-info-body" data-info-body></div>
+        </section>
       </div>
     </main>`;
 
@@ -182,10 +206,79 @@ export function mountTerminalSettings(
     }
   })();
 
+  // 版本 / 关于插件（规范 docs/plugin-settings-and-release-notes-v1.md §1），版本取自安装包 Manifest。
+  const footer = root.querySelector<HTMLElement>("[data-plugin-info]")!;
+  const versionButton = root.querySelector<HTMLButtonElement>('[data-info="changelog"]')!;
+  const aboutButton = root.querySelector<HTMLButtonElement>('[data-info="about"]')!;
+  const infoCard = root.querySelector<HTMLElement>("[data-info-card]")!;
+  const infoTitle = root.querySelector<HTMLElement>("[data-info-title]")!;
+  const infoBody = root.querySelector<HTMLElement>("[data-info-body]")!;
+  let infoKind: "changelog" | "about" | null = null;
+  const pluginName = () => messages.t("metadataName");
+  const renderInfo = () => {
+    if (!info) return;
+    footer.hidden = false;
+    versionButton.textContent = messages.t("version", { version: info.version });
+    versionButton.setAttribute("aria-label", messages.t("versionLabel", { version: info.version }));
+    aboutButton.setAttribute("aria-label", messages.t("aboutLabel", { name: pluginName() }));
+    versionButton.setAttribute("aria-expanded", String(infoKind === "changelog"));
+    aboutButton.setAttribute("aria-expanded", String(infoKind === "about"));
+    infoCard.hidden = infoKind === null;
+    if (!infoKind) return infoBody.replaceChildren();
+    const paragraph = (text: string) => {
+      const node = document.createElement("p");
+      node.className = "terminal-info-note";
+      node.textContent = text;
+      return node;
+    };
+    if (infoKind === "changelog") {
+      infoTitle.textContent = messages.t("changelogTitle", { version: info.version });
+      const section = changelogSection(info.changelogText, info.version);
+      const body = document.createElement("pre");
+      body.className = "terminal-changelog";
+      body.textContent = section ?? messages.t("changelogMissing", { version: info.version });
+      // 日志正文只有中文，标注语言让英文界面的读屏按中文朗读。
+      if (section) body.lang = "zh";
+      infoBody.replaceChildren(body, ...(section ? [paragraph(messages.t("changelogLanguageNote"))] : []));
+      return;
+    }
+    infoTitle.textContent = messages.t("aboutTitle", { name: pluginName() });
+    const list = document.createElement("dl");
+    list.className = "terminal-about";
+    for (const [term, value] of [
+      [messages.t("aboutPlugin"), pluginName()],
+      [messages.t("aboutVersion"), info.version],
+      [messages.t("aboutAppId"), info.appId],
+      [messages.t("aboutDetail"), `https://open.reai.com/apps/${encodeURIComponent(info.appId)}`],
+    ]) {
+      const dt = document.createElement("dt");
+      dt.textContent = term!;
+      const dd = document.createElement("dd");
+      dd.textContent = value!;
+      list.append(dt, dd);
+    }
+    infoBody.replaceChildren(list, paragraph(messages.t("aboutBlocked")));
+  };
+  const showInfo = (kind: "changelog" | "about") => {
+    infoKind = infoKind === kind ? null : kind;
+    renderInfo();
+    if (infoKind) infoCard.scrollIntoView?.({ block: "nearest" });
+  };
+  versionButton.onclick = () => showInfo("changelog");
+  aboutButton.onclick = () => showInfo("about");
+  root.querySelector<HTMLButtonElement>("[data-info-close]")!.onclick = () => {
+    const opener = infoKind === "about" ? aboutButton : versionButton;
+    infoKind = null;
+    renderInfo();
+    opener.focus();
+  };
+  renderInfo();
+
   const unsubscribe = store.subscribe(render);
   render(store.value);
   const stopLocale = messages.subscribe(() => {
     messages.update(root);
+    renderInfo();
     if (feedbackMessage) feedback.textContent = feedbackMessage();
   });
   return {

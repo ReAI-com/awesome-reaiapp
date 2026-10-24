@@ -2,6 +2,7 @@ import { createTerminalMessages, type TerminalMessages } from "./terminal-i18n";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
+import { attachTerminalRenderer, type TerminalRendererHandle } from "./terminal-renderer";
 import type {
   TerminalSessionClient,
   TerminalSessionEvent,
@@ -45,6 +46,7 @@ interface PaneView {
   token: string;
   terminal: Terminal;
   fit: FitAddon;
+  renderer: TerminalRendererHandle | null;
   element: HTMLElement;
   host: HTMLElement;
   observer: ResizeObserver;
@@ -61,6 +63,9 @@ export interface TerminalWorkspace {
   showFooter(visible: boolean): void;
   dispose(): Promise<void>;
 }
+
+/** 同时使用 WebGL 的窗格上限，低于浏览器的 16 个，给页面其他画布留出余量。 */
+const MAX_WEBGL_PANES = 12;
 
 function decodeBase64(value: string): Uint8Array {
   const binary = atob(value);
@@ -237,6 +242,21 @@ export async function mountTerminalWorkspace(
     void terminalClient.resize(view.info.id, rows, cols).catch(() => undefined);
   }
 
+  // 浏览器每页 WebGL 上下文有上限（WebKit 为 16），超出会驱逐最早的上下文。只给当前标签里
+  // 展开显示的窗格分配名额（当前窗格优先），后台标签与图标态窗格先交还，再给可见窗格获取。
+  function syncRenderers() {
+    const tab = activeTab();
+    const order = tab ? [tab.activePaneId, ...flattenTerminalPaneIds(tab.root)] : [];
+    const granted = new Set<string>();
+    for (const paneId of order) {
+      const view = tab && views.get(tab.panes[paneId]?.sessionId ?? "");
+      if (!view || view.compact || granted.has(view.info.id) || granted.size >= MAX_WEBGL_PANES) continue;
+      granted.add(view.info.id);
+    }
+    for (const [sessionId, view] of views) if (!granted.has(sessionId)) view.renderer?.suspend();
+    for (const sessionId of granted) views.get(sessionId)?.renderer?.resume();
+  }
+
   function measurePane(view: PaneView) {
     const compact = compactPaneOrientation(
       view.element.clientWidth,
@@ -249,6 +269,7 @@ export async function mountTerminalWorkspace(
     view.element.classList.toggle("compact-horizontal", compact === "horizontal");
     view.element.classList.toggle("compact-vertical", compact === "vertical");
     renderStatus();
+    syncRenderers();
     if (!compact) queueMicrotask(() => fitAndResize(view));
   }
 
@@ -304,6 +325,7 @@ export async function mountTerminalWorkspace(
       token: attachment.token,
       terminal,
       fit,
+      renderer: null,
       element,
       host,
       observer,
@@ -365,6 +387,11 @@ export async function mountTerminalWorkspace(
     path.title = pane.cwd || "";
     view.element.querySelector<HTMLElement>(".terminal-renderer")!.append(view.host);
     if (!view.host.hasChildNodes()) view.terminal.open(view.host);
+    if (!view.renderer) {
+      // 先不取 WebGL，由 syncRenderers() 按可见状态与名额决定。
+      view.renderer = attachTerminalRenderer(view.terminal, { suspended: true });
+      view.disposables.push(view.renderer);
+    }
     compactFace.onclick = () => {
       replaceTab({ ...activateTerminalPane(tab, pane.id), focusedPaneId: pane.id });
       render();
@@ -537,6 +564,7 @@ export async function mountTerminalWorkspace(
       button.setAttribute("aria-checked", String(active));
     });
     root.querySelector<HTMLButtonElement>(".terminal-tab-add")!.disabled = busy || sessionCount() >= 24;
+    syncRenderers();
     renderStatus();
     messages.update(root);
   }
