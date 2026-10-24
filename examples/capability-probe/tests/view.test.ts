@@ -27,7 +27,7 @@ function mount(developerMode = true) {
   document.body.append(root);
   const navs: ({ key: string; label: string } | null)[] = [];
   const port = createPreviewPort({ delayMs: 0, developerMode, voiceInstalled: true });
-  view = mountProbeView(root, { port, hostVersion: Promise.resolve({ ok: true as const, version: "1.0.5" }), reportNav: (nav) => navs.push(nav) });
+  view = mountProbeView(root, { port, hostVersion: Promise.resolve({ ok: true as const, version: "1.0.5" }), reportNav: (nav) => navs.push(nav), jumpDelayMs: 0 });
   return { root, navs, port };
 }
 
@@ -89,7 +89,7 @@ describe("能力探针界面", () => {
     document.body.append(third);
     view = mountProbeView(third, { port, hostVersion: Promise.resolve({ ok: true as const, version: "1.0.5" }) });
     await new Promise((resolve) => setTimeout(resolve, 30));
-    expect(third.querySelector(".cp-accept")?.textContent).toContain("通过 0 / 17 项");
+    expect(third.querySelector(".cp-accept")?.textContent).toContain("通过 0 / 29 项");
   });
 
   test("换了 Driver 版本后，上次保存的结果不再恢复", async () => {
@@ -202,6 +202,135 @@ describe("能力探针界面", () => {
     expect(root.querySelector("[data-probe='system-task-open'] .cp-result")?.textContent).toContain("回执");
   });
 
+  test("跳到设置页之前先提示并倒计时；点「取消跳转」就不跳、不记录", async () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const port = createPreviewPort({ delayMs: 0 });
+    let opened = 0;
+    port.openSystemTask = async () => { opened += 1; return { taskId: "t" }; };
+    view = mountProbeView(root, { port, hostVersion: Promise.resolve({ ok: true as const, version: "1.0.5" }), jumpDelayMs: 60 });
+    view.show("basic");
+    root.querySelector<HTMLButtonElement>("[data-probe='system-task-open'] button")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const notice = root.querySelector<HTMLElement>(".cp-jump-notice")!;
+    expect(notice.hidden).toBe(false);
+    expect(notice.textContent).toContain("返回");
+    [...notice.querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === "取消跳转")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(opened).toBe(0);
+    expect(notice.hidden).toBe(true);
+    expect(root.querySelector("[data-probe='system-task-open'] .cp-result")).toBeNull();
+
+    root.querySelector<HTMLButtonElement>("[data-probe='system-task-open'] button")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(opened).toBe(1);
+    expect(notice.hidden).toBe(true);
+  });
+
+  test("跳转倒计时期间不能再开一轮「跑完全部」", async () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+    const port = createPreviewPort({ delayMs: 0 });
+    let opened = 0;
+    port.openSystemTask = async () => { opened += 1; return { taskId: "t" }; };
+    view = mountProbeView(root, { port, hostVersion: Promise.resolve({ ok: true as const, version: "1.0.5" }), jumpDelayMs: 80 });
+    view.show("basic");
+    root.querySelector<HTMLButtonElement>("[data-probe='system-task-open'] button")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    view.show("overview");
+    const runAllButton = [...root.querySelectorAll<HTMLButtonElement>(".cp-accept button")].find((button) => button.textContent?.startsWith("跑完全部"))!;
+    expect(runAllButton.disabled).toBe(true);
+    await view.runEverything();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    expect(opened).toBe(1);
+  });
+
+  test("本地存储单步验证：写入 → 查看给出三处位置 → 删除后查看不存在", async () => {
+    const { root, port } = mount();
+    view!.show("basic");
+    const card = () => root.querySelector("[data-probe='kv-roundtrip'] .cp-manual")!;
+    const click = (label: string) => [...card().querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === label)!.click();
+    click("写入");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const written = await port.kv.get("probe.manualCheck") as { code: string };
+    expect(card().textContent).toContain(written.code);
+    click("查看");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(card().textContent).toContain("com-dexample-dcapability-hprobe.json");
+    expect(card().textContent).toContain("probe/probe.manualCheck");
+    expect(card().textContent).toContain("有「probe.manualCheck」");
+    expect(card().querySelector<HTMLInputElement>("input")!.value).toContain(written.code);
+    click("删除");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(await port.kv.get("probe.manualCheck")).toBeUndefined();
+    expect(card().textContent).toContain("不存在");
+    expect(card().textContent).toContain("已删除");
+    expect(card().querySelector<HTMLInputElement>("input")!.value).toContain("probe/probe.manualCheck");
+  });
+
+  test("本地存储单步验证：写入后读回对不上、删除后还在，都如实显示不一致", async () => {
+    const { root, port } = mount();
+    view!.show("basic");
+    const card = () => root.querySelector("[data-probe='kv-roundtrip'] .cp-manual")!;
+    const click = (label: string) => [...card().querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === label)!.click();
+    port.kv.set = async () => undefined;
+    click("写入");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(card().textContent).toContain("对不上");
+    port.kv.get = async () => ({ note: "x" });
+    port.kv.keys = async () => ["probe.manualCheck"];
+    port.kv.delete = async () => undefined;
+    click("删除");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(card().textContent).toContain("和预期不一致");
+    expect(card().textContent).toContain("格式不对");
+  });
+
+  test("第一次跳转被接受、第二次被「上一次没结束」拒绝：第一次的回执到了照样更新", async () => {
+    const { root, port } = mount();
+    let calls = 0;
+    let firstAt = "";
+    port.openSystemTask = async (_target, value) => {
+      calls += 1;
+      if (calls === 1) { firstAt = (value as { at: string }).at; return { taskId: "t1" }; }
+      throw Object.assign(new Error("pending"), { code: "SYSTEM_TASK_RETURN_PENDING" });
+    };
+    view!.show("basic");
+    const button = () => root.querySelector<HTMLButtonElement>("[data-probe='system-task-open'] button")!;
+    button().click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    button().click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(root.querySelector("[data-probe='system-task-open']")?.textContent).toContain("上一次跳转还没结束");
+    view!.handleIntent({ type: "system-task.return", taskId: "t1", target: "app-permissions", outcome: "succeeded", payload: { probe: "capability-probe/system-task-open", at: firstAt } });
+    expect(root.querySelector("[data-probe='system-task-open'] .cp-result")?.textContent).toContain("回执");
+  });
+
+  test("回执先到、之后又被「上一次没结束」拒绝：成功结果不被覆盖；重开界面后被拒也不挡住旧回执", async () => {
+    const { root, port } = mount();
+    port.openSystemTask = async () => { throw Object.assign(new Error("pending"), { code: "SYSTEM_TASK_RETURN_PENDING" }); };
+    const at = new Date(Date.now() - 1000).toISOString();
+    view!.handleIntent({ type: "system-task.return", taskId: "t1", target: "app-permissions", outcome: "succeeded", payload: { probe: "capability-probe/system-task-open", at } });
+    view!.show("basic");
+    root.querySelector<HTMLButtonElement>("[data-probe='system-task-open'] button")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(root.querySelector("[data-probe='system-task-open'] .cp-result")?.textContent).toContain("回执");
+    expect(root.querySelector("[data-probe='system-task-open']")?.textContent).toContain("上一次跳转还没结束");
+
+    view!.dispose();
+    const again = document.createElement("div");
+    document.body.append(again);
+    const fresh = createPreviewPort({ delayMs: 0 });
+    fresh.openSystemTask = port.openSystemTask;
+    view = mountProbeView(again, { port: fresh, hostVersion: Promise.resolve({ ok: true as const, version: "1.0.5" }), jumpDelayMs: 0 });
+    view.show("basic");
+    again.querySelector<HTMLButtonElement>("[data-probe='system-task-open'] button")!.click();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    view.handleIntent({ type: "system-task.return", taskId: "t0", target: "app-permissions", outcome: "succeeded", payload: { probe: "capability-probe/system-task-open", at: new Date(Date.now() - 60_000).toISOString() } });
+    expect(again.querySelector("[data-probe='system-task-open'] .cp-result")?.textContent).toContain("回执");
+  });
+
   test("读不到 Driver 版本时：这次的结果不保存，也不恢复任何历史结果", async () => {
     const port = createPreviewPort({ delayMs: 0 });
     const root = document.createElement("div");
@@ -213,11 +342,39 @@ describe("能力探针界面", () => {
     expect(await port.kv.get("probe.savedResults")).toBeUndefined();
   });
 
+  test("录一句话：开始 → 听写中 → 说完了 → 显示识别文字；取消也如实显示", async () => {
+    const { root } = mount();
+    view!.show("basic");
+    const section = () => root.querySelector("[data-probe='voice-service'] .cp-manual")!;
+    const click = (label: string) => [...section().querySelectorAll<HTMLButtonElement>("button")].find((button) => button.textContent === label)!.click();
+    expect(section().textContent).toContain("不计入验收项");
+    click("开始听写");
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(section().textContent).toContain("听写中");
+    expect(section().textContent).toMatch(/请求号\d+:/);
+    click("说完了");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(section().textContent).toContain("完成");
+    expect(section().textContent).toContain("这是预览里的假识别结果");
+    expect(section().textContent).toContain("润色后");
+    view!.show("records");
+    expect(root.querySelector<HTMLTextAreaElement>("textarea[aria-label='测试报告 JSON']")!.value).not.toContain("假识别结果");
+    expect(root.querySelector(".cp-log")?.textContent ?? "").not.toContain("假识别结果");
+    view!.show("basic");
+
+    click("再录一次");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    click("取消");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(section().textContent).toContain("已取消");
+  });
+
   test("外脑与需要批准的探针按钮是关的，并写明原因", () => {
     const { root } = mount();
     view!.show("cloud");
-    expect(root.querySelectorAll("[data-probe] .cp-locked").length).toBeGreaterThan(5);
-    expect(root.querySelector("[data-probe] button")).toBeNull();
+    // 外脑云端 12 项都已接上
+    const withButtons = [...root.querySelectorAll("[data-probe]")].filter((card) => card.querySelector("button")).map((card) => card.getAttribute("data-probe"));
+    expect(withButtons).toHaveLength(12);
     view!.show("gated");
     expect(root.textContent).toContain("需要平台批准");
     expect(root.textContent).not.toContain("APP_CAPABILITY_NOT_GRANTED");
@@ -239,10 +396,10 @@ describe("能力探针界面", () => {
     view!.openSettings();
     expect(navs.at(-1)).toEqual({ key: "settings", label: "设置" });
     const buttons = [...root.querySelectorAll(".cp-settings-footer button")];
-    expect(buttons.map((button) => button.textContent)).toEqual(["版本 0.2.0", "关于插件"]);
-    expect(buttons[0]?.getAttribute("aria-label")).toBe("查看版本 0.2.0 的更新日志");
+    expect(buttons.map((button) => button.textContent)).toEqual(["版本 0.2.1", "关于插件"]);
+    expect(buttons[0]?.getAttribute("aria-label")).toBe("查看版本 0.2.1 的更新日志");
     (buttons[0] as HTMLButtonElement).click();
-    expect(root.querySelector(".cp-changelog")?.textContent).toContain("## 0.2.0");
+    expect(root.querySelector(".cp-changelog")?.textContent).toContain("## 0.2.1");
     // 标题栏「打开设置」总是打开设置页，不会因为再点一次就跑回首页。
     view!.openSettings();
     view!.openSettings();

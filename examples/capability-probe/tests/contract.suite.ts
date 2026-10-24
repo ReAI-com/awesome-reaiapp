@@ -41,7 +41,7 @@ export default defineContractSuite({
         const footer = main.root.querySelector(".cp-settings-footer");
         if (!footer) throw new Error("设置页没有打开");
         const labels = [...footer.querySelectorAll("button")].map((button) => button.textContent ?? "");
-        if (!labels.some((label) => label.startsWith("版本 0.2.0")) || !labels.includes("关于插件")) {
+        if (!labels.some((label) => label.startsWith("版本 0.2.1")) || !labels.includes("关于插件")) {
           throw new Error(`设置页底部入口不对：${labels.join(" / ")}`);
         }
       },

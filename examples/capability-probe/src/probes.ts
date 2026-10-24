@@ -7,6 +7,7 @@
 import { checkBlobScript, checkEval, checkIframe, checkInlineScript, type CspCheckResult } from "./csp-check";
 import { describeError, gateHint, isGateCode, scrub } from "./errors";
 import type { ProbePort } from "./port";
+import { CLOUD_PROBES } from "./cloud-probes";
 
 export type Level = "P0" | "P1" | "P2";
 export type ProbeSection = "basic" | "permission" | "page" | "cloud" | "gated";
@@ -14,7 +15,7 @@ export type ProbeSection = "basic" | "permission" | "page" | "cloud" | "gated";
  * safe：只读，或只写本插件自己的测试数据并删掉；navigate：会切到 Driver 别的页面；
  * notify：会弹系统通知；wake：会启动另一个插件。只有 safe 进「全部测试」。
  */
-export type Risk = "safe" | "navigate" | "notify" | "wake";
+export type Risk = "safe" | "navigate" | "notify" | "wake" | "cost";
 /**
  * ok：按预期成功；blocked：被拦下（反例按预期被拒，或者用户还没同意）；
  * unexpected：结果和预期不一样；failed：出错；waiting：需要你先做一步操作。
@@ -71,7 +72,7 @@ export const SECTION_LABELS: Record<ProbeSection, string> = {
   basic: "本机基础能力",
   permission: "需要你点同意的能力",
   page: "页面脚本限制",
-  cloud: "外脑云端（未开通）",
+  cloud: "外脑云端",
   gated: "需要平台批准（本地包用不了）",
 };
 
@@ -176,12 +177,7 @@ function cspProbe(id: string, title: string, what: string, check: (doc: Document
   };
 }
 
-const P1_REASON = "需要先连上外脑：给插件建 OAuth 应用、把应用编号写进插件后重新打包（见 README「连接外脑」）";
 const P2_REASON = "需要平台批准：本地开发包只要声明这项能力就会装不上";
-
-function cloudProbe(id: string, title: string, what: string, capability: string, expect: string): ProbeDefinition {
-  return { id, section: "cloud", level: "P1", title, what, expect, capability, risk: "safe", disabledReason: P1_REASON };
-}
 
 function gatedProbe(id: string, title: string, what: string, capability: string, expect: string): ProbeDefinition {
   return { id, section: "gated", level: "P2", title, what, expect, capability, risk: "safe", disabledReason: P2_REASON };
@@ -326,7 +322,7 @@ export const PROBES: ProbeDefinition[] = [
       try {
         const last = (await port.kv.get(PING_KEY)) as { at?: string; count?: number } | undefined;
         if (!last?.at) {
-          return { outcome: "waiting", summary: "还没被触发过：到 Driver「设备 → 键位映射」点一个键，在「插件动作」里选「能力探针：测试按键」，按一下这个键（或点绑定抽屉里的「测试」），再回来点这里" };
+          return { outcome: "waiting", summary: "还没被触发过：到 Driver「设备 → 键位映射」点一个键，在「插件动作」里选「能力探针：测试按键」，按一下这个键（或点绑定抽屉里的「测试」），再回来点这里。注意拨杆当前所在的那一档如果给这个键单独配了别的动作，按下去会执行那个动作，不会触发探针" };
         }
         return { outcome: "ok", summary: `最近一次在 ${formatTime(last.at)} 被触发，累计 ${last.count ?? 1} 次` };
       } catch (error) {
@@ -379,6 +375,11 @@ export const PROBES: ProbeDefinition[] = [
         // Driver 只是接受了请求，还不能证明跳过去了：等用户从权限页点「返回」、Driver 带回回执才算通过。
         return { outcome: "waiting", summary: "Driver 已接受，正在打开本插件的权限页；到那边点右上角「返回」回到探针，收到回执才算通过", detail: `任务号 ${result.taskId}` };
       } catch (error) {
+        // Driver 同一时间只开一个系统任务：上一次跳转没点「返回」或「关闭」就回来，它还挂着，新的会被拒。
+        const { code, message } = describeError(error);
+        if (code === "SYSTEM_TASK_RETURN_PENDING" || code === "SYSTEM_TASK_BUSY") {
+          return { outcome: "waiting", summary: "上一次跳转还没结束：点 Driver 右上角状态条里的「返回」（或「关闭」）把它结束掉，再测一次", code, detail: scrub(message) };
+        }
         return failure(error);
       }
     },
@@ -495,18 +496,7 @@ export const PROBES: ProbeDefinition[] = [
   cspProbe("csp-blob", "运行时生成脚本文件", "把代码打成一个临时文件再加载", checkBlobScript),
   cspProbe("csp-iframe", "页面里嵌一个网页", "用 iframe 嵌入一个运行时生成的网页", checkIframe),
 
-  cloudProbe("cloud-userinfo", "读当前用户", "读取当前用户的编号和昵称（/oauth/userinfo）", "profile:read", "返回用户编号和昵称，不返回邮箱"),
-  cloudProbe("cloud-projects", "列出项目", "列出当前用户能读的项目", "projects:read", "返回项目列表"),
-  cloudProbe("cloud-files-list", "列出云端文件", "列出测试项目里的文件", "project:files:read", "返回文件列表"),
-  cloudProbe("cloud-files-upload", "上传文件到云端", "选一个文件上传到测试项目", "project:files:write", "上传成功；同一内容再传一次，内容指纹相同"),
-  cloudProbe("cloud-files-delete", "删除云端文件（反例）", "尝试删除刚上传的文件", "project:files:write", "预期被拒：外脑目前没对插件开放删除"),
-  cloudProbe("cloud-folder", "云端文件夹（反例）", "尝试在测试项目里建文件夹、改名、移动", "project:files:write", "预期被拒或提示服务未开放：统一文件接口的云端部分还没上线"),
-  cloudProbe("cloud-kb", "知识库写入与搜索", "写一条知识库内容，再搜索它", "project:kb:read + project:kb:write", "写入成功，搜得到"),
-  cloudProbe("cloud-data", "数据表的行增删改", "读数据表，增、改、删、恢复一行", "project:data:read + project:data:write", "每一步都成功"),
-  cloudProbe("cloud-collections", "新建数据表（反例）", "尝试新建一张数据表", "project:data:write", "预期被拒：外脑目前没对插件开放改表结构"),
-  cloudProbe("cloud-workflow", "工作流新建、编辑、运行", "新建一个最小工作流，编辑它，跑一次并读结果", "documents:write + flows:execute + runs:read", "跑通一个最小工作流"),
-  cloudProbe("cloud-model", "调用大模型", "列出模型，确认后发一次对话", "model-gateway:invoke", "返回模型列表和一次回复（会消耗额度）"),
-  cloudProbe("cloud-graph", "图谱（反例）", "尝试读取项目图谱", "—", "预期被拒：外脑目前没对插件开放图谱"),
+  ...CLOUD_PROBES,
 
   gatedProbe("gated-agent", "Agent 会话", "建一个 Agent 会话并跑一轮（Pi / DSH / Codex 各一次）", "agent.session@2 + cloud.model.invoke@1", "三个引擎各回复一次"),
   gatedProbe("gated-model", "经 Driver 调用云端模型", "经 Driver 列出模型", "cloud.model.invoke@1", "返回模型列表"),
@@ -530,7 +520,7 @@ export function runnableProbes(): ProbeDefinition[] {
  * 这样跳走之前，其他结果都已经出来了。
  */
 export function acceptanceOrder(): ProbeDefinition[] {
-  const rank: Record<Risk, number> = { safe: 0, notify: 1, wake: 2, navigate: 3 };
+  const rank: Record<Risk, number> = { safe: 0, cost: 1, notify: 2, wake: 3, navigate: 4 };
   return runnableProbes().map((probe, index) => ({ probe, index })).sort((a, b) => rank[a.probe.risk] - rank[b.probe.risk] || a.index - b.index).map(({ probe }) => probe);
 }
 

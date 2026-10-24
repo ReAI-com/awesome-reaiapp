@@ -34,7 +34,7 @@ export interface ProbePort {
   openSystemTask(target: SystemTaskTarget, returnIntent?: unknown): Promise<{ taskId: string }>;
   accountStatus(): Promise<{ enabled: boolean; loggedIn: boolean }>;
   notify(title: string, body: string): Promise<{ queued: true }>;
-  fetch(url: string, init: { endpointId?: string; method: string; signal?: AbortSignal }): Promise<HttpResult>;
+  fetch(url: string, init: { endpointId?: string; method: string; signal?: AbortSignal; body?: string | FormData; headers?: Record<string, string> }): Promise<HttpResult>;
   callService(serviceId: string, method: string, input: unknown, signal?: AbortSignal): Promise<unknown>;
 }
 
@@ -71,6 +71,8 @@ export function createHostPort(ctx: AppContext): ProbePort {
         method: init.method,
         ...(init.endpointId ? { endpointId: init.endpointId } : {}),
         ...(init.signal ? { signal: init.signal } : {}),
+        ...(init.body !== undefined ? { body: init.body } : {}),
+        ...(init.headers ? { headers: init.headers } : {}),
       });
       return { status: response.status, text: await response.text() };
     },

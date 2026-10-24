@@ -1,8 +1,9 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.example.capability-probe",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "publisherId": "example",
+  "oauthAppId": "qleiIAQKVEquQVvGntmQ6iB6j8mDNvq9",
   "name": "能力探针",
   "description": "列出 Driver 插件平台的全部能力，并用按钮逐项实测本机真实结果",
   "icon": "assets/icon.png",
@@ -61,7 +62,7 @@
         "id": "com.reai.voice/request-text@1",
         "version": "^1.0.0",
         "required": false,
-        "purpose": "只查询 Voice 文字服务是否可调用，不开始录音"
+        "purpose": "查询 Voice 文字服务是否可调用；只在你点「开始听写」时录一句话并取回识别文字（文字不保存）"
       }
     ]
   },
@@ -131,6 +132,43 @@
         "providerMode": "vendor_only",
         "auth": {
           "mode": "none"
+        }
+      },
+      {
+        "id": "wainao-api",
+        "componentId": "ui",
+        "origins": [
+          "https://block2-api.wainao.chat"
+        ],
+        "pathPrefixes": [
+          "/oauth/userinfo",
+          "/projects",
+          "/storage/",
+          "/documents",
+          "/runs",
+          "/api/model-gateway/v1/"
+        ],
+        "methods": [
+          "GET",
+          "POST",
+          "PATCH",
+          "DELETE"
+        ],
+        "owner": "reai",
+        "purpose": [
+          "sync"
+        ],
+        "dataCategories": [
+          "account_identifier",
+          "user_prompt"
+        ],
+        "retention": {
+          "mode": "session"
+        },
+        "required": false,
+        "providerMode": "host_brokered",
+        "auth": {
+          "mode": "oauth_app"
         }
       }
     ]
