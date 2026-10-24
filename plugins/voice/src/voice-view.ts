@@ -3,7 +3,7 @@ import * as surfaceSdk from "@reai/app-sdk/v1";
 import type { AgentConversationOpenReceipt } from "@reai/app-sdk/v1";
 import { selectedCloudOption, validCloudOptionId } from "./cloud-selection";
 import { voiceCloudFailureMessage } from "./voice-user-errors";
-import { contextCharacterCount, contextTime, hasUnfinishedContextStatus, isEmptyContextRecording, isEmptyContextText, isContextFiller, projectContextUtterances } from "./context-display";
+import { contextCharacterCount, contextSegmentRuns, contextTime, hasUnfinishedContextStatus, isEmptyContextRecording, isEmptyContextText, isContextFiller, projectContextUtterances } from "./context-display";
 import { TRANSLATION_LANGUAGES, translationTarget, translationLabel, type TranslationTarget } from "./voice-translation";
 import { t, bindText, bindAttribute, localizedTextNode, releaseLocaleBindings, readText, onVoiceLocaleChange, voiceLocale, type TextSource } from "./voice-i18n";
 import type {
@@ -23,8 +23,10 @@ import {
   dayDateLabel,
   dayKeyOf,
   dayLabel,
+  digestPointSegments,
   groupByDay,
   segmentDayKey,
+  splitDigestPoint,
   type VoiceDayDigest,
 } from "./voice-digest";
 import {
@@ -350,6 +352,8 @@ export interface VoiceViewActions {
    * 失败以 rejected Promise 带用户可读原因回到本页行内提示。
    */
   onRetranscribeSegment?(recordingId: string): Promise<void>;
+  /** Context 档往前多翻一页段；之后的刷新保持已翻到的页数。 */
+  onLoadMoreRecordings?(): Promise<void>;
   /**
    * A3-16：Chat detail 输入坞的「发送」。文本沿用详情条目的 Dsh session，
    * 结果落命令历史与答案面板，失败如实回传给视图原地展示。
@@ -2022,15 +2026,52 @@ export function mountVoiceView(
       ));
       const digest = state.dayDigests[group.dayKey];
       // 总结溯源的段一条不剩就不渲染（素材全删后的总结是在冒名）；调度器随后会撤掉它。
-      if (digest && collectDaySegmentsFor(validRecordings, group.dayKey).length > 0) {
-        list.append(digestRow(group.dayKey, todayKey, digest));
+      const daySegments = collectDaySegmentsFor(validRecordings, group.dayKey);
+      if (digest && daySegments.length > 0) {
+        list.append(digestRow(group.dayKey, todayKey, digest, daySegments));
       }
       // §6.0：当日总结在生成（含首次生成、还没有旧总结可显示）或失败时，这一天的分组里说清楚。
       const digestStatus = dayDigestStatus(group.dayKey);
       if (digestStatus) list.append(digestStatus);
-      for (const segment of group.items) list.append(segmentRow(segment));
+      for (const run of contextSegmentRuns(group.items)) {
+        list.append(run.length > 1 ? emptySegmentRun(run) : segmentRow(run[0]!));
+      }
+    }
+    if (actions.onLoadMoreRecordings && state.recordings.length < state.recordingsTotal) {
+      const more = textEl(
+        "button",
+        "ctx-btn ctx-load-more",
+        () => state.recordingsLoadingMore ? t("view.contextLoadingMore") : t("view.contextLoadMore"),
+      );
+      more.type = "button";
+      more.dataset.action = "load-more-recordings";
+      more.disabled = state.recordingsLoadingMore === true;
+      more.addEventListener("click", () => fire(() => actions.onLoadMoreRecordings!()));
+      list.append(more);
     }
     return list;
+  };
+
+  /**
+   * 连续的「没人说话」段收成一行：全天录音开着时空段成串出现，逐行画只会刷屏。
+   * 展开后仍是原来的各段行，每段照样点得进详情（原始转写与音频都不动）。
+   */
+  const emptySegmentRun = (run: VoiceRecordingSegment[]): HTMLElement => {
+    const box = el("details", "ctx-empty-run") as HTMLDetailsElement;
+    box.dataset.contextKey = `run:${run[0]!.id}`;
+    box.open = openContextDetails.has(box.dataset.contextKey);
+    const startMs = Math.min(...run.map((item) => item.wallStartMs));
+    const endMs = Math.max(...run.map((item) => item.wallStartMs + item.durationMs));
+    const summary = el("summary", "ctx-seg ctx-seg-empty ctx-empty-run-row");
+    summary.append(
+      textEl("span", "ctx-seg-empty-range", () => `${clockTime(startMs)} – ${clockTime(endMs)}`),
+      textEl("span", "ctx-seg-empty-label", () => t("view.contextSilentRun", { count: run.length })),
+      iconEl("span", "ctx-seg-empty-arrow", chevronDownIcon()),
+    );
+    const rows = el("div", "ctx-empty-run-body");
+    for (const segment of run) rows.append(segmentRow(segment));
+    box.append(summary, rows);
+    return box;
   };
 
   /**
@@ -2038,7 +2079,12 @@ export function mountVoiceView(
    * 原地展开要点 + 重新总结 / 发给 agent。今天 = 「截至 HH:MM 的总结」，定稿 =
    * 「8 月 21 日的总结」。展开态只活在这次停留里（openDigestDay），不持久化。
    */
-  const digestRow = (dayKey: string, todayKey: string, digest: VoiceDayDigest): HTMLElement => {
+  const digestRow = (
+    dayKey: string,
+    todayKey: string,
+    digest: VoiceDayDigest,
+    daySegments: readonly VoiceRecordingSegment[],
+  ): HTMLElement => {
     const open = openDigestDay === dayKey;
     const box = el("section", open ? "ctx-dg open" : "ctx-dg");
     box.dataset.day = dayKey;
@@ -2079,7 +2125,23 @@ export function mountVoiceView(
     });
 
     const points = el("div", "ctx-sum-l");
-    for (const point of digest.points) points.append(textEl("div", "ctx-sum-i", () => point));
+    for (const point of digest.points) {
+      const { text, times } = splitDigestPoint(point);
+      const sources = digestPointSegments(times, daySegments);
+      const line = el("div", sources.length > 0 ? "ctx-sum-i ctx-sum-linked" : "ctx-sum-i");
+      line.append(textEl("span", "ctx-sum-tx", () => text));
+      // 要点带了来源时刻、且那一段还在列表里：每个来源一枚时刻钮，点进那段原文。
+      for (const source of sources) {
+        const jump = textEl("button", "ctx-sum-src-jump", () => clockTime(source.wallStartMs));
+        jump.type = "button";
+        jump.dataset.action = "open-digest-source";
+        jump.dataset.recordingId = source.id;
+        bindAttribute(jump, "aria-label", () => t("view.contextOpenDigestSource", { value0: ctxRangeTitle(source) }));
+        jump.addEventListener("click", () => openContextSegment(source, "raw"));
+        line.append(jump);
+      }
+      points.append(line);
+    }
     const footer = el("div", "ctx-sum-ft");
     const generating = state.dayDigestGenerating === dayKey;
     const regen = textEl("button", "ctx-btn", () => generating ? t("view.summarizing") : t("view.summarizeAgain"));
@@ -2143,16 +2205,19 @@ export function mountVoiceView(
     } else {
       row.append(iconEl("span", "ctx-seg-i", timelineIcon()), copy, meta);
     }
-    row.addEventListener("click", () => {
-      // R7：每次打开都落在总结栏；上一场看的是哪一栏不带到下一段。
-      ctxPane = isEmptyContextRecording(item) || pendingTranscription ? "raw" : "sum";
-      releaseReplayAudio();
-      selectedId = item.id;
-      page = "context";
-      actions.onOpenHistory?.();
-      render();
-    });
+    row.addEventListener("click", () => openContextSegment(item));
     return row;
+  };
+
+  const openContextSegment = (item: VoiceRecordingSegment, pane?: ContextPane) => {
+    const pendingTranscription = item.transcriptStatus === "pending" && !(item.transcriptText?.trim());
+    // R7：每次打开都落在总结栏；上一场看的是哪一栏不带到下一段。
+    ctxPane = pane ?? (isEmptyContextRecording(item) || pendingTranscription ? "raw" : "sum");
+    releaseReplayAudio();
+    selectedId = item.id;
+    page = "context";
+    actions.onOpenHistory?.();
+    render();
   };
 
   const historyRow = (item: VoiceHistoryItem): HTMLElement => {

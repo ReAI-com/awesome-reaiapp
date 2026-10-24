@@ -1217,6 +1217,24 @@ export default defineApp({
      * 三个源都在这里注册；加一个源只要再 `register` 一个 provider，
      * 组装、设置页与失败降级逻辑一行不用动。
      */
+    // Context 档已翻到的页数。刷新、轮询、删段后都按它重拉，免得一刷新
+    // 「加载更早」翻出来的段又缩回第一页。
+    const RECORDINGS_PER_PAGE = 50;
+    let recordingsPagesLoaded = 1;
+    const listLoadedRecordings = async (pages = recordingsPagesLoaded) => {
+      const items: Awaited<ReturnType<typeof ctx.voiceRecordings.list>>["items"] = [];
+      const seen = new Set<string>();
+      let total = 0;
+      for (let index = 0; index < pages; index += 1) {
+        const page = await ctx.voiceRecordings.list({ page: index, perPage: RECORDINGS_PER_PAGE });
+        total = page.total;
+        // 翻页期间有新段写入会把旧段挤到下一页：按 id 去重，不画两遍。
+        for (const item of page.items) if (!seen.has(item.id)) { seen.add(item.id); items.push(item); }
+        if (page.items.length < RECORDINGS_PER_PAGE || items.length >= total) break;
+      }
+      return { items, total };
+    };
+
     const contextRegistry = createDefaultContextRegistry(
       { capture: (options) => ctx.voiceContext.capture(options) },
       {
@@ -1674,7 +1692,7 @@ export default defineApp({
             expectedSource === "system"
               ? ctx.voiceInput.listSystemInputs()
               : Promise.resolve([]),
-            ctx.voiceRecordings.list({ page: 0, perPage: 50 }),
+            listLoadedRecordings(),
             probeContext(expectedSettings),
             // 「录音缓存」读不到不该把整个 Voice 页拖垮（能力被撤、Host 更老都会走到这里），
             // 所以单独兜住，并沿用上一次读到的状态，不把「读不到」当成「已过期」。
@@ -2880,8 +2898,7 @@ export default defineApp({
         recordingsPollAt = Date.now();
         const expectedRecordings = state.recordings;
         const expectedRecordingsTotal = state.recordingsTotal;
-        void ctx.voiceRecordings
-          .list({ page: 0, perPage: 50 })
+        void listLoadedRecordings()
           .then((recordings) => {
             // A user edit or refresh while this request was in flight takes precedence.
             if (state.recordings !== expectedRecordings || state.recordingsTotal !== expectedRecordingsTotal) return;
@@ -4500,8 +4517,7 @@ export default defineApp({
         if (!updated) {
           // 总结期间这段被删了：列表里也该没了，顺手刷一次，不报错。
           publish({ segmentSummarizing: undefined });
-          void ctx.voiceRecordings
-            .list({ page: 0, perPage: 50 })
+          void listLoadedRecordings()
             .then((page) => publish({ recordings: page.items, recordingsTotal: page.total }))
             .catch(() => undefined);
           return;
@@ -4645,7 +4661,7 @@ export default defineApp({
     // source snapshot and starts the existing single-flight scheduler; it does
     // not wait for AI synthesis to finish.
     ctx.commands.register("com.reai.voice.refresh-day-digest", guardCommand(async () => {
-      const recordings = await ctx.voiceRecordings.list({ page: 0, perPage: 50 });
+      const recordings = await listLoadedRecordings();
       publish({ recordings: recordings.items, recordingsTotal: recordings.total });
       scheduleDigestCheck();
       return { accepted: true };
@@ -5326,6 +5342,20 @@ export default defineApp({
           // 缺陷3：把转写缺失 / 失败 / 积压中的 Context 分片重新排进本地引擎
           // 队列。Host 只改索引状态，识别异步消化；这里刷新列表让该条回到
           // 「排队中」的展示口径。
+          onLoadMoreRecordings: async () => {
+            if (state.recordingsLoadingMore) return;
+            publish({ recordingsLoadingMore: true });
+            try {
+              const recordings = await listLoadedRecordings(recordingsPagesLoaded + 1);
+              recordingsPagesLoaded += 1;
+              publish({ recordings: recordings.items, recordingsTotal: recordings.total, recordingsLoadingMore: false });
+              // 翻到了更早那天的全貌：它的总结可能要补合或定稿。
+              scheduleDigestCheck();
+            } catch (cause) {
+              publish({ recordingsLoadingMore: false, ...failurePatch("recordingsLoadMore", cause) });
+              throw cause;
+            }
+          },
           onRetranscribeSegment: async (recordingId) => {
             publish({
               retranscribingSegments: { ...state.retranscribingSegments, [recordingId]: "running" },
@@ -5812,7 +5842,7 @@ export default defineApp({
           onReplayRetentionChanged: async (retention: VoiceReplayRetention) => {
             try {
               const replayCache = await ctx.voiceRecordings.setReplayRetention(retention);
-              const recordings = await ctx.voiceRecordings.list({ page: 0, perPage: 50 });
+              const recordings = await listLoadedRecordings();
               publish({
                 replayCache,
                 recordings: recordings.items,
@@ -5865,7 +5895,7 @@ export default defineApp({
             const deletedStartMs = state.recordings.find((item) => item.id === recordingId)?.wallStartMs;
             try {
               await ctx.voiceRecordings.delete(recordingId);
-              const recordings = await ctx.voiceRecordings.list({ page: 0, perPage: 50 });
+              const recordings = await listLoadedRecordings();
               publish({
                 recordings: recordings.items,
                 recordingsTotal: recordings.total,

@@ -2994,6 +2994,17 @@ button:disabled {
 .ctx-seg-empty-label::before { content: "· "; }
 .ctx-seg-empty-arrow { margin-left: auto; }
 .ctx-seg-empty-arrow svg { width: 12px; height: 12px; transform: rotate(-90deg); fill: none; stroke: currentColor; stroke-width: 1.5; }
+.ctx-sum-i.ctx-sum-linked { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 6px; }
+.ctx-sum-tx { min-width: 0; overflow-wrap: anywhere; }
+.ctx-sum-src-jump { font: inherit; font-size: 11px; font-variant-numeric: tabular-nums; padding: 1px 6px; border: 1px solid var(--divider, rgba(92, 92, 224, .08)); border-radius: 6px; background: transparent; color: var(--accent, #5c5ce0); cursor: pointer; }
+.ctx-sum-src-jump:hover { background: var(--accent-soft, rgba(92, 92, 224, .07)); }
+.ctx-sum-src-jump:focus-visible { outline: 2px solid var(--accent, #6554e8); outline-offset: 2px; }
+.ctx-empty-run > summary { list-style: none; }
+.ctx-empty-run > summary::-webkit-details-marker { display: none; }
+.ctx-empty-run > summary:focus-visible { outline: 2px solid var(--accent, #6554e8); outline-offset: 2px; }
+.ctx-empty-run[open] > summary .ctx-seg-empty-arrow svg { transform: none; }
+.ctx-empty-run-body { padding-left: 12px; border-left: 1px solid var(--divider, rgba(92, 92, 224, .08)); margin-left: 4px; }
+.ctx-load-more { align-self: center; margin: 12px auto 4px; display: block; }
 .ctx-empty-fold { padding: 0; color: var(--text-secondary, #6f7086); font-size: 12px; }
 /* 刻意：设计规范 §3.5 按钮留白的例外（<summary> 折叠标题，纯文字）：无悬停底色、无边框，左右不留内边距；焦点框用正
    outline-offset。将来加悬停底色必须同时补四周留白。 */

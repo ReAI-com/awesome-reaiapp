@@ -278,6 +278,45 @@ export function buildDigestMessages(
   ];
 }
 
+/** 一条要点末尾最多认几个来源时刻；再多就不是「依据」而是在列目录了。 */
+const MAX_DIGEST_POINT_TIMES = 3;
+
+/**
+ * 拆出要点末尾的来源时刻标记（提示词要求的「〔HH:MM〕」，多处用顿号分隔）。
+ * 模型偶尔写成半角括号或方括号也认；时刻不合法的标记原样留在正文里，不猜。
+ * 旧总结没有标记，返回空 times——界面上这条就只是文字，不画假链接。
+ */
+export function splitDigestPoint(point: string): { text: string; times: string[] } {
+  const match = /\s*[〔\[（(]\s*((?:[01]?\d|2[0-3])[:：][0-5]\d(?:\s*[、,，;；]\s*(?:[01]?\d|2[0-3])[:：][0-5]\d)*)\s*[〕\]）)]\s*[。.]?$/u.exec(point);
+  if (!match) return { text: point, times: [] };
+  const times = [...new Set(match[1]!.split(/\s*[、,，;；]\s*/u).map((time) => {
+    const [hh, mm] = time.split(/[:：]/u);
+    return `${hh!.padStart(2, "0")}:${mm}`;
+  }))].slice(0, MAX_DIGEST_POINT_TIMES);
+  return { text: point.slice(0, match.index).trim(), times };
+}
+
+/**
+ * 把要点里的来源时刻落到当天的段：这一分钟与段的 [开始, 结束] 有交集就算。
+ * 一个时刻可能落在两段的交界上，两段都返回；找不到就是空——不就近硬凑。
+ */
+export function digestPointSegments(
+  times: readonly string[],
+  daySegments: readonly VoiceRecordingSegment[],
+): VoiceRecordingSegment[] {
+  const found: VoiceRecordingSegment[] = [];
+  for (const time of times) {
+    const [hh, mm] = time.split(":").map((part) => Number.parseInt(part, 10));
+    for (const segment of daySegments) {
+      const start = new Date(segment.wallStartMs);
+      const minuteStart = new Date(start.getFullYear(), start.getMonth(), start.getDate(), hh, mm).getTime();
+      if (minuteStart + 60_000 > segment.wallStartMs && minuteStart <= segment.wallStartMs + Math.max(0, segment.durationMs)
+        && !found.includes(segment)) found.push(segment);
+    }
+  }
+  return found.sort((a, b) => a.wallStartMs - b.wallStartMs);
+}
+
 /**
  * 解析模型输出为要点清单。纯函数，可单测。
  *
@@ -298,9 +337,13 @@ export function parseDigestPoints(text: string): string[] {
       .replace(/^["“](.+)["”]$/, "$1")
       .trim();
     if (!line) continue;
-    points.push(line.length > MAX_DIGEST_POINT_CHARS
-      ? `${line.slice(0, MAX_DIGEST_POINT_CHARS)}…`
-      : line);
+    // 来源时刻标记先拆下来再截断正文，截断不能把「点这条去哪一段」一起截掉。
+    const { text, times } = splitDigestPoint(line);
+    if (!text) continue;
+    const body = text.length > MAX_DIGEST_POINT_CHARS
+      ? `${text.slice(0, MAX_DIGEST_POINT_CHARS)}…`
+      : text;
+    points.push(times.length > 0 ? `${body}〔${times.join("、")}〕` : body);
     if (points.length >= MAX_DIGEST_POINTS) break;
   }
   return points;
