@@ -7,7 +7,7 @@ import { mock } from "bun:test";
 class FakeTerminal {
   static strings = {};
   options = {}; cols = 80; rows = 24;
-  loadAddon() {} open() {} write() {} focus() {} dispose() {}
+  loadAddon() {} open() {} write() {} focus() {} dispose() {} refresh() {}
   onData() { return { dispose() {} }; }
   onTitleChange() { return { dispose() {} }; }
   onSelectionChange() { return { dispose() {} }; }

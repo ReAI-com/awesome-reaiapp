@@ -64,6 +64,9 @@ export interface TerminalWorkspace {
   dispose(): Promise<void>;
 }
 
+/** 同时使用 WebGL 的窗格上限，低于浏览器的 16 个，给页面其他画布留出余量。 */
+const MAX_WEBGL_PANES = 12;
+
 function decodeBase64(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -239,6 +242,21 @@ export async function mountTerminalWorkspace(
     void terminalClient.resize(view.info.id, rows, cols).catch(() => undefined);
   }
 
+  // 浏览器每页 WebGL 上下文有上限（WebKit 为 16），超出会驱逐最早的上下文。只给当前标签里
+  // 展开显示的窗格分配名额（当前窗格优先），后台标签与图标态窗格先交还，再给可见窗格获取。
+  function syncRenderers() {
+    const tab = activeTab();
+    const order = tab ? [tab.activePaneId, ...flattenTerminalPaneIds(tab.root)] : [];
+    const granted = new Set<string>();
+    for (const paneId of order) {
+      const view = tab && views.get(tab.panes[paneId]?.sessionId ?? "");
+      if (!view || view.compact || granted.has(view.info.id) || granted.size >= MAX_WEBGL_PANES) continue;
+      granted.add(view.info.id);
+    }
+    for (const [sessionId, view] of views) if (!granted.has(sessionId)) view.renderer?.suspend();
+    for (const sessionId of granted) views.get(sessionId)?.renderer?.resume();
+  }
+
   function measurePane(view: PaneView) {
     const compact = compactPaneOrientation(
       view.element.clientWidth,
@@ -251,6 +269,7 @@ export async function mountTerminalWorkspace(
     view.element.classList.toggle("compact-horizontal", compact === "horizontal");
     view.element.classList.toggle("compact-vertical", compact === "vertical");
     renderStatus();
+    syncRenderers();
     if (!compact) queueMicrotask(() => fitAndResize(view));
   }
 
@@ -368,9 +387,9 @@ export async function mountTerminalWorkspace(
     path.title = pane.cwd || "";
     view.element.querySelector<HTMLElement>(".terminal-renderer")!.append(view.host);
     if (!view.host.hasChildNodes()) view.terminal.open(view.host);
-    if (view.renderer) view.renderer.resume();
-    else {
-      view.renderer = attachTerminalRenderer(view.terminal);
+    if (!view.renderer) {
+      // 先不取 WebGL，由 syncRenderers() 按可见状态与名额决定。
+      view.renderer = attachTerminalRenderer(view.terminal, { suspended: true });
       view.disposables.push(view.renderer);
     }
     compactFace.onclick = () => {
@@ -525,9 +544,6 @@ export async function mountTerminalWorkspace(
     renderTabs();
     const tab = activeTab();
     workspaceElement.replaceChildren();
-    // 先让不在当前标签里的窗格释放 WebGL 上下文，再渲染可见窗格；切回时在 renderPane 里重新获取。
-    const visible = new Set(tab ? Object.values(tab.panes).map((pane) => pane.sessionId) : []);
-    for (const [sessionId, view] of views) if (!visible.has(sessionId)) view.renderer?.suspend();
     if (tab) {
       const layout = renderLayout(tab, tab.root);
       layout.classList.add("terminal-layout-root");
@@ -548,6 +564,7 @@ export async function mountTerminalWorkspace(
       button.setAttribute("aria-checked", String(active));
     });
     root.querySelector<HTMLButtonElement>(".terminal-tab-add")!.disabled = busy || sessionCount() >= 24;
+    syncRenderers();
     renderStatus();
     messages.update(root);
   }

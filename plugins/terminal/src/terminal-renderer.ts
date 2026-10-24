@@ -18,6 +18,8 @@ export interface TerminalRendererHost {
 
 export interface TerminalRendererOptions {
   createWebgl?: () => WebglRendererAddon;
+  /** 先不获取 WebGL，等调用方按可见状态 resume()。 */
+  suspended?: boolean;
   /** 上下文丢失后的重建次数上限（WebGL 稳定运行后清零），用完后停在 DOM 渲染。 */
   maxRestoreAttempts?: number;
   /** WebGL 稳定运行超过这段时间后再丢失上下文，重新计算失败次数。 */
@@ -63,7 +65,7 @@ export function attachTerminalRenderer(terminal: TerminalRendererHost, options: 
   let timer: unknown = null;
   let failures = 0;
   let loadedAt = 0;
-  let suspended = false;
+  let suspended = options.suspended === true;
   let disposed = false;
 
   const setKind = (next: TerminalRendererKind) => {
@@ -107,12 +109,17 @@ export function attachTerminalRenderer(terminal: TerminalRendererHost, options: 
     setKind("dom");
   };
 
+  // 渲染器切换后整屏重绘；渲染路径里不能因为重绘失败打断界面渲染。
+  const redraw = () => {
+    try { terminal.refresh(0, terminal.rows - 1); } catch { /* 终端已释放时忽略 */ }
+  };
+
   const restore = () => {
     timer = null;
     if (disposed || suspended) return;
     // 成功的重建也计入次数，避免上下文反复刚建即丢时无限重试；稳定运行后才清零。
     failures += 1;
-    if (load()) terminal.refresh(0, terminal.rows - 1);
+    if (load()) redraw();
     else if (failures < maxRestoreAttempts) schedule();
   };
 
@@ -127,7 +134,7 @@ export function attachTerminalRenderer(terminal: TerminalRendererHost, options: 
     if (failures < maxRestoreAttempts) schedule();
   }
 
-  load();
+  if (!suspended) load();
   return {
     get kind() { return kind; },
     suspend() {
@@ -140,7 +147,7 @@ export function attachTerminalRenderer(terminal: TerminalRendererHost, options: 
       if (disposed || !suspended) return;
       suspended = false;
       failures = 0;
-      if (load()) terminal.refresh(0, terminal.rows - 1);
+      if (load()) redraw();
     },
     dispose() {
       disposed = true;

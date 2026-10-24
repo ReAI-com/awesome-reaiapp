@@ -8,10 +8,12 @@ document.addEventListener("securitypolicyviolation", (event) => blocked.push(eve
 const { default: app } = await import("/dist/app.js" as string);
 let receive!: (message: HostMessage) => void;
 let created = 0;
+// sessions=N：宿主恢复 N 个已有会话，插件会把它们放进同一个标签（检查单标签窗格过多时的名额分配）。
+const restored = Math.max(1, Number(new URLSearchParams(location.search).get("sessions") ?? 1));
 const bridge: HostBridge = {
   async request(method) {
     if (method === "locale.get") return { runtimeSessionId: "rt", locale: "zh", revision: 0 } as never;
-    if (method === "terminal.session.list") return [{ id: "csp-pty", sequence: 0, cwd: "~" }] as never;
+    if (method === "terminal.session.list") return Array.from({ length: restored }, (_, index) => ({ id: index ? `csp-pty-r${index}` : "csp-pty", sequence: 0, cwd: "~" })) as never;
     if (method === "terminal.session.create") return { id: `csp-pty-${++created}`, sequence: 0, cwd: "~" } as never;
     if (method === "terminal.session.attach") return { token: "t", replayBase64: btoa(COLORED), truncated: false, sequence: 0 } as never;
     if (method === "storage.get") return { value: undefined } as never;
@@ -19,7 +21,7 @@ const bridge: HostBridge = {
     return {} as never;
   },
   notify(method) {
-    if (method === "surface.ready") setTimeout(() => void split(), 800);
+    if (method === "surface.ready") setTimeout(() => void (restored > 1 ? wait(1500).then(report) : split()), 800);
   },
   subscribe(handler) { receive = handler; return () => {}; },
 };
@@ -51,6 +53,8 @@ function report() {
     mode: "app",
     renderer: document.querySelector(".xterm canvas") ? "webgl" : "dom",
     panes: document.querySelectorAll(".terminal-pane .xterm").length,
+    expandedPanes: document.querySelectorAll(".terminal-pane:not(.is-compact) .xterm").length,
+    webglPanes: [...document.querySelectorAll(".terminal-pane")].filter((pane) => pane.querySelector(".xterm canvas")).length,
     tabs: document.querySelectorAll(".terminal-tab-main").length,
     styleElements: document.querySelectorAll(".xterm style").length,
     blocked,

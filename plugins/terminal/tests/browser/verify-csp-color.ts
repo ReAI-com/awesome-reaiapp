@@ -4,10 +4,13 @@
 // 三种页面都带与宿主 bootstrap 相同的 CSP：
 // - dom：只用 xterm DOM 渲染器，复现修复前的无色问题（预期无色）；
 // - auto：插件实际使用的渲染选择（预期有色）；
-// - app：加载构建产物 dist/app.js 的完整终端界面，分屏并开 19 个标签后切回第一个（预期有色、无上下文驱逐）。
+// - app：加载构建产物 dist/app.js 的完整终端界面，分屏并开 19 个标签后切回第一个（预期有色、无上下文驱逐）；
+// - app-many：宿主恢复 14 个会话进同一标签（多于 12 个名额），WebGL 名额不超过 12，当前窗格有色、无上下文驱逐。
 import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+// 页面卡死时 Playwright 的 evaluate 不会返回，整体超时兜底。
+setTimeout(() => { console.error("整体超时：页面可能卡死"); process.exit(3); }, Number(process.env.WATCHDOG_MS ?? 240000)).unref();
 const outDir = resolve(process.argv[2] ?? "tmp/csp-color");
 const siteDir = join(outDir, "site");
 mkdirSync(join(siteDir, "dist"), { recursive: true });
@@ -59,9 +62,12 @@ const cases = [
   { mode: "dom", url: "/?renderer=dom", selector: "#term", expectColor: false },
   { mode: "auto", url: "/?renderer=auto", selector: "#term", expectColor: true },
   { mode: "app", url: "/app.html", selector: "#app", expectColor: true },
+  { mode: "app-many", url: `/app.html?sessions=${process.env.SESSIONS ?? 14}`, selector: ".terminal-pane:not(.is-compact) >> nth=0", expectColor: true },
 ] as const;
 let failed = false;
-for (const item of cases) {
+// MODES=app-many,auto 只跑指定页面，便于单独复现。
+const only = process.env.MODES?.split(",");
+for (const item of cases.filter((entry) => !only || only.includes(entry.mode))) {
   const tab = await browser.newPage({ viewport: { width: 940, height: 560 }, deviceScaleFactor: 1, colorScheme: "dark" });
   const errors: string[] = [];
   tab.on("pageerror", (error: Error) => errors.push(String(error)));
@@ -72,7 +78,11 @@ for (const item of cases) {
     if (/context/i.test(text)) errors.push(`console: ${text}`);
   });
   await tab.goto(`http://127.0.0.1:${server.port}${item.url}`);
-  await tab.waitForFunction(() => (window as any).__cspColor, null, { timeout: 20000 });
+  await tab.waitForFunction(() => (window as any).__cspColor, null, { timeout: 30000 })
+    .catch(async (cause: unknown) => {
+      const page = await tab.evaluate(() => ({ panes: document.querySelectorAll(".terminal-pane").length, text: document.body.innerText.slice(0, 300) })).catch(() => null);
+      throw new Error(`${item.mode}: 页面没有给出结果（${errors.join(" | ") || String(cause)}；${JSON.stringify(page)}）`);
+    });
   const state = await tab.evaluate(() => (window as any).__cspColor);
   const png = join(outDir, `${item.mode}.png`);
   await tab.locator(item.selector).screenshot({ path: png });
@@ -88,6 +98,7 @@ for (const item of cases) {
     }
   }
   const colored = Object.values(counts).every((count) => count > 20)
+    && (item.mode !== "app-many" || (evictions === 0 && state.webglPanes > 0 && state.webglPanes <= 12))
     && (item.mode !== "app" || (panes.length === 2 && state.tabs === 19 && evictions === 0
       && panes.every((pane) => Object.values(pane).every((count) => count > 20))));
   if (colored !== item.expectColor) failed = true;

@@ -192,3 +192,13 @@ test("未挂起时恢复不做任何事，挂起期间的上下文丢失不排�
   expect(timers.queue).toHaveLength(0);
   expect(handle.kind).toBe("dom");
 });
+
+test("以挂起状态创建时不获取 WebGL，恢复后才获取", () => {
+  const terminal = fakeTerminal();
+  const handle = attachTerminalRenderer(terminal, { createWebgl: () => new FakeAddon(), suspended: true });
+  expect(handle.kind).toBe("dom");
+  expect(terminal.loaded).toHaveLength(0);
+  handle.resume();
+  expect(handle.kind).toBe("webgl");
+  expect(terminal.loaded).toHaveLength(1);
+});
