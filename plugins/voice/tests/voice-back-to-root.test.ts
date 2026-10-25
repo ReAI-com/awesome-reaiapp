@@ -94,7 +94,6 @@ describe("navigateRoot 的收口语义", () => {
       onRefresh: noop,
       onSettingsChanged: async () => undefined,
       onFeatureSettingsChanged: async () => undefined,
-      onAgentExperimentChanged: async () => undefined,
       onDownloadModel: async () => undefined,
       onCancelModelDownload: noop,
       onRequestPermission: async () => undefined,
@@ -115,7 +114,6 @@ describe("navigateRoot 的收口语义", () => {
       onClearReplayCache: async () => undefined,
       onActionMountChanged: async () => undefined,
       onOpenKeymap: async () => undefined,
-      onOpenAgentConfig: async () => undefined,
       onNavigated: () => undefined,
     });
   }

@@ -558,7 +558,7 @@ describe("R17 删掉这段记录：先问一次", () => {
     }));
     (harness.root.querySelectorAll<HTMLButtonElement>(".ctx-tab")[1] as HTMLButtonElement)?.click();
     expect(harness.root.querySelector(".ctx-sum-src")?.textContent)
-      .toContain("Dsh 暂不可用，由云端模型直接生成");
+      .toContain("Agent 暂不可用，由云端模型直接生成");
     harness.dispose();
   });
 });

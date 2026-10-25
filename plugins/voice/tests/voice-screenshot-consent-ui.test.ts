@@ -24,7 +24,6 @@ const BASE_ACTIONS: VoiceViewActions = {
   onRefresh: async () => undefined,
   onSettingsChanged: async () => undefined,
   onFeatureSettingsChanged: async () => undefined,
-  onAgentExperimentChanged: async () => undefined,
   onDownloadModel: async () => undefined,
   onCancelModelDownload: async () => undefined,
   onRequestPermission: async () => undefined,

@@ -123,7 +123,6 @@ describe("Voice 设置主页面", () => {
       "记录保留",
       "每日总结",
       "系统",
-      "Agent 配置",
     ]);
     const engine = harness.root.querySelector('[data-settings-target="engine"]');
     expect(rowTitles(engine)).toEqual(["引擎", "本地模型", "录音来源", "识别语言", "单次录音最长时间"]);
@@ -162,7 +161,6 @@ describe("Voice 设置主页面", () => {
       "记录保留",
       "每日总结",
       "系统",
-      "Agent 配置",
     ]);
     const select = harness.root.querySelector<HTMLSelectElement>('[aria-label="选择云端模型"]')!;
     expect(select.value).toBe("cloud-unavailable");

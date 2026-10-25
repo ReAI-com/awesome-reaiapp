@@ -6,6 +6,12 @@
       "batch": "v106.2",
       "sourceHead": "4ed2325a750eef61413a630a443370e8feee3a3e",
       "lockSha256": "b2ae12675209db6a0b3ea1e2ccb034620ec3818157e2e6af54a6176ffe39a02f"
+    },
+    {
+      "dir": "a70c2dd93b73",
+      "batch": "v107.2",
+      "sourceHead": "a70c2dd93b730120918b7d024491ca9d2e798613",
+      "lockSha256": "db649160d37abc98fc91e4e543711e2598e498058010a5cecfb383b96e655f53"
     }
   ]
 }

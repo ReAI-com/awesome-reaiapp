@@ -14,7 +14,6 @@ import type {
   VoicePolishSetting,
   VoiceRecordingSegment,
   VoiceReplayRetention,
-  ResolvedAgentBackend,
 } from "@reai/app-sdk/v1";
 import { autoUpdate, computePosition, flip, offset, shift } from "@floating-ui/dom";
 import {
@@ -36,7 +35,6 @@ import {
   isValidTimeMs,
   type VoiceCommandHistoryItem,
   type VoiceAgentConversationRef,
-  type VoiceAgentExperimentSettings,
   type VoiceFeatureSettings,
   type VoiceHistoryItem,
   type VoiceViewState,
@@ -85,7 +83,6 @@ export type VoiceSettingsTarget =
   | "agent"
   | "summary"
   | "replay-cache"
-  | "agentcfg"
   | "permissions";
 
 /**
@@ -305,10 +302,6 @@ export interface VoiceViewActions {
   onRefresh(): Promise<void>;
   onSettingsChanged(settings: Partial<VoiceInputSettings>, options?: VoiceSettingsChangeOptions): Promise<void>;
   onFeatureSettingsChanged(settings: Partial<VoiceFeatureSettings>): Promise<void>;
-  onAgentExperimentChanged(settings: VoiceAgentExperimentSettings): Promise<void>;
-  /** F02/F04：对话页范围面板——刷新 backend 快照 / 只改当前对话的 Agent（工作目录入口已按 2026-09-30 用户裁定移除）。 */
-  onRefreshConversationBackends?(): Promise<void>;
-  onChangeConversationBackend?(itemId: string, backend: ResolvedAgentBackend | "auto"): Promise<void>;
   onDownloadModel(modelId: string): Promise<void>;
   onCancelModelDownload(modelId: string): Promise<void>;
   onRequestPermission(kind: VoicePermissionKind): Promise<void>;
@@ -400,8 +393,6 @@ export interface VoiceViewActions {
    * 回到视图，由跳转行原地说清楚，不走全局 error。
    */
   onOpenKeymap(): Promise<void>;
-  /** C-AC PR4：Voice 设置底部的「Agent 配置」直达行（system task agent-config）。 */
-  onOpenAgentConfig(): Promise<void>;
   /** 打开 Host 账户页并精确聚焦登录行。 */
   onOpenAccountLogin?(): Promise<void>;
   /** 打开 Host 权限二级页。 */
@@ -444,7 +435,6 @@ export function mountVoiceView(
   let selectedId: string | undefined;
   let keymapJumpError: TextSource;
   let keymapJumpErrorDetail: VoiceErrorDetail | undefined;
-  let agentConfigJumpError: TextSource | undefined;
   let focusedSettingsTarget: VoiceSettingsTarget | undefined;
   let languageDialogOpen = false;
   let sourceDialogOpen = false;
@@ -860,8 +850,6 @@ export function mountVoiceView(
       onSendCommandFollowUp: (text, conversation, attachments) => actions.onSendCommandFollowUp(text, conversation, attachments),
       onCancelCommand: actions.onCancelCommand,
       onRetryAgentRequest: actions.onRetryAgentRequest,
-      onRefreshConversationBackends: actions.onRefreshConversationBackends,
-      onChangeConversationBackend: actions.onChangeConversationBackend,
       onInstallBrowserWebAccessAndRetry: (item) => actions.onInstallBrowserWebAccessAndRetry
         ? actions.onInstallBrowserWebAccessAndRetry(item)
         : Promise.reject({ get userMessage() { return t("view.thisVersionCannotInstallTheBrowserPlugin"); } }),
@@ -2718,14 +2706,6 @@ export function mountVoiceView(
       label(() => t("view.translatedText", { language: translationLabel(target) }), taskCopyButton("view.copyTranslation", result)),
       textEl("div", "input-detail-text translation-result", () => result),
     );
-    const kernel = translationKernelName(item);
-    if (kernel) {
-      const chips = el("div", "input-detail-chips");
-      const chip = el("span", "input-detail-chip");
-      chip.append(textEl("span", "", () => t("view.agentKernelTag")), textEl("b", "", () => kernel));
-      chips.append(chip);
-      translated.append(chips);
-    }
     body.append(translated);
     const meta = el("div", "input-detail-meta");
     const counts = { source: Array.from(source).length, result: Array.from(result).length };
@@ -3227,16 +3207,6 @@ export function mountVoiceView(
         focusedSettingsTarget === "permissions",
       ),
     );
-    // C-AC PR4（稿 #vsAgentCfgEntry，设置页底部）：直达 Host「插件 Agent 配置」
-    // 的固定模式（锁定到本插件）。失败在行原地说清楚（任务槽忙/待返回），§3.6。
-    content.append(
-      settingsSection(
-        () => t("view.agentConfig"),
-        agentConfigEntry(),
-        "agentcfg",
-        focusedSettingsTarget === "agentcfg",
-      ),
-    );
     if (state.error) content.prepend(inlineErrorBlock("inline-error settings-error"));
     view.append(intro, content);
     shell.append(view);
@@ -3244,39 +3214,6 @@ export function mountVoiceView(
     if (sourceDialogOpen) shell.append(sourceDialog());
     if (summaryConsentOpen) shell.append(summaryConsentDialog());
     if (screenshotConsentOpen) shell.append(screenshotConsentDialog());
-  };
-
-  /** C-AC PR4：Agent 配置直达行（keymap 跳转行同款形态 + 诚实失败文案）。 */
-  const agentConfigEntry = (): HTMLElement => {
-    const card = el("div", "settings-card");
-    const entry = el("button", "settings-row settings-row-action");
-    entry.type = "button";
-    entry.dataset.acfgEntry = "voice";
-    const copy = el("div", "settings-row-copy");
-    copy.append(
-      textEl("div", "settings-row-title", () => t("view.agentConfigTitle")),
-      textEl("div", "settings-row-sub", () => t("view.agentConfigSub")),
-    );
-    entry.append(
-      copy,
-      textEl("span", "settings-row-value", () => t("view.agentConfigValue")),
-      iconEl("span", "settings-row-chevron", chevronRightIcon()),
-    );
-    entry.addEventListener("click", () => {
-      agentConfigJumpError = undefined;
-      render();
-      void actions
-        .onOpenAgentConfig()
-        .catch((cause) => {
-          agentConfigJumpError = () => jumpErrorText("agent-config", cause, state.developerMode);
-        })
-        .finally(() => render());
-    });
-    card.append(entry);
-    if (agentConfigJumpError) {
-      card.append(textEl("div", "settings-card-foot settings-card-foot-error", () => agentConfigJumpError));
-    }
-    return card;
   };
 
   /** 设置主面按稿只留一条去路；三个真实事件与 Action 层开关放在独立子页。 */
@@ -4851,12 +4788,6 @@ function isTranslationItem(item: VoiceCommandHistoryItem): boolean {
 function commandDetailPage(item: VoiceCommandHistoryItem): "translation" | "chat" {
   return isTranslationItem(item) && item.status === "completed" && !!item.reply?.trim() && !!item.transcript.trim()
     ? "translation" : "chat";
-}
-
-/** 这条翻译实际由哪个 Agent 内核跑的：取最后一条带 runtime 的 AI 消息；没记录就不猜。 */
-function translationKernelName(item: VoiceCommandHistoryItem): string | undefined {
-  const runtime = [...(item.messages ?? [])].reverse().find((message) => message.from === "ai" && message.runtime)?.runtime;
-  return runtime === "pi" ? "Pi" : runtime === "dsh" ? "DSH" : runtime === "codex" ? "Codex" : undefined;
 }
 
 function polishSummary(item: VoiceHistoryItem): string {
