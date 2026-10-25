@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.reai.voice",
-  "version": "2.15.0-dev.1",
+  "version": "2.15.0",
   "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
   "name": "语音输入法",
   "description": "按下语音键开始录音，再按一次完成识别并把文字写入当前应用",

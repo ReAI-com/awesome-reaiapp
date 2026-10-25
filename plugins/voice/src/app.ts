@@ -275,7 +275,7 @@ interface CommandRunOptions {
   context?: Promise<VoiceContextEnvelope | undefined>;
   /** Host 录音会话 id：转文本 / 翻译交付完成（不弹结果框）时凭它收掉中央「处理中」胶囊。 */
   resultSessionId?: string;
-  /** 触发这次命令时键盘拨杆的档位（Host API 1.26）：新建 Agent 会话时据此定 chat / plan / yolo。 */
+  /** 触发这次命令时键盘拨杆的档位（Host API 1.29）：新建 Agent 会话时据此定 chat / plan / yolo。 */
   workMode?: VoiceWorkMode;
   /**
    * 来自 `asyncFinish` 录音（胶囊叠放）时的同一会话 id：任务帧与前台结果带上它，Host 才认得栈里
@@ -3167,7 +3167,7 @@ export default defineApp({
     };
 
     /**
-     * 结果弹窗上此刻正显示的那条 Agent 对话（Host API 1.26 `voiceCommand.visibleAnswer`），在**按键开录那一刻**
+     * 结果弹窗上此刻正显示的那条 Agent 对话（Host API 1.29 `voiceCommand.visibleAnswer`），在**按键开录那一刻**
      * 查询并冻结成本次录音的对话目标。弹窗关掉、被顶掉、显示的不是本插件的 Agent 结果、runId 对不上本地
      * 历史，或旧 Host 没有这个方法，都返回 undefined（= 新任务）。对话正等待切换目录（没有有效会话）时
      * 也按新任务处理，不猜用户要哪一条。
@@ -4154,7 +4154,7 @@ export default defineApp({
      */
     let activeCommandId: VoiceCommandId = BUILTIN_VOICE_COMMANDS.agent;
     /**
-     * 这次按键带来的拨杆档位（Host API 1.26 `workMode`），在 toggleCommand 开录那一刻冻结；软件入口、
+     * 这次按键带来的拨杆档位（Host API 1.29 `workMode`），在 toggleCommand 开录那一刻冻结；软件入口、
      * 没有拨杆的设备与旧 Host 为 undefined → 新会话按 chat（只读）。不沿用「最近一次见过的档位」：
      * 否则一次 yolo 触发后，后续没带档位的新任务都会被升到可写可执行。
      */
@@ -4886,7 +4886,7 @@ export default defineApp({
       startOnly = false,
       /** 同 {@link toggleInput} 的 triggerRef。 */
       triggerRef?: string,
-      /** 这次按键带来的拨杆档位（Host API 1.26）；软件入口与没有拨杆的设备不传。 */
+      /** 这次按键带来的拨杆档位（Host API 1.29）；软件入口与没有拨杆的设备不传。 */
       workMode?: VoiceWorkMode,
     ): Promise<VoiceInputResult | { phase: "processing"; transcript: string }> => {
       // 已确认 Host 支持多段：上一条命令还在跑（含前台 3 秒）不再挡新录音，只让正在录的听写段。

@@ -18,49 +18,49 @@
       "dependency": "@reai/app-contract",
       "field": "dependencies",
       "package": "@reai/app-sdk",
-      "version": "1.26.0-v106.5"
+      "version": "1.26.0-v107.2"
     },
     {
       "dependency": "@reai/app-contract",
       "field": "dependencies",
       "package": "@reai/app-test",
-      "version": "1.26.0-v106.5"
+      "version": "1.26.0-v107.2"
     },
     {
       "dependency": "@reai/app-sdk",
       "field": "dependencies",
       "package": "@reai/app-test",
-      "version": "1.27.0-v106.5"
+      "version": "1.27.0-v107.2"
     },
     {
       "dependency": "@reai/app-contract",
       "field": "dependencies",
       "package": "@reai/app-cli",
-      "version": "1.26.0-v106.5"
+      "version": "1.26.0-v107.2"
     },
     {
       "dependency": "@reai/app-sdk",
       "field": "dependencies",
       "package": "@reai/app-cli",
-      "version": "1.27.0-v106.5"
+      "version": "1.27.0-v107.2"
     },
     {
       "dependency": "@reai/app-test",
       "field": "dependencies",
       "package": "@reai/app-cli",
-      "version": "1.5.0-v106.5"
+      "version": "1.5.0-v107.2"
     },
     {
       "dependency": "@reai/app-cli",
       "field": "dependencies",
       "package": "@reai/app-i18n-cli",
-      "version": "1.4.2-v106.5"
+      "version": "1.4.2-v107.2"
     },
     {
       "dependency": "@reai/app-contract",
       "field": "dependencies",
       "package": "@reai/app-i18n-cli",
-      "version": "1.26.0-v106.5"
+      "version": "1.26.0-v107.2"
     }
   ],
   "kind": "reai-platform-packages",
@@ -74,52 +74,52 @@
   },
   "packages": [
     {
-      "bytes": 40733,
+      "bytes": 65315,
       "file": "packs/app-contract.tgz",
       "name": "@reai/app-contract",
-      "sha256": "9660128699d83df0dde8e9b550366ae4e80575a2bdd6f86e043484cc40635e82",
-      "version": "1.26.0-v106.5"
+      "sha256": "91140bf1eba0c2916e42a0d9d5386f0c0047d89122cbdf942d6802e6be689c2d",
+      "version": "1.26.0-v107.2"
     },
     {
-      "bytes": 106606,
+      "bytes": 108646,
       "file": "packs/app-sdk.tgz",
       "name": "@reai/app-sdk",
-      "sha256": "4a31cdf8bbd28e62585b9475e82b739ecebbc76d36eb6edc4c789c6aa05a78ca",
-      "version": "1.27.0-v106.5"
+      "sha256": "a74d41ef84e85e1c99366d01423053583b054ad1a4fabb4cd59c08d2766757e8",
+      "version": "1.27.0-v107.2"
     },
     {
-      "bytes": 51160,
+      "bytes": 51492,
       "file": "packs/app-test.tgz",
       "name": "@reai/app-test",
-      "sha256": "dd545dbe9ad09b209ccce1564f68f83e1d891295381d47e92baa948167b638c6",
-      "version": "1.5.0-v106.5"
+      "sha256": "30883bdb7a3557e7f18006a970a71354a681ba5be456c8d055cd13f79f8a57ee",
+      "version": "1.5.0-v107.2"
     },
     {
-      "bytes": 33121,
+      "bytes": 39635,
       "file": "packs/app-cli.tgz",
       "name": "@reai/app-cli",
-      "sha256": "e00cebb415432ac89f6533c3851b96f49f5eeb75d677ecc02fd2993127910987",
-      "version": "1.4.2-v106.5"
+      "sha256": "a6885df5270aae87eaeed2e83a28d8e9d974a6c1d9710cc9df3133b8a36ab111",
+      "version": "1.4.2-v107.2"
     },
     {
       "bytes": 43332,
       "file": "packs/app-i18n-cli.tgz",
       "name": "@reai/app-i18n-cli",
-      "sha256": "8e445cc729aff718f53372509bf380ccf6afd24d5e52861e893b2e9a03c17e99",
-      "version": "1.2.0-v106.5"
+      "sha256": "6404995e40c8af02674e0cc12bf6f59ac63b479216d20b553db74c23db5c23d7",
+      "version": "1.2.0-v107.2"
     },
     {
       "bytes": 22561,
       "file": "packs/agent-ui.tgz",
       "name": "@reai/agent-ui",
-      "sha256": "42b0448f2d8797ecb5105101e9827d140c2c32e099f60d9b539c865fa184c84d",
-      "version": "0.1.1-v106.5"
+      "sha256": "a67868f93848351eb7c551ece863b0e15f2deea90a55341d03a0388c59980854",
+      "version": "0.1.1-v107.2"
     }
   ],
   "schemaVersion": 1,
-  "sourceHead": "3fbf36be0af7258137f5210d641085e56ccd4c20",
+  "sourceHead": "a70c2dd93b730120918b7d024491ca9d2e798613",
   "toolchainReceipt": {
     "file": "toolchain.json",
-    "sha256": "67942050a9b4747203e5ebccbb54469d13131153f181dfea47526e7683183184"
+    "sha256": "4482c0d655293100c97809295cb5596c8b64d641a49673c0debbcae0eb5f7242"
   }
 }
