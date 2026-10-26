@@ -873,6 +873,22 @@ describe("Voice 插件私有数据归一化", () => {
     expect(bytes(commandHistory)).toBeLessThanOrEqual(MAX_HISTORY_STORE_BYTES);
   });
 
+  test("打开完整对话清除所有轮次未读，保留原文、录音与其它对话未读", async () => {
+    const first: VoiceCommandHistoryItem = { id: "first", transcript: "查文件", reply: "请确认", status: "completed", createdAt: "2026-08-22T08:00:00.000Z", conversationId: "conversation-a", agentSessionId: "old-session", unread: true, recordingId: "clip-a" };
+    const latest: VoiceCommandHistoryItem = { ...first, id: "latest", transcript: "桌面上", reply: "一个文件", agentSessionId: "new-session", createdAt: "2026-08-22T09:00:00.000Z", unread: undefined, recordingId: "clip-b" };
+    const other: VoiceCommandHistoryItem = { ...first, id: "other", conversationId: "conversation-b", agentSessionId: "other-session" };
+    const repository = new VoiceStateRepository(storeWith({ "command-history": [latest, other, first] }));
+    const before = (await repository.load()).commandHistory!;
+    const result = await repository.markCommandRead("latest");
+    expect(result).toEqual(before.map(entry => {
+      if (entry.conversationId !== "conversation-a") return entry;
+      const { unread, ...rest } = entry;
+      return rest;
+    }));
+    expect((await repository.load()).commandHistory).toEqual(result);
+    expect(await repository.markCommandRead("missing")).toEqual(result);
+  });
+
   test("标记旧命令已读与追加新命令并发时串行写入，不覆盖彼此", async () => {
     const values = new Map<string, unknown>([
       [
