@@ -1,6 +1,7 @@
 import type { AgentBackendStatus, AgentConfig, AgentHistoryItem, AgentWorkspace, ResolvedAgentBackend } from "@reai/app-sdk/v1";
 import type { VoiceCommandHistoryItem } from "./data";
 import { t } from "./voice-i18n";
+import { BUILTIN_VOICE_COMMANDS } from "./voice-ai-contract";
 
 /** 只属于当前对话的会话绑定。Agent 由 Host 决定，这里不再保存任何引擎选择。 */
 export interface VoiceConversationOptions {
@@ -91,6 +92,34 @@ export function conversationMembers(item: VoiceCommandHistoryItem, history: read
   const members = history.filter((entry) => conversationKey(entry) === key);
   if (!members.some((entry) => entry.id === item.id)) members.push(item);
   return members.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
+export interface VoiceCommandHistoryGroup {
+  /** 最新回合保留真实任务身份，供打开、状态、摘要和复制操作使用。 */
+  item: VoiceCommandHistoryItem;
+  title: string;
+  unread: boolean;
+}
+
+/** 列表按 Agent 对话展示；原始回合继续保留，供详情与录音回放使用。 */
+export function commandHistoryGroups(history: readonly VoiceCommandHistoryItem[]): VoiceCommandHistoryGroup[] {
+  const conversations = new Map<string, VoiceCommandHistoryGroup>();
+  const groups: VoiceCommandHistoryGroup[] = [];
+  for (const item of [...history].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))) {
+    const isAgent = item.commandId === BUILTIN_VOICE_COMMANDS.agent
+      || (item.commandId === undefined && !!(item.conversationId || item.agentSessionId || item.dshSessionId));
+    const key = conversationKey(item);
+    const existing = isAgent ? conversations.get(key) : undefined;
+    if (existing) {
+      existing.item = item;
+      existing.unread ||= item.unread === true;
+    } else {
+      const group = { item, title: item.identity?.title ?? item.transcript, unread: item.unread === true };
+      groups.push(group);
+      if (isAgent) conversations.set(key, group);
+    }
+  }
+  return groups;
 }
 
 /** 只带可见的人 / 模型正文。工具卡、诊断、元数据永远不会成为种子。 */

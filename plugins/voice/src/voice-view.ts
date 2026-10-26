@@ -47,6 +47,7 @@ import {
   sanitizeMaxRecordingMinutes,
 } from "./data";
 import { createVoiceChatDetail } from "./voice-chat-detail";
+import { commandHistoryGroups, conversationMembers, type VoiceCommandHistoryGroup } from "./agent-conversation";
 import {
   AUDIO_SOURCE_MODES,
   audioSourceModeDisabledReason,
@@ -986,7 +987,7 @@ export function mountVoiceView(
   };
 
   /**
-   * R9 未读点：命令详情一落地（不论从列表点进来还是输入坞续接切过来），这条就算
+   * R9 未读点：命令详情一落地（不论从列表点进来还是输入坞续接切过来），这段对话就算
    * 看过了。只在仍未读时回调一次；app 层清旗后 state 刷新，视图不再重复发。
    */
   let markReadInFlight: string | undefined;
@@ -994,7 +995,8 @@ export function mountVoiceView(
     if (page !== "chat" && page !== "translation") return;
     const item = state.commandHistory.find((entry) => entry.id === selectedId);
     if (item?.agentSessionId && actions.onOpenConversation) return;
-    if (!item?.unread || markReadInFlight === item.id) return;
+    if (!item || !conversationMembers(item, state.commandHistory).some(entry => entry.unread)
+      || markReadInFlight === item.id) return;
     markReadInFlight = item.id;
     void actions.onMarkCommandRead(item.id).catch(() => undefined).finally(() => {
       if (markReadInFlight === item.id) markReadInFlight = undefined;
@@ -1761,9 +1763,9 @@ export function mountVoiceView(
           }))
         : []),
       ...(tab !== "input"
-        ? state.commandHistory.map((item) => ({
-            at: new Date(item.createdAt).getTime(),
-            row: () => commandHistoryRow(item),
+        ? commandHistoryGroups(state.commandHistory).map((group) => ({
+            at: new Date(group.item.createdAt).getTime(),
+            row: () => commandHistoryRow(group),
           }))
         : []),
     ].sort((a, b) => b.at - a.at);
@@ -1823,11 +1825,11 @@ export function mountVoiceView(
     return button;
   };
 
-  const commandHistoryRow = (item: VoiceCommandHistoryItem): HTMLElement => {
+  const commandHistoryRow = ({ item, title, unread }: VoiceCommandHistoryGroup): HTMLElement => {
     const row = el("div", "task-item command-history-item");
     row.tabIndex = 0;
     row.setAttribute("role", "button");
-    bindAttribute(row, "aria-label", () => t("view.openCommandTaskDetailsValue", { value0: item.transcript }));
+    bindAttribute(row, "aria-label", () => t("view.openCommandTaskDetailsValue", { value0: title }));
     // R3：emoji 头像（稿 TASKS.ava）；失败的命令换成警示 emoji，圆钮居中规范在 CSS。
     const avatar = textEl(
       "span",
@@ -1837,7 +1839,7 @@ export function mountVoiceView(
     avatar.setAttribute("aria-hidden", "true");
     const info = el("span", "task-info");
     info.append(
-      textEl("span", "task-name", () => `“${item.transcript}”`),
+      textEl("span", "task-name", () => `“${title}”`),
       textEl(
         "span",
         "task-preview",
@@ -1858,7 +1860,7 @@ export function mountVoiceView(
       textEl("span", `task-type command-${item.status}`, () => t("view.tabCommand")),
       textEl("span", "task-time", () => relativeTime(item.createdAt)),
     );
-    if (item.unread) {
+    if (unread) {
       const dot = el("span", "task-dot");
       bindAttribute(dot, "aria-label", () => t("view.unread"));
       metaRow.append(dot);

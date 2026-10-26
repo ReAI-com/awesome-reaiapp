@@ -26,7 +26,7 @@ import type {
 } from "@reai/app-sdk/v1";
 import { isAudioSourceMode } from "./voice-audio-source";
 import type { VoiceDayDigest } from "./voice-digest";
-import type { VoiceConversationOptions } from "./agent-conversation";
+import { conversationKey, type VoiceConversationOptions } from "./agent-conversation";
 
 export type { VoiceDayDigest };
 
@@ -974,12 +974,15 @@ export class VoiceStateRepository {
     await this.store.set(DAY_DIGEST_ATTEMPTS_KEY, {});
   }
 
-  /** 命令详情被打开：清掉未读点。找不到那条（已被挤出上限）就原样返回。 */
+  /** 命令详情展示整段对话：一并清掉其未读点；找不到入口条目就原样返回。 */
   async markCommandRead(id: string): Promise<VoiceCommandHistoryItem[]> {
     return this.editCommandHistory((current) => {
-      if (!current.some((entry) => entry.id === id && entry.unread === true)) return { result: current };
+      const opened = current.find((entry) => entry.id === id);
+      if (!opened) return { result: current };
+      const key = conversationKey(opened);
+      if (!current.some((entry) => conversationKey(entry) === key && entry.unread === true)) return { result: current };
       const next = current.map((entry) => {
-        if (entry.id !== id) return entry;
+        if (conversationKey(entry) !== key) return entry;
         const { unread: _unread, ...rest } = entry;
         return rest;
       });
