@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.reai.codex-link",
-  "version": "0.5.12",
+  "version": "0.5.13",
   "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
   "oauthAppId": "MWlGsyT9YXxuQ5IkVaIQxBscQaFfCc3b",
   "name": "Codex Link",
@@ -102,6 +102,13 @@
       "platform": "macos",
       "architectures": [
         "aarch64"
+      ]
+    },
+    {
+      "platform": "windows",
+      "architectures": [
+        "aarch64",
+        "x86_64"
       ]
     }
   ],
