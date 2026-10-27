@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.reai.terminal",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "publisherId": "reai",
   "oauthAppId": "TPbwDuJFlSIPdMlA2xiB4wRMHaMk3262",
   "name": "终端",
@@ -36,6 +36,13 @@
   "targets": [
     {
       "platform": "macos",
+      "architectures": [
+        "aarch64",
+        "x86_64"
+      ]
+    },
+    {
+      "platform": "windows",
       "architectures": [
         "aarch64",
         "x86_64"

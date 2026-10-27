@@ -45,13 +45,16 @@ describe("Codex Link 0.5 Manifest", () => {
     expect(manifest.requires.hostCapabilities).toContain("system.folder-pick@1");
     expect(manifest.data.privateStores).toEqual([{ id: "thread-state", schemaVersion: 1 }]);
     expect(manifest.dataCompatibility.rollbackFloor).toBe("0.2.0");
-    expect(manifest.version).toBe("0.5.12");
+    expect(manifest.version).toBe("0.5.13");
     // 开放平台身份（2026-09-26 建品）：publisherId 是 Team ID、oauthAppId 是产品的公开
     // OAuth Client ID，与 submission.identity.json 逐字一致；Product ID 不进 Manifest。
     expect(manifest.publisherId).toBe("4d8a4ddb-2293-4b11-9ef4-3f24f117998c");
     expect(manifest.oauthAppId).toBe("MWlGsyT9YXxuQ5IkVaIQxBscQaFfCc3b");
-    // Driver 1.x 只出 Apple Silicon 包（#743），送审包同样只声明 macOS aarch64。
-    expect(manifest.targets).toEqual([{ platform: "macos", architectures: ["aarch64"] }]);
+    // Host 已放开 Windows 会话能力后，安装目标含 macOS aarch64 + Windows（aarch64 / x86_64）。
+    expect(manifest.targets).toEqual([
+      { platform: "macos", architectures: ["aarch64"] },
+      { platform: "windows", architectures: ["aarch64", "x86_64"] },
+    ]);
     // 0.5.11 送审被服务端拒绝：平台 Manifest 合同基线 1.1@c3475cb 的 i18n target 枚举
     // 不含 storeListing.*（v2 目标）。送审包与 Voice / Browser 同姿势：metadata.i18n@1 +
     // 仅 v1 目标；商店展示文案由提交表单填写，不再走 i18n 引用。
