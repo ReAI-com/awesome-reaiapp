@@ -24,7 +24,7 @@ website/       VitePress 文档站
 open-website/  中英文开放平台介绍站点
 ```
 
-共 16 个官方插件：`agents-im`、`agents-tasks`、`browser`、`code-worker`、`codex-app`、`codex-link`、`computer`、`device-doctor`、`dsh-agent`、`files`、`pi-agent`、`podcast`、`terminal`、`text-editor`、`voice`、`wishing-wall`。
+共 16 个官方插件源码：`agents-im`、`agents-tasks`、`browser`、`code-worker`、`codex-app`、`codex-link`、`computer`、`device-doctor`、`dsh-agent`、`files`、`pi-agent`、`podcast`、`terminal`、`text-editor`、`voice`、`wishing-wall`。其中 `pi-agent`、`dsh-agent`、`codex-app` **暂不上架、对用户目录不可见**（源码保留，不从本仓删除）。
 
 每个插件使用稳定的 `appId`，独立维护 `app.manifest.json`、依赖锁、测试和版本记录。共享依赖变更后检查所有受影响插件。
 
