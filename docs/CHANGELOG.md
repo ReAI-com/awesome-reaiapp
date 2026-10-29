@@ -1,5 +1,11 @@
 # ReAI App 平台规范更新日志
 
+## 2026-10-29 · 开放平台首页插件切换动效版发布
+
+- #40 合并后发布 open.reai.com，线上版本 `20261029T111425Z-ac7186cd60ef`（gitCommit `41eda621`，workingTree `clean`），`release.json` 可核验。顶部插件选择器三个选项（Typezero 语音、浏览器、Terminal），默认 Typezero，演示步骤、标题与视频联动。
+- 「语音任务」动效（键盘唤起、胶囊转后台处理、完成提醒）按用户指正归属 Typezero 语音输入，与语音输入写入演示合并为 24 秒四步故事（语音键唤起、说话变文字、任务转后台、完成提醒）；撤下 Codex Link 选项，其详情页保留在目录。
+- 部署与验收：369 个文件逐一校验 SHA256 后原子切换；中英文 8 组视口 still 模式、三选项视频播放、暂停/重播/离屏暂停/减少动态效果/手机菜单、未知地址 404 与视频分段请求在线上验证通过。`docs/deployment-status.md` 同步刷新为线上即 main。
+
 ## 2026-10-28 · 刷新发布状态
 
 - 刷新 `docs/deployment-status.md`：记录日期改为 2026-10-28，仓库路径改为 `ReAI-com/awesome-reaiapp`。对照线上 `https://open.reai.com/release.json`，`gitCommit` 为 `0ccb9348bb111dee2bcc0002a4e2f3613b676d7f`（`0ccb934`，构建于 2026-10-26，`workingTree` 为 `modified`）。main HEAD `2cb17afee3b27f6b73908293615069204319b193`（`2cb17af`）比该提交超前 14 个提交。

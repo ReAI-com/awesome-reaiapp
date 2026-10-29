@@ -1,6 +1,6 @@
 # 发布状态与默认目标
 
-记录日期：2026-10-28。仓库：`ReAI-com/awesome-reaiapp`。
+记录日期：2026-10-29。仓库：`ReAI-com/awesome-reaiapp`。
 
 ## 公开入口
 
@@ -14,25 +14,19 @@
 
 ## 线上站点与 main 的差距
 
-2026-10-28 读取 `https://open.reai.com/release.json`：
+2026-10-29 读取 `https://open.reai.com/release.json`：
 
 | 字段 | 线上值 |
 | --- | --- |
-| releaseId | `20261026T101300Z-55e2b53dfabf` |
-| gitCommit | `0ccb9348bb111dee2bcc0002a4e2f3613b676d7f`（`0ccb934`，合并 #32 时的 main） |
-| builtAt | `2026-10-26T10:13:00Z` |
-| sourceSha256 | `55e2b53dfabf0482cb351b5d1969468f46c4dad44829231cba33f24e729e79a9` |
-| workingTree | `modified`（构建时工作树相对该提交有改动；脏文件不在本仓库） |
+| releaseId | `20261029T111425Z-ac7186cd60ef` |
+| gitCommit | `41eda6214be9b5be8ab4909108a73d421995972a`（`41eda62`，合并 #40 后的 main） |
+| builtAt | `2026-10-29T11:14:25Z` |
+| sourceSha256 | `ac7186cd60efe97f0f0ec7868f4e86e672d220f8badd0929456431286e6deb60` |
+| workingTree | `clean` |
 
-本仓库 main HEAD 为 `2cb17afee3b27f6b73908293615069204319b193`（`2cb17af`，#38）。`0ccb934` 是它的祖先。`git rev-list --count 0ccb934..2cb17af` 为 **14**。线上记录的 gitCommit 落后 main 这 14 个提交。
+线上即当前 main，无差距。#40 发布首页插件切换动效版：三个选项（Typezero 语音、浏览器、Terminal），默认 Typezero；原误挂在 Codex Link 下的「语音任务」动效按用户指正归属 Typezero 语音输入，与语音输入写入演示合并为 24 秒四步故事，Codex Link 选项撤下、详情页保留目录。部署流程：369 个文件逐一校验 SHA256 后在 `.deploy.lock` 下原子切换 `current` 符号链接，nginx 配置不变、未重启服务；中英文 8 组视口 still 模式、三选项视频播放、暂停/重播/离屏暂停/减少动态效果/手机菜单、未知地址 404 与视频分段请求均在线上验证通过，回滚脚本保留在本地发布材料中。
 
-这 14 个提交里和站点、插件文档直接相关的是：
-
-- #33–#36：Voice `2.15.0`（只有一个 Agent、拨杆定档、结果弹窗续聊、文件夹读权限只问一次、同一对话只占一条任务，以及已上架说明）。
-- #37：开放站 legacy 应用列表去掉 Pi Agent、DSH Agent、Codex App 三个 Agent（源码保留，商店公开目录仍以远端 appStore 为准）。**该站点改动已在 main，线上 `release.json` 仍停在 `0ccb934`，没有吃到。**
-- #38：Terminal `1.0.6` 与 Codex Link `0.5.13` 声明 Windows 安装目标。
-
-本次只更新仓库文档，不重新部署 open.reai.com。
+2026-10-28 曾有一次未在更新日志留痕的部署 `20261028T000606Z-e40d3b946144`（gitCommit `4117b85`），本次发布为其后续；更早的 `20261026T101300Z-55e2b53dfabf`（`0ccb934`）为首个动效首页版本，均保留在 releases 目录可回溯。
 
 ## 历史交付
 
