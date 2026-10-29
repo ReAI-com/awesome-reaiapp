@@ -16,7 +16,7 @@ export function heroPreview(catalog,version) {
       <h1 id="hero-title"><span id="preview-title-first">${text(active.key+'.title1')}</span><br><span id="preview-title-second">${text(active.key+'.title2')}</span></h1>
       <p class="home-intro" id="preview-intro">${text(active.key+'.intro')}</p>
       <a class="home-button" id="preview-link" href="/apps/${active.appId}/">${text('home.preview.detail')} <span aria-hidden="true">↗</span></a>
-      <ol class="preview-steps" aria-label="${text('home.preview.steps')}">${[0,1,2].map(i=>`<li${i===0?' aria-current="step"':''}><span class="preview-step-number" aria-hidden="true">0${i+1}</span><span data-preview-step="${i}">${text(active.key+'.step'+i)}</span></li>`).join('')}</ol>
+      <ol class="preview-steps" aria-label="${text('home.preview.steps')}">${Array.from({length:active.steps||3},(_,i)=>`<li${i===0?' aria-current="step"':''}><span class="preview-step-number" aria-hidden="true">0${i+1}</span><span data-preview-step="${i}">${text(active.key+'.step'+i)}</span></li>`).join('')}</ol>
     </div>
     <figure class="hero-preview">
       <div class="product-preview">

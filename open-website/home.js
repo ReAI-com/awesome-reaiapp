@@ -42,7 +42,7 @@ if(home){
     let visible=box.bottom>0&&box.top<innerHeight&&box.right>0&&box.left<innerWidth;
     function drawStep(){
       const time=video.currentTime||0;
-      const step=reduce()?2:active.beats.reduce((result,start,index)=>time>=start?index:result,0);
+      const step=reduce()?active.beats.length-1:active.beats.reduce((result,start,index)=>time>=start?index:result,0);
       if(step===lastStep)return;lastStep=step;
       stepNodes.forEach((node,i)=>{if(i===step)node.parentElement.setAttribute('aria-current','step');else node.parentElement.removeAttribute('aria-current');});
     }
@@ -73,7 +73,7 @@ if(home){
       document.querySelector('#preview-intro').textContent=text(active.key+'.intro');
       document.querySelector('#preview-source').textContent=text(active.key+'.source');
       document.querySelector('#preview-link').href=localizedPath(`/apps/${active.appId}/`,locale);
-      stepNodes.forEach((node,i)=>{node.textContent=text(active.key+'.step'+i);});
+      stepNodes.forEach((node,i)=>{const item=node.parentElement,within=i<(active.steps||3);item.hidden=!within;if(within)node.textContent=text(active.key+'.step'+i);});
       poster.src=previewAsset(active,'png',version);poster.alt=text(active.key+'.alt');
       video.poster=poster.src;video.setAttribute('aria-label',poster.alt);
       if(updateUrl){

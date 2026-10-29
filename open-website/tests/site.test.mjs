@@ -122,7 +122,7 @@ test('English routes have localized UI, locale-specific download links and match
   const zh=await readFile(join(out,'index.html'),'utf8');
   assert.match(en,/<html lang="en"/);
   assert.match(en,/Say your idea\./);
-  assert.match(en,/Let the words follow\./);
+  assert.match(en,/Hand off the rest\./);
   const authoredEnglish = en.replace(/<a[^>]*data-language-switch[^>]*>.*?<\/a>/g, '');
   assert.ok(!/[\u3400-\u9fff]/.test(authoredEnglish), 'English homepage must translate authored copy except the Chinese switch');
   assert.match(en,/href="https:\/\/ai-board.reai.com\/en\/download"/);
@@ -157,8 +157,9 @@ test('preview selector only includes supported apps present in the public catalo
   assert.match(rendered,/voice.png\?v=test123/);
   assert.ok(!heroPreview([],'test123').includes('<video'));
   const {messages}=await import('../i18n.js');
-  for(const p of previews)for(const suffix of ['title1','title2','intro','source','alt','step0','step1','step2']){
+  for(const p of previews)for(const suffix of ['title1','title2','intro','source','alt',...Array.from({length:p.steps||3},(_,i)=>'step'+i)]){
     assert.ok(messages.zh[p.key+'.'+suffix],p.key+'.'+suffix);
     assert.ok(messages.en[p.key+'.'+suffix],p.key+'.'+suffix);
   }
+  assert.match(rendered,/data-preview-step="3"/);
 });

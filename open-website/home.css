@@ -41,8 +41,9 @@ html[lang=en] .home-hero h1{letter-spacing:-2px;line-height:1.1}
 .home .hero-copy h1>span{background:none;color:var(--ink)}
 .home .home-intro{margin:0;max-width:360px;font-size:16px;line-height:28px;text-wrap:pretty}
 .hero-copy .home-button{margin-top:32px}
-.preview-steps{display:flex;gap:24px;list-style:none;padding:0;margin:32px 0 0}
+.preview-steps{display:flex;flex-wrap:wrap;gap:24px;list-style:none;padding:0;margin:32px 0 0}
 .preview-steps li{display:flex;flex-direction:column;gap:8px;color:var(--muted);font-size:12px;line-height:16px;transition:color .2s}
+.preview-steps li[hidden]{display:none}
 .preview-step-number{font-variant-numeric:tabular-nums;color:#87927f}
 .preview-steps li[aria-current=step]{color:#284d1d;font-weight:600}
 .preview-steps li[aria-current=step] .preview-step-number{color:#477c32}

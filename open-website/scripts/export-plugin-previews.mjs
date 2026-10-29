@@ -92,10 +92,14 @@ async function setup(name){
 }
 async function act(page,name,frame){
  if(name==='voice'){
+  // One merged story: dictation writes the words at the cursor, then a spoken task
+  // hands the capsule to the corner, runs in the background and pings when done.
   if(frame===48)await click(page,'#flowInvoke');
-  if(frame===174)await click(page,'#flowInvoke');
-  if(frame===480)await page.evaluate(()=>{
-   window.voiceCapsuleDemo.reset();const e=document.querySelector('#flowEditor');e.value='会议安排：';e.setSelectionRange(e.value.length,e.value.length);e.blur();
+  if(frame===156)await click(page,'#flowInvoke');
+  if(frame===360){await page.selectOption('#flowMode','task');await click(page,'#flowInvoke');}
+  if(frame===510)await click(page,'#flowInvoke');
+  if(frame===1356)await page.evaluate(()=>{
+   window.voiceCapsuleDemo.reset();const e=document.querySelector('#flowEditor');e.value='会议安排：';e.setSelectionRange(e.value.length,e.value.length);e.blur();document.querySelector('#flowMode').value='input';
   });
  }else if(name==='terminal'){
   if(frame===120)await click(page,'[data-terminal-tab=release]');
@@ -118,8 +122,10 @@ async function act(page,name,frame){
 try{
  for(const name of ['voice','browser','terminal'].filter(n=>!selected||n===selected)){
   const {page,clip,dir,scale,errors}=await setup(name);
-  const duration=10, total=duration*60;
-  const sampleFrames=new Set([0,60,120,174,240,330,390,480,540,600]);
+  const duration=name==='voice'?24:10, total=duration*60;
+  const sampleFrames=new Set(name==='voice'
+   ?[0,48,120,156,198,300,360,480,510,552,732,757,985,1213,1300,1356,1380,1440]
+   :[0,60,120,174,240,330,390,480,540,600]);
   const frameRecords=[];
   for(let frame=0;frame<=total+6;frame++){
    const dt=frame?Math.round(frame*1000/60)-Math.round((frame-1)*1000/60):0;
@@ -137,7 +143,7 @@ try{
    if(sampleFrames.has(frame))frameRecords.push({frame,state:await page.evaluate(()=>({capsule:document.querySelector('#gcap')?.innerText,dock:document.querySelector('#dock')?.innerText,notification:document.querySelector('#osn')?.className,editor:document.querySelector('#flowEditor')?.value,activeTab:document.querySelector('[data-terminal-tab].active')?.dataset.terminalTab}))});
    if(frame%180===0)console.log(`${name} ${frame}/${total}${proof?' proof':''}`);
   }
-  const posterFrame=name==='voice'?174:240;
+  const posterFrame=name==='voice'?1350:240;
   await copyFile(join(dir,'frames',String(posterFrame).padStart(5,'0')+'.png'),join(dir,'poster.png'));
   await writeFile(join(dir,'capture.json'),JSON.stringify({name,duration,fps:60,total,clip,deviceScaleFactor:scale,errors,sourceSha256:hashes,frameRecords,adaptations:name==='terminal'?['Public sample account and paths replace private designer labels']:name==='browser'?['Real plugin DOM with public sample tab state; original design theme tokens']:['Original embedded desktop demo in a fixed capture viewport; native event simulation']},null,2)+'\n');
   await page.close();
