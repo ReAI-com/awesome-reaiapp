@@ -1,0 +1,49 @@
+name: maoding
+
+services:
+  app:
+    image: maoding:${MAODING_RELEASE:-local}
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        NODE_IMAGE: ${MAODING_NODE_IMAGE:-node:22}
+    init: true
+    restart: unless-stopped
+    user: "1000:1000"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      EMPLOYEE_PUBLIC_ORIGIN: https://maoding.reai.com
+      EMPLOYEE_HOST: 0.0.0.0
+      PORT: "4317"
+      EMPLOYEE_DATA_DIR: /app/.data
+      WAINAO_ALLOW_SITE_ADMINS: ${WAINAO_ALLOW_SITE_ADMINS:-false}
+      WAINAO_OAUTH_DEVELOPMENT: ${WAINAO_OAUTH_DEVELOPMENT:-false}
+    ports:
+      - "127.0.0.1:14317:4317"
+    volumes:
+      - data:/app/.data
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - >-
+          require('node:http').get('http://127.0.0.1:4317/healthz',
+          {headers:{Host:new URL(process.env.EMPLOYEE_PUBLIC_ORIGIN).host},timeout:3000},
+          r=>{r.resume();process.exit(r.statusCode===200?0:1)})
+          .on('timeout',function(){this.destroy()}).on('error',()=>process.exit(1))
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  data:

@@ -1,0 +1,336 @@
+{
+  "synthetic": true,
+  "not_user_blind_acceptance": true,
+  "confirmation_note": "仅用于确定性函数测试的合成人工确认。不得导入实际客户账套或冒充真实人工操作。",
+  "input": {
+    "workspaceId": "synthetic-finance-ledger",
+    "from": "2026-10-01",
+    "to": "2026-10-31",
+    "currency": "CNY",
+    "accountingBasis": "small_enterprise",
+    "openingBalancesComplete": true,
+    "records": [
+      {
+        "id": "chart-1002",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "chart_of_accounts",
+        "data": {
+          "source_row": 2,
+          "account_code": "1002",
+          "account_name": "银行存款",
+          "category": "asset",
+          "is_leaf": true
+        }
+      },
+      {
+        "id": "opening-1002",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "opening_balances",
+        "data": {
+          "source_row": 2,
+          "balance_date": "2026-10-01",
+          "account_code": "1002",
+          "debit_fen": 100000,
+          "credit_fen": 0,
+          "currency": "CNY",
+          "posting_status": "unconfirmed"
+        }
+      },
+      {
+        "id": "chart-3001",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "chart_of_accounts",
+        "data": {
+          "source_row": 3,
+          "account_code": "3001",
+          "account_name": "实收资本",
+          "category": "equity",
+          "is_leaf": true
+        }
+      },
+      {
+        "id": "opening-3001",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "opening_balances",
+        "data": {
+          "source_row": 3,
+          "balance_date": "2026-10-01",
+          "account_code": "3001",
+          "debit_fen": 0,
+          "credit_fen": 100000,
+          "currency": "CNY",
+          "posting_status": "unconfirmed"
+        }
+      },
+      {
+        "id": "chart-5001",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "chart_of_accounts",
+        "data": {
+          "source_row": 4,
+          "account_code": "5001",
+          "account_name": "主营业务收入",
+          "category": "income",
+          "is_leaf": true
+        }
+      },
+      {
+        "id": "opening-5001",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "opening_balances",
+        "data": {
+          "source_row": 4,
+          "balance_date": "2026-10-01",
+          "account_code": "5001",
+          "debit_fen": 0,
+          "credit_fen": 0,
+          "currency": "CNY",
+          "posting_status": "unconfirmed"
+        }
+      },
+      {
+        "id": "chart-5602",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "chart_of_accounts",
+        "data": {
+          "source_row": 5,
+          "account_code": "5602",
+          "account_name": "管理费用",
+          "category": "expense",
+          "is_leaf": true
+        }
+      },
+      {
+        "id": "opening-5602",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "opening_balances",
+        "data": {
+          "source_row": 5,
+          "balance_date": "2026-10-01",
+          "account_code": "5602",
+          "debit_fen": 0,
+          "credit_fen": 0,
+          "currency": "CNY",
+          "posting_status": "unconfirmed"
+        }
+      },
+      {
+        "id": "sale-bank",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "journal_entries",
+        "data": {
+          "source_row": 2,
+          "voucher_id": "记-001",
+          "line_no": 1,
+          "entry_date": "2026-10-05",
+          "account_code": "1002",
+          "debit_fen": 12000,
+          "credit_fen": 0,
+          "currency": "CNY",
+          "posting_status": "unconfirmed"
+        }
+      },
+      {
+        "id": "sale-income",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "journal_entries",
+        "data": {
+          "source_row": 3,
+          "voucher_id": "记-001",
+          "line_no": 2,
+          "entry_date": "2026-10-05",
+          "account_code": "5001",
+          "debit_fen": 0,
+          "credit_fen": 12000,
+          "currency": "CNY",
+          "posting_status": "unconfirmed"
+        }
+      },
+      {
+        "id": "cost-expense",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "journal_entries",
+        "data": {
+          "source_row": 4,
+          "voucher_id": "记-002",
+          "line_no": 1,
+          "entry_date": "2026-10-06",
+          "account_code": "5602",
+          "debit_fen": 2000,
+          "credit_fen": 0,
+          "currency": "CNY",
+          "posting_status": "unconfirmed"
+        }
+      },
+      {
+        "id": "cost-bank",
+        "workspaceId": "synthetic-finance-ledger",
+        "version": 1,
+        "kind": "journal_entries",
+        "data": {
+          "source_row": 5,
+          "voucher_id": "记-002",
+          "line_no": 2,
+          "entry_date": "2026-10-06",
+          "account_code": "1002",
+          "debit_fen": 0,
+          "credit_fen": 2000,
+          "currency": "CNY",
+          "posting_status": "unconfirmed"
+        }
+      }
+    ],
+    "confirmedRecordVersions": [
+      {
+        "id": "chart-1002",
+        "version": 1
+      },
+      {
+        "id": "opening-1002",
+        "version": 1
+      },
+      {
+        "id": "chart-3001",
+        "version": 1
+      },
+      {
+        "id": "opening-3001",
+        "version": 1
+      },
+      {
+        "id": "chart-5001",
+        "version": 1
+      },
+      {
+        "id": "opening-5001",
+        "version": 1
+      },
+      {
+        "id": "chart-5602",
+        "version": 1
+      },
+      {
+        "id": "opening-5602",
+        "version": 1
+      },
+      {
+        "id": "sale-bank",
+        "version": 1
+      },
+      {
+        "id": "sale-income",
+        "version": 1
+      },
+      {
+        "id": "cost-expense",
+        "version": 1
+      },
+      {
+        "id": "cost-bank",
+        "version": 1
+      }
+    ],
+    "reporting": {
+      "periodAdjustmentsConfirmed": true,
+      "balanceSheetLines": [
+        {
+          "code": "cash",
+          "label": "货币资金",
+          "section": "assets",
+          "accountCodes": [
+            "1002"
+          ],
+          "sign": 1
+        },
+        {
+          "code": "capital",
+          "label": "实收资本及未结转损益",
+          "section": "equity",
+          "accountCodes": [
+            "3001",
+            "5001",
+            "5602"
+          ],
+          "sign": -1
+        }
+      ],
+      "incomeStatementLines": [
+        {
+          "code": "revenue",
+          "label": "营业收入",
+          "section": "income",
+          "accountCodes": [
+            "5001"
+          ],
+          "sign": -1
+        },
+        {
+          "code": "expense",
+          "label": "期间费用",
+          "section": "expense",
+          "accountCodes": [
+            "5602"
+          ],
+          "sign": 1
+        }
+      ],
+      "closingEntriesReviewed": true,
+      "closingEntryRecordVersions": [],
+      "cashAccountCodes": [
+        "1002"
+      ],
+      "cashFlowClassifications": [
+        {
+          "recordId": "sale-bank",
+          "version": 1,
+          "category": "operating"
+        },
+        {
+          "recordId": "cost-bank",
+          "version": 1,
+          "category": "operating"
+        }
+      ]
+    }
+  },
+  "expected": {
+    "status": "ready",
+    "trialBalance": {
+      "balanced": true,
+      "openingDebitFen": 100000,
+      "openingCreditFen": 100000,
+      "debitFen": 14000,
+      "creditFen": 14000,
+      "closingDebitFen": 112000,
+      "closingCreditFen": 112000
+    },
+    "balanceSheet": {
+      "assetsFen": 110000,
+      "liabilitiesFen": 0,
+      "equityFen": 110000,
+      "balanced": true
+    },
+    "incomeStatement": {
+      "incomeFen": 12000,
+      "expenseFen": 2000,
+      "profitFen": 10000
+    },
+    "cashFlowStatement": {
+      "openingCashFen": 100000,
+      "netCashFlowFen": 10000,
+      "closingCashFen": 110000,
+      "reconciled": true
+    }
+  }
+}

@@ -22,6 +22,7 @@ examples/      插件开发与皮肤示例
 scripts/       公开泄露闸门与 vendor 校验
 website/       VitePress 文档站
 open-website/  中英文开放平台介绍站点
+ai-employee-workbench/  铆钉 · AI 员工工作台 3.0（独立 Web 应用，见目录内 README 与 deploy 文档）
 ```
 
 共 16 个官方插件源码：`agents-im`、`agents-tasks`、`browser`、`code-worker`、`codex-app`、`codex-link`、`computer`、`device-doctor`、`dsh-agent`、`files`、`pi-agent`、`podcast`、`terminal`、`text-editor`、`voice`、`wishing-wall`。其中 `pi-agent`、`dsh-agent`、`codex-app` **暂不上架、对用户目录不可见**（源码保留，不从本仓删除）。
