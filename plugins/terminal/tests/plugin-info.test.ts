@@ -43,7 +43,7 @@ test("设置页底部先显示版本再显示关于插件，点击展开对应�
   expect(buttons[0]!.getAttribute("aria-label")).toBe(`查看版本 ${manifest.version} 的更新日志`);
   expect(buttons[1]!.getAttribute("aria-label")).toBe("关于 终端");
   buttons[0]!.click();
-  expect(node.querySelector(".terminal-changelog")?.textContent).toContain("终端里的彩色输出恢复正常");
+  expect(node.querySelector(".terminal-changelog")?.textContent).toContain("支持 Windows 安装目标");
   expect(node.querySelector<HTMLElement>(".terminal-changelog")?.lang).toBe("zh");
   buttons[1]!.click();
   expect(node.querySelector(".terminal-about")?.textContent).toContain("https://open.reai.com/apps/com.reai.terminal");

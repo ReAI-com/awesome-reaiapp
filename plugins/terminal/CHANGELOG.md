@@ -1,5 +1,14 @@
 # 终端更新日志
 
+## 1.0.6
+
+### 支持 Windows 安装目标
+
+候选状态：未发布。相对 `1.0.5`：开放 `targets` 含 Windows（aarch64 / x86_64），以便 Host 放开 Win 会话能力后可安装；插件仍只依赖 `terminal.session@1`，PTY/Shell 由 Host 提供。
+
+- 变更：`app.manifest.json` `targets` 增加 `windows`。
+- 未验证：Windows 真机/VM 端到端显示与安装审核。
+
 ## 1.0.5
 
 ### 终端里的彩色输出恢复正常

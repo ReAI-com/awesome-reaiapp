@@ -425,7 +425,6 @@ describe("Voice 模型 readiness 与设置", () => {
       onRefresh: async () => undefined,
       onSettingsChanged: async () => undefined,
       onFeatureSettingsChanged: async () => undefined,
-      onAgentExperimentChanged: async () => undefined,
       onDownloadModel: async () => undefined,
       onCancelModelDownload: async () => undefined,
       onRequestPermission: async () => undefined,
@@ -446,7 +445,6 @@ describe("Voice 模型 readiness 与设置", () => {
       onClearReplayCache: async () => undefined,
       onActionMountChanged: async () => undefined,
       onOpenKeymap: async () => undefined,
-      onOpenAgentConfig: async () => undefined,
     onNavigated: () => undefined,
     });
 
@@ -486,7 +484,6 @@ describe("Voice 模型 readiness 与设置", () => {
       onRefresh: async () => undefined,
       onSettingsChanged: async () => undefined,
       onFeatureSettingsChanged: async () => undefined,
-      onAgentExperimentChanged: async () => undefined,
       onDownloadModel: async () => undefined,
       onCancelModelDownload: async () => undefined,
       onRequestPermission: async () => undefined,
@@ -507,7 +504,6 @@ describe("Voice 模型 readiness 与设置", () => {
       onClearReplayCache: async () => undefined,
       onActionMountChanged: async () => undefined,
       onOpenKeymap: async () => undefined,
-      onOpenAgentConfig: async () => undefined,
     });
 
     // R2：音源不可用是缺配置——提醒行说原因、给去路（换输入设备）；胶囊也说人话。
@@ -1674,7 +1670,6 @@ describe("存档对稿（A3-9 / A3-11 / A3-12 / R9）", () => {
         onRefresh: async () => undefined,
         onSettingsChanged: async () => undefined,
         onFeatureSettingsChanged: async () => undefined,
-        onAgentExperimentChanged: async () => undefined,
         onDownloadModel: async () => undefined,
         onCancelModelDownload: async () => undefined,
         onRequestPermission: async () => undefined,
@@ -1697,7 +1692,6 @@ describe("存档对稿（A3-9 / A3-11 / A3-12 / R9）", () => {
         onClearReplayCache: async () => undefined,
         onActionMountChanged: async () => undefined,
         onOpenKeymap: async () => undefined,
-        onOpenAgentConfig: async () => undefined,
       },
     );
     const readRow = root.querySelector<HTMLElement>(

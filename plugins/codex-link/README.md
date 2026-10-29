@@ -4,7 +4,7 @@ ReAI 官方插件源码候选。用途、能力、权限与贡献点以 `app.man
 
 ## 独立仓库构建
 
-稳定 ID：`com.reai.codex-link`；当前迁移版本：`0.5.12`。本目录依赖 `../../packages/` 中的 SDK 与工具，不依赖 Board Host 源码进行构建。
+稳定 ID：`com.reai.codex-link`；当前迁移版本：`0.5.13`。本目录依赖 `../../packages/` 中的 SDK 与工具，不依赖 Board Host 源码进行构建。
 
 ```bash
 bun install --frozen-lockfile --ignore-scripts

@@ -1,6 +1,6 @@
 # 终端
 
-ReAI 插件 `com.reai.terminal`。当前源码版本为 `1.0.5`。提供多会话交互式终端界面。Host 管理 Shell 和 PTY。插件通过 `terminal.session@1` 接口操作会话。
+ReAI 插件 `com.reai.terminal`。当前源码版本为 `1.0.6`。提供多会话交互式终端界面。Host 管理 Shell 和 PTY。插件通过 `terminal.session@1` 接口操作会话。
 
 运行终端需要平台能力批准和用户授权。插件不能指定 Shell 可执行程序或注入启动环境。语言资源位于 `assets/locales/`。
 
@@ -36,3 +36,5 @@ bun run pack:submission
 提交打包会检查身份、重复构建和包内资源。表单版本必须与最终包一致。
 
 开发与安装要求见 [开发规范](../../docs/plugin-development-v1.md) 和 [提交规范](../../docs/plugin-submission-v1.md)。本地测试和打包只证明本地结果。真实 Host 安装、用户授权、平台审核和商店发布需要各自的验证证据。
+
+安装目标：`macos`（aarch64 / x86_64）与 `windows`（aarch64 / x86_64）。PTY/Shell 仍由 Host `terminal.session@1` 提供；Windows 真机验收另计。

@@ -1,7 +1,7 @@
 {
   "manifestVersion": "1.1",
   "appId": "com.reai.voice",
-  "version": "2.14.8",
+  "version": "2.15.0",
   "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
   "name": "语音输入法",
   "description": "按下语音键开始录音，再按一次完成识别并把文字写入当前应用",
@@ -139,12 +139,12 @@
     },
     {
       "id": "agent.session@1",
-      "purpose": "让 Voice 通过通用 Agent 服务使用你选择的 Pi、DSH 或 Codex，并使用你的账户额度处理命令与润色",
+      "purpose": "让 Voice 通过通用 Agent 服务处理命令与润色，并使用你的账户额度",
       "required": false
     },
     {
       "id": "agent.session@2",
-      "purpose": "通过统一 Agent 服务使用 Pi、DSH 或 Codex 处理语音任务，保留请求与结果并支持准确取消",
+      "purpose": "通过统一 Agent 服务处理语音任务，保留请求与结果并支持准确取消",
       "required": false
     },
     {
@@ -166,49 +166,8 @@
   "requirementsVersion": "1.2",
   "requirements": [
     {
-      "id": "runtime.dsh",
-      "displayName": "ReAI DSH Runtime",
-      "kind": "managed_executable",
-      "componentId": "ui",
-      "required": false,
-      "requiredFor": [
-        "capability:agent.session@1",
-        "capability:agent.session@2"
-      ],
-      "platforms": [
-        "macos",
-        "windows"
-      ],
-      "channels": [
-        "direct"
-      ],
-      "version": {
-        "constraint": ">=0.1.5-rc.2 <0.1.6"
-      },
-      "probe": {
-        "type": "host_registered",
-        "id": "dsh-native-v2"
-      },
-      "provision": {
-        "mode": "host_managed_resource",
-        "resourceId": "com.reai.runtime.dsh",
-        "installPolicy": "optional_on_demand",
-        "requiresConsent": true
-      },
-      "failure": {
-        "componentState": "degraded",
-        "featureState": "blocked",
-        "hostState": "satisfied"
-      },
-      "remediation": {
-        "action": "install_managed_resource",
-        "label": "下载并安装 DSH 运行组件",
-        "restartRequired": false
-      }
-    },
-    {
       "id": "runtime.pi-fallback",
-      "displayName": "ReAI Pi Runtime",
+      "displayName": "ReAI Agent Runtime",
       "kind": "managed_executable",
       "componentId": "ui",
       "required": false,
@@ -243,48 +202,7 @@
       },
       "remediation": {
         "action": "install_managed_resource",
-        "label": "下载并安装 Pi 回退运行组件",
-        "restartRequired": false
-      }
-    },
-    {
-      "id": "runtime.codex",
-      "displayName": "ReAI Codex Runtime",
-      "kind": "managed_executable",
-      "componentId": "ui",
-      "required": false,
-      "requiredFor": [
-        "capability:agent.session@1",
-        "capability:agent.session@2"
-      ],
-      "platforms": [
-        "macos",
-        "windows"
-      ],
-      "channels": [
-        "direct"
-      ],
-      "version": {
-        "constraint": ">=0.149.1 <0.150.0"
-      },
-      "probe": {
-        "type": "host_registered",
-        "id": "codex-app-server-v2"
-      },
-      "provision": {
-        "mode": "host_managed_resource",
-        "resourceId": "com.reai.runtime.codex",
-        "installPolicy": "optional_on_demand",
-        "requiresConsent": true
-      },
-      "failure": {
-        "componentState": "degraded",
-        "featureState": "blocked",
-        "hostState": "satisfied"
-      },
-      "remediation": {
-        "action": "install_managed_resource",
-        "label": "下载并安装 Codex 运行组件",
+        "label": "下载并安装 Agent 模块",
         "restartRequired": false
       }
     }
@@ -894,8 +812,7 @@
       {
         "id": "summary",
         "name": "总结",
-        "description": "当日总结与分段摘要（DSH 持续会话，引擎锁定）",
-        "runtime": "dsh",
+        "description": "当日总结与分段摘要（持续会话，由 Host 默认 Agent 承担）",
         "promptTemplate": "你是 ReAI Board Voice 的总结助手。严格按用户本轮给出的总结指令处理内容，只输出要求的要点。"
       }
     ],

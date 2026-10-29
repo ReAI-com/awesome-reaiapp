@@ -157,7 +157,7 @@ describe("Voice V1.7 图标与交互基线", () => {
     local.view.openSettings();
     expect(
       Array.from(local.root.querySelectorAll(".settings-section-title"), (node) => node.textContent),
-    ).toEqual(["录音与识别", "润色", "语音命令", "记录保留", "每日总结", "系统", "Agent 配置"]);
+    ).toEqual(["录音与识别", "润色", "语音命令", "记录保留", "每日总结", "系统"]);
     expect(local.root.textContent).not.toContain("润色上下文");
     local.view.dispose();
 
@@ -176,7 +176,6 @@ describe("Voice V1.7 图标与交互基线", () => {
       "记录保留",
       "每日总结",
       "系统",
-      "Agent 配置",
     ]);
     expect(cloud.root.textContent).not.toContain("Agent 底层");
     cloud.view.dispose();

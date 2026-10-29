@@ -944,6 +944,94 @@ export default configuredVoiceSuite({
       },
     },
     {
+      name: "拨杆档位：按键带 yolo 的新会话按 yolo；下一次没带档位的独立新任务回到 chat，不沿用上次",
+      async run({ host }) {
+        await pinRawPolish(host, "contract-workmode-raw-settings");
+        // 档位只在带文件 / 命令工具（范围执行可用）的会话上有意义：按 Host 真实能力声明注入 Pi。
+        host.setAgentPiStatus({
+          available: true, downloadRequired: false, detail: "",
+          capabilities: { hostTools: true, fileTools: true, turnModes: ["chat", "plan", "yolo"], modelSelection: "host-settings", scopedExecutionVersion: 1, commandExecution: true },
+        });
+        const creates = () => host.agentRequests.filter((request) => request.method === "agent.v2.session.create");
+        const before = creates().length;
+        // 第一段：硬件按键带 yolo（两次 invoke = 开录 / 结束）。
+        await host.invokeCommand("com.reai.voice.command.agent", {}, { workMode: "yolo" });
+        await host.invokeCommand("com.reai.voice.command.agent", {}, { workMode: "yolo" });
+        await waitUntil(() => creates().length > before, "带 yolo 的语音任务没有新建 Agent 会话");
+        const first = creates()[before]!.params as { config?: { mode?: string } };
+        if (first.config?.mode !== "yolo") throw new Error(`拨杆 yolo 应落到会话档位，实际 ${String(first.config?.mode)}`);
+        const firstTools = ((first.config as { tools?: { ref: string }[] }).tools ?? []).map((tool) => tool.ref);
+        if (!firstTools.includes("command")) throw new Error("yolo 会话应申请 command 工具");
+        await waitUntil(
+          () => host.voiceCommandRequests.filter((request) => request.method === "voice.command.present-answer").length >= 1,
+          "第一段没有弹结果面板",
+        );
+        // 第二段：没有拨杆信息（软件入口 / 无拨杆设备 / 旧 Host），弹窗已关掉 → 独立新任务，必须是 chat。
+        host.setVisibleAnswer({ visible: false });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => creates().length > before + 1, "没带档位的语音任务没有新建 Agent 会话");
+        const second = creates()[before + 1]!.params as { config?: { mode?: string } };
+        const secondTools = ((second.config as { tools?: { ref: string }[] }).tools ?? []).map((tool) => tool.ref);
+        if (secondTools.includes("command")) throw new Error("chat 会话不得申请 command：Host 的工具 × 档位矩阵只在 yolo 接受它，带上会在建会话时被拒");
+        if (second.config?.mode !== "chat") {
+          const modes = creates().slice(before).map((request) => String((request.params as { config?: { mode?: string } }).config?.mode));
+          throw new Error(`没有拨杆信息的新任务应按 chat，实际 ${String(second.config?.mode)}（不得沿用上一次的 yolo）；本场景建的会话档位依次：${modes.join(",")}`);
+        }
+      },
+    },
+    {
+      name: "结果弹窗还显示着时再按语音键 = 续接同一对话；弹窗不在就是新任务",
+      async run({ host }) {
+        await pinRawPolish(host, "contract-continue-raw-settings");
+        const creates = () => host.agentRequests.filter((request) => request.method === "agent.v2.session.create");
+        const starts = () => host.agentRequests.filter((request) => request.method === "agent.v2.turn.start");
+        const answers = () => host.voiceCommandRequests.filter((request) => request.method === "voice.command.present-answer");
+        const createsBefore = creates().length;
+        const answersBefore = answers().length;
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => answers().length > answersBefore, "第一段没有弹结果面板");
+        const shown = answers()[answersBefore]!.params as { runId?: string };
+        if (!shown.runId) throw new Error("结果面板没有 runId");
+        const firstSession = (starts().at(-1)!.params as { sessionId?: string }).sessionId;
+        // 弹窗还显示着：Host 回同一 runId → 再按语音键续接同一会话，不新建。
+        host.setVisibleAnswer({ visible: true, runId: shown.runId });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => answers().length > answersBefore + 1, "续接的那段没有弹结果面板");
+        if (creates().length !== createsBefore + 1) throw new Error("弹窗还在时再按语音键应续接同一会话，不得新建会话");
+        const continued = (starts().at(-1)!.params as { sessionId?: string }).sessionId;
+        if (continued !== firstSession) throw new Error("续接应送进同一会话");
+        // 弹窗关掉 / 顶掉：Host 回 visible=false → 新任务新会话。
+        host.setVisibleAnswer({ visible: false });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => creates().length > createsBefore + 1, "弹窗不在时再按语音键应新建会话");
+        const fresh = (starts().at(-1)!.params as { sessionId?: string }).sessionId;
+        if (fresh === firstSession) throw new Error("弹窗不在时不得续接旧会话");
+        await waitUntil(() => answers().length > answersBefore + 2, "新任务那段没有弹结果面板");
+        const freshRun = (answers().at(-1)!.params as { runId?: string }).runId;
+        if (!freshRun) throw new Error("新任务的结果面板没有 runId");
+        // 判定在按键开录那一刻冻结（第 2 轮审查）：按键时弹窗在、录音期间被关掉 → 仍续接那条对话。
+        host.setVisibleAnswer({ visible: true, runId: freshRun });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        host.setVisibleAnswer({ visible: false });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => answers().length > answersBefore + 3, "按键时弹窗在的那段没有弹结果面板");
+        if (creates().length !== createsBefore + 2) throw new Error("按键时弹窗在：录音期间关掉也应续接，不得新建会话");
+        if ((starts().at(-1)!.params as { sessionId?: string }).sessionId !== fresh) throw new Error("应续接按键那一刻显示着的那条对话");
+        // 按键时弹窗不在、录音期间才弹出来 → 仍是新任务，不把新语音并进去。
+        host.setVisibleAnswer({ visible: false });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        host.setVisibleAnswer({ visible: true, runId: freshRun });
+        await host.invokeCommand("com.reai.voice.command.agent");
+        await waitUntil(() => creates().length > createsBefore + 2, "按键时没弹窗的那段应新建会话");
+        if ((starts().at(-1)!.params as { sessionId?: string }).sessionId === fresh) throw new Error("录音期间才弹出来的结果不得把新语音并进去");
+        await waitUntil(() => answers().length > answersBefore + 4, "最后一段没有弹结果面板");
+      },
+    },
+    {
       name: "Agent 提问弹面板给人看，不往目标应用写字；失败时也不写",
       async run({ host }) {
         await pinRawPolish(host, "contract-agent-question-raw-settings");
@@ -1066,15 +1154,15 @@ export default configuredVoiceSuite({
         if (setups.length !== 2) throw new Error("每次明确动作应且仅应发起一次来源插件修复导航");
         for (const setup of setups) {
           const params = setup.params as { target?: string; appId?: string; returnIntent?: { reason?: string; backend?: string } };
-          if (params.target !== "app-managed-resources" || params.appId !== undefined || params.returnIntent?.reason !== "voice-agent-runtime" || params.returnIntent.backend !== "dsh") {
-            throw new Error("Voice 必须使用 Host 注入的来源身份与自动选择顺序，不能指定其他插件或替代授权");
+          if (params.target !== "app-managed-resources" || params.appId !== undefined || params.returnIntent?.reason !== "voice-agent-runtime" || typeof params.returnIntent.backend !== "string") {
+            throw new Error("Voice 必须使用 Host 注入的来源身份与 Host 自己的选择顺序，不能指定其他插件或替代授权");
           }
         }
         await host.sendIntent(main.surfaceMountId, { type: "system-task.return", taskId: "mock-system-task", target: "app-managed-resources", outcome: "cancelled" });
         await new Promise((resolve) => setTimeout(resolve, 30));
         if (started() !== startsBefore || sends() !== sendsBefore) throw new Error("授权前或取消后不得录音、创建会话或发送模型请求");
         const answer = host.voiceCommandRequests.filter((request) => request.method === "voice.command.present-answer").at(-1)?.params as { text?: string } | undefined;
-        if (!answer?.text?.includes("Voice 的运行组件中允许使用 DSH") || answer.text.includes("生命周期")) throw new Error("缺少 Voice 授权不能误报 DSH 全局未安装");
+        if (!answer?.text?.includes("Agent") || /\b(DSH|Dsh|Pi|Codex)\b/.test(answer.text) || answer.text.includes("生命周期")) throw new Error("缺少 Voice 授权时只提示 Agent 服务未就绪，不出现引擎名，也不能误报全局未安装");
 
         // The mock only models the subsequent authoritative status. Native acceptance
         // must separately prove Host preview/confirmation/attachment, not forge a receipt.
@@ -1096,7 +1184,8 @@ export default configuredVoiceSuite({
         await host.invokeCommand("com.reai.voice.command.agent");
         await waitUntil(() => host.voiceCommandRequests.some((request) => request.method === "voice.command.present-answer"), "导航失败没有可操作反馈");
         const answer = host.voiceCommandRequests.filter((request) => request.method === "voice.command.present-answer").at(-1)?.params as { text?: string } | undefined;
-        if (!answer?.text?.includes("未能打开运行组件设置") || answer.text.includes("private-error-details")) throw new Error("导航失败文案必须说明手动入口并隐藏内部细节");
+        // 2026-10-24 起文案不再提「运行组件 / 引擎名」：说明到 Driver 里完成 Agent 服务安装即可，内部错误不透传。
+        if (!answer?.text?.includes("未能打开安装页面") || !answer.text.includes("Driver") || answer.text.includes("private-error-details")) throw new Error("导航失败文案必须说明手动入口并隐藏内部细节");
         if (host.agentRequests.some((request) => request.method === "agent.v2.session.create") || host.voiceInputRequests.some((request) => request.method === "voice.toggle")) throw new Error("导航失败不得继续请求");
       },
     },
@@ -2068,7 +2157,7 @@ export default configuredVoiceSuite({
       },
     },
     {
-      name: "段总结（R11）：「生成总结」经通用 Agent Session 选择 Dsh backend，并经 set-summary 交回 Host 持久化；重新总结复用同一会话",
+      name: "段总结（R11）：「生成总结」经通用 Agent Session 由 Host 默认 Agent 承担，并经 set-summary 交回 Host 持久化；重新总结复用同一会话",
       async run({ host }) {
         const start = new Date();
         start.setHours(14, 3, 0, 0);
@@ -2146,8 +2235,8 @@ export default configuredVoiceSuite({
           .find((request) => request.method === "agent.v2.session.create")?.params as {
             config?: { runtime?: string; memory?: string; tools?: unknown[] };
           } | undefined;
-        if (created?.config?.runtime !== "dsh" || created.config.memory !== "session") {
-          throw new Error("段总结必须在通用 Agent Session 上明确选择 Dsh 持久会话");
+        if (created?.config?.runtime !== "auto" || created.config.memory !== "session") {
+          throw new Error("段总结必须在通用 Agent Session 上以 Host 默认 Agent 建持久会话（runtime=auto）");
         }
         if ((created.config.tools?.length ?? -1) !== 0) {
           throw new Error("总结会话不需要读取 Host 工具");
@@ -2157,7 +2246,7 @@ export default configuredVoiceSuite({
           .find((request) => request.method === "agent.v2.turn.start");
         const firstText = String((firstSend?.params as { text?: unknown } | undefined)?.text ?? "");
         if (!firstText.includes("[14:03:00] 我们先把发布节奏定下来。")) {
-          throw new Error("首轮应把逐句带时刻的转写夹在围栏里发给 Dsh");
+          throw new Error("首轮应把逐句带时刻的转写夹在围栏里发给 Agent");
         }
         const saved = host.voiceInputRequests
           .filter((request) => request.method === "voice.recordings.set-summary")
@@ -2168,13 +2257,13 @@ export default configuredVoiceSuite({
             basedOnTranscribedAtMs?: number;
           } | undefined;
         if (saved?.recordingId !== "seg-1" || saved.dshSessionId !== "agent2-mock-1") {
-          throw new Error("set-summary 必须带上段 id 与生成它的 Dsh 会话");
+          throw new Error("set-summary 必须带上段 id 与生成它的 Agent 会话");
         }
         if (saved.basedOnTranscribedAtMs !== start.getTime() + 60_000) {
           throw new Error("set-summary 必须带上生成时所依据的转写版本，避免迟到总结覆盖新转写");
         }
         if (!Array.isArray(saved.points) || saved.points[0] !== "这是测试工作流回复") {
-          throw new Error("交回 Host 的要点应是 Dsh 回复解析出的内容");
+          throw new Error("交回 Host 的要点应是 Agent 回复解析出的内容");
         }
         await waitUntil(
           () => root.querySelector(".ctx-sum-lb")?.textContent === "AI 总结",
@@ -2291,9 +2380,10 @@ export default configuredVoiceSuite({
       },
     },
     {
-      name: "段总结：Dsh 引擎不可用时回退云端一次性生成，结果不带会话并在界面说明来路",
+      name: "段总结：Agent 不可用时回退云端一次性生成，结果不带会话并在界面说明来路",
       async run({ host }) {
-        // 这个场景用「Dsh backend 不可用」的 Host：回退云端一次性生成，不创建会话。
+        // 这个场景用「没有任何 Agent 可用」的 Host（runtime 恒 auto，任一后端可用都会走会话）：
+        // 回退云端一次性生成，不创建会话。
         const start = new Date();
         start.setHours(11, 20, 0, 0);
         host.setVoiceRecordings([
@@ -2309,6 +2399,11 @@ export default configuredVoiceSuite({
         host.setAgentDshStatus({
           available: false,
           detail: "未设置 REAI_DSH_ROOT（测试注入）",
+        });
+        host.setAgentPiStatus({
+          available: false,
+          detail: "download_required: com.reai.runtime.pi（测试注入）",
+          downloadRequired: true,
         });
         const main = await host.openSurface("main");
         const root = main.root;

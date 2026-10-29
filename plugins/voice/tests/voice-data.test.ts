@@ -13,7 +13,6 @@ import {
   SOURCE_MIGRATION_NOTICE_KEY,
   SOURCE_SELECTION_KEY,
   createDefaultVoiceViewState,
-  migrateAgentExperimentSettings,
   VoiceStateRepository,
   planCommandAgentSessionReconciliation,
   reconcileAuthoritativeVoiceStatus,
@@ -100,16 +99,18 @@ describe("Voice 插件私有数据归一化", () => {
     const repository = new VoiceStateRepository(storeWith({}));
     await repository.appendCommandHistory({ id: "a", conversationId: "conversation-a", agentSessionId: "pi-a", transcript: "first", reply: "answer", status: "completed", createdAt: "2026-09-20T09:00:00.000Z" });
     await repository.appendCommandHistory({ id: "b", conversationId: "conversation-a", agentSessionId: "agent2-b", transcript: "next", reply: "second", status: "completed", createdAt: "2026-09-20T09:00:01.000Z" });
-    await repository.saveConversationOptions("conversation-a", { backend: "dsh", workspace: { kind: "direct", path: "/Users/example/project" }, sessionId: "agent2-b", workspaceRoot: "/Users/example/project", continuationPending: true });
+    await repository.saveConversationOptions("conversation-a", { workspace: { kind: "direct", path: "/Users/example/project" }, sessionId: "agent2-b", workspaceRoot: "/Users/example/project", continuationPending: true });
     const stored = await repository.load();
     expect(stored.commandHistory?.map((entry) => [entry.conversationId, entry.agentSessionId])).toEqual([["conversation-a", "agent2-b"], ["conversation-a", "pi-a"]]);
-    expect(stored.conversationOptions["conversation-a"]).toMatchObject({ backend: "dsh", sessionId: "agent2-b", continuationPending: true });
-    expect(stored.agentExperiment?.backend).toBe("auto");
+    expect(stored.conversationOptions["conversation-a"]).toMatchObject({ sessionId: "agent2-b", continuationPending: true });
+    // Agent 由 Host 决定：旧数据里的 backend 选择不再保留。
+    expect((stored.conversationOptions["conversation-a"] as { backend?: unknown }).backend).toBeUndefined();
   });
   test("待送达的续接标记只跟着具体会话存在；没有会话的选择不保留它", async () => {
     const repository = new VoiceStateRepository(storeWith({}));
-    const saved = await repository.saveConversationOptions("c", { backend: "pi", continuationPending: true });
-    expect(saved.c).toEqual({ backend: "pi" });
+    const saved = await repository.saveConversationOptions("c", { continuationPending: true });
+    // 没有会话时什么都不保留（Agent 由 Host 决定，不再有可保留的引擎选择）。
+    expect(saved.c).toEqual({});
   });
   test("恢复或重试的结算保留原对话身份，不把条目拆到新会话名下", async () => {
     const repository = new VoiceStateRepository(storeWith({}));
@@ -142,19 +143,6 @@ describe("Voice 插件私有数据归一化", () => {
     expect(messages[3]!.usage).toBeUndefined();
     expect(messages[4]!.usage).toEqual({ complete: false, outputTokens: 2 });
   });
-  test("Agent 后端默认 auto，旧 pi 一次性迁移且用户之后仍可固定选择 pi", async () => {
-    expect(createDefaultVoiceViewState().agentExperiment.backend).toBe("auto");
-    expect(migrateAgentExperimentSettings({ backend: "pi" })).toEqual({ backend: "auto" });
-    expect(migrateAgentExperimentSettings({ backend: "pi", selectionVersion: 1 })).toEqual({ backend: "pi" });
-    expect(migrateAgentExperimentSettings({ backend: "dsh" })).toEqual({ backend: "dsh" });
-
-    const store = storeWith({ "agent-experiment-v0": { backend: "pi" } });
-    const repository = new VoiceStateRepository(store);
-    expect((await repository.load()).agentExperiment?.backend).toBe("auto");
-    await repository.saveAgentExperiment({ backend: "pi" });
-    expect((await repository.load()).agentExperiment?.backend).toBe("pi");
-  });
-
   test("旧 system 设置没有 v2 确认时迁回 Board-first，并清掉旧 endpoint", async () => {
     const repository = new VoiceStateRepository(storeWith({
       settings: {
@@ -883,6 +871,22 @@ describe("Voice 插件私有数据归一化", () => {
     expect(commandHistory[0]?.reply?.length).toBeGreaterThan(0);
     expect(bytes(inputHistory)).toBeLessThanOrEqual(MAX_HISTORY_STORE_BYTES);
     expect(bytes(commandHistory)).toBeLessThanOrEqual(MAX_HISTORY_STORE_BYTES);
+  });
+
+  test("打开完整对话清除所有轮次未读，保留原文、录音与其它对话未读", async () => {
+    const first: VoiceCommandHistoryItem = { id: "first", transcript: "查文件", reply: "请确认", status: "completed", createdAt: "2026-08-22T08:00:00.000Z", conversationId: "conversation-a", agentSessionId: "old-session", unread: true, recordingId: "clip-a" };
+    const latest: VoiceCommandHistoryItem = { ...first, id: "latest", transcript: "桌面上", reply: "一个文件", agentSessionId: "new-session", createdAt: "2026-08-22T09:00:00.000Z", unread: undefined, recordingId: "clip-b" };
+    const other: VoiceCommandHistoryItem = { ...first, id: "other", conversationId: "conversation-b", agentSessionId: "other-session" };
+    const repository = new VoiceStateRepository(storeWith({ "command-history": [latest, other, first] }));
+    const before = (await repository.load()).commandHistory!;
+    const result = await repository.markCommandRead("latest");
+    expect(result).toEqual(before.map(entry => {
+      if (entry.conversationId !== "conversation-a") return entry;
+      const { unread, ...rest } = entry;
+      return rest;
+    }));
+    expect((await repository.load()).commandHistory).toEqual(result);
+    expect(await repository.markCommandRead("missing")).toEqual(result);
   });
 
   test("标记旧命令已读与追加新命令并发时串行写入，不覆盖彼此", async () => {

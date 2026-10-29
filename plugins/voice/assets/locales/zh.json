@@ -178,9 +178,9 @@
   },
   "summary": {
     "message1": "按设置使用云端一次性生成",
-    "message2": "Dsh 状态读取失败",
-    "message3": "Dsh 引擎不可用",
-    "message4": "未登录，Dsh 会话不可用",
+    "message2": "Agent 状态读取失败",
+    "message3": "Agent 不可用",
+    "message4": "未登录，Agent 会话不可用",
     "message5": "插件未获准使用账户额度",
     "message6": "这一段的总结 {seconds} 秒内没有生成完（超时），可以重试",
     "message7": "这一段还没有转写文本，转录完成后再总结",
@@ -260,7 +260,7 @@
     "voiceInputIsPausedEnableTextInsertion": "语音输入已暂停：请先在权限页开启写回权限，再切换一次润色档位重试",
     "valueResult": "{value0}结果",
     "valueIncomplete": "{value0}未完成",
-    "theAgentRuntimeIsNotInstalledYet": "请在 Voice 的运行组件中允许使用 {backend}，需要时由 Driver 下载并安装。完成后返回 Voice 重试。",
+    "theAgentRuntimeIsNotInstalledYet": "Agent 服务还没准备好。请在 Driver 里完成安装后返回 Voice 重试。",
     "agentIsWorking": "Agent 正在处理",
     "waitingForYou": "等待你授权",
     "waitingForYouValue": "等待你授权：{value0}",
@@ -288,9 +288,8 @@
     "enterSomethingToSend": "请输入要发送的内容",
     "thePreviousVoiceCommandIsStillProcessing": "上一条语音命令仍在处理中",
     "voiceInputIsInProgressWaitFor": "语音输入正在进行中，等它完成后再发送",
-    "theHostDoesNotProvideADsh": "Host 没有提供 Dsh Agent 后端",
-    "theHostDidNotSelectTheRequested": "Host 没有按请求选择 Dsh 后端",
-    "dshAgentExecutionFailed": "Dsh Agent 执行失败",
+    "theHostDoesNotProvideADsh": "Host 没有提供 Agent 服务",
+    "dshAgentExecutionFailed": "Agent 执行失败",
     "anotherSegmentIsBeingSummarizedPleaseWait": "正在生成另一段的总结（同一时间只生成一段），它完成后再生成这一段",
     "thisSegmentHasNoTranscriptYetWait2": "这一段还没有转写文本，转录完成后再总结",
     "summaryIsTemporarilyUnavailableTryAgainLater": "总结暂时不可用，请稍后重试",
@@ -355,7 +354,7 @@
     "chooseCloudModelBeforeTranscribing": "请先在 Voice 设置中选择云端模型",
     "cloudOptionsUnavailable": "无法读取云端转写选项，请在设置中刷新后重试。",
     "cloudOptionRequired": "请先在设置 › 录音与识别中选择并保存有效的云端转写选项。",
-    "agentRuntimeSetupUnavailable": "未能打开运行组件设置。请在 Driver「已安装」中打开 Voice 的运行组件，允许使用 {backend} 后重试。",
+    "agentRuntimeSetupUnavailable": "未能打开安装页面。请在 Driver 里完成 Agent 服务的安装后重试。",
     "agentDefaultUnavailable": "无法读取默认 Agent 选择。请在 Driver 设置中重新选择默认 Agent 后重试。",
     "agentReceiptUnknown": "还没确认请求是否已开始。请在这条记录中点“重试这次请求”，避免重复执行。",
     "notCompletedTryAgainLater": "暂时没能完成，请稍后重试。"
@@ -369,7 +368,6 @@
     "translationTitle": "翻译",
     "sourceText": "原文",
     "translatedText": "译文 · {language}",
-    "agentKernelTag": "Agent 内核",
     "translationCharacterCount": "{source} → {result} 字",
     "copied": "已复制",
     "copyFailed": "复制失败",
@@ -494,7 +492,7 @@
     "summaryThroughValue": "截至 {value0} 的总结",
     "aiGeneratedNotYourOriginalWordsSegments": "AI 写的，不是原话 · 由 {value0} 段合成 · {value1}–{value2}",
     "charactersValuePointsValue": " · {value0} 字 · {value1} 条要点",
-    "dshUnavailableGeneratedDirectlyByTheCloud": " · Dsh 暂不可用，由云端模型直接生成",
+    "dshUnavailableGeneratedDirectlyByTheCloud": " · Agent 暂不可用，由云端模型直接生成",
     "summarizing": "总结中…",
     "summarizeAgain": "重新总结",
     "sendToAgent": "发给 agent",
@@ -529,7 +527,7 @@
     "generateSummary": "生成总结",
     "fromSegmentValueValueCharactersValue": "出自 {value0}–{value1} 这一段 · {value2} 字",
     "aiSummary": "AI 总结",
-    "valueDshUnavailableGeneratedDirectlyByThe": "{value0} · Dsh 暂不可用，由云端模型直接生成",
+    "valueDshUnavailableGeneratedDirectlyByThe": "{value0} · Agent 暂不可用，由云端模型直接生成",
     "thisSegmentHasNoSummaryYet": "这一段还没有总结。",
     "thisSegmentIsStillBeingTranscribedWait": "这一段还没转写完成。转好之后才能请 agent 总结。",
     "sendTheSegmentFromValueToAgent": "把 {value0} 这一段发给 agent",
@@ -796,10 +794,6 @@
     "transcribeAgainLocally": "使用本地重新转写",
     "refresh": "刷新选项",
     "transcribeAgainCloud": "使用云端重新转写",
-    "agentConfig": "Agent 配置",
-    "agentConfigTitle": "插件 Agent 配置",
-    "agentConfigSub": "默认引擎、提示词模板与工具（在 Host 设置中打开）",
-    "agentConfigValue": "配置",
     "keyboardDisconnectedHint": "检查键盘是否已连接，或在设置里换一个录音来源。",
     "aiBoardUnavailableHint": "稍后再试，或在设置里换一个录音来源。",
     "reconnectCloud": "重新连接",
@@ -822,17 +816,11 @@
     "message8": "播放语音 {duration}"
   },
   "chat": {
-    "changeAgent": "更换 Agent",
-    "driverDefault": "沿用 Driver 默认",
-    "actualAgent": "当前 Agent：{name}",
-    "nextAgent": "下一条使用：{name}",
     "scopeUpdating": "正在读取或保存设置…",
-    "switchContextNote": "仅修改当前对话。新 Agent 续接最近的可见聊天；旧回答保留原归属，不搬运内部状态。",
-    "finishBeforeSwitch": "请先等当前任务完成，或停止任务后再切换。",
+    "finishBeforeSwitch": "请先等当前任务完成，或停止任务后再发送。",
     "scopeUnavailable": "当前系统或此 Agent 暂不支持受工作范围保护的文件与命令操作。不会自动换用其他 Agent；已有旧对话仍可继续。",
     "runtimeUpdateRequired": "需要更新 {name} 运行组件后才能使用文件和命令：工作范围支持缺失、不兼容或已损坏。不会自动换用其他 Agent。",
     "agentUnavailable": "这个 Agent 当前不可用，原选择没有改变。",
-    "currentAgentUnavailable": "{name}（当前不可用）",
     "conversationMissing": "这段对话已不在记录中，设置没有改变。",
     "scopeChangeFailed": "设置未能保存，原选择没有改变。",
     "scopeSaving": "当前对话设置正在更新，请稍后重试。",
@@ -1045,7 +1033,7 @@
         "purpose": "开启「润色上下文」后，读取当前输入框里的文字帮 AI 对齐称谓与语气（不读窗口标题和文件路径）"
       },
       "agentSession": {
-        "purpose": "让 Voice 通过通用 Agent 服务选择 Pi Agent 或 DSH Harness，并使用你的账户额度处理命令与润色"
+        "purpose": "让 Voice 通过通用 Agent 服务处理命令与润色，并使用你的账户额度"
       },
       "audioCapture": {
         "purpose": "订阅 Host 的共享收音，让语音输入能补上按下语音键之前的话"
@@ -1055,13 +1043,9 @@
       }
     },
     "requirements": {
-      "dsh": {
-        "displayName": "ReAI DSH Runtime",
-        "remediationLabel": "下载并安装 DSH 运行组件"
-      },
       "piFallback": {
-        "displayName": "ReAI Pi Runtime",
-        "remediationLabel": "下载并安装 Pi 回退运行组件"
+        "displayName": "ReAI Agent 运行组件",
+        "remediationLabel": "下载并安装 Agent 运行组件"
       }
     },
     "surfaces": {
@@ -1239,11 +1223,9 @@
     "permission1": "选择云端识别或使用语音 Agent 时，用你的账户额度调用 Wainao 模型（会产生用量）",
     "permission2": "把整理好的文字写入此刻光标所在的输入框（语音输入、转文本与翻译都走它）",
     "permission3": "开启「润色上下文」后，读取当前输入框里的文字帮 AI 对齐称谓与语气（不读窗口标题和文件路径）",
-    "permission4": "让 Voice 通过通用 Agent 服务使用你选择的 Pi、DSH 或 Codex，使用你的账户额度处理命令与润色，并在工作范围内读写文件、执行命令；范围外操作逐次确认",
+    "permission4": "让 Voice 通过通用 Agent 服务使用你的账户额度处理命令与润色，并在工作范围内读写文件、执行命令；范围外操作逐次确认",
     "permission5": "让 Agent 在你授权的工作目录内运行命令（系统层限定只能读写该目录）；范围外路径逐次确认，不开放任意位置的 shell",
-    "requirement0": "ReAI DSH 运行组件",
-    "requirement1": "ReAI Pi 运行组件",
-    "requirement2": "ReAI Codex 运行组件",
+    "requirement1": "ReAI Agent 运行组件",
     "permission6": "订阅 Host 的共享收音，让语音输入能补上按下语音键之前的话",
     "permission7": "按下到松开（含松开后约 1.5 秒）截取一段共享录音在本机转成文字；片段只在本次识别期间持有，用完即释放"
   },

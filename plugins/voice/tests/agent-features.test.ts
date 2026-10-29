@@ -44,11 +44,11 @@ test("润色：模板渲染与旧 join 行为逐字节一致（全部档位）",
   }
 });
 
-test("命令与总结：无参数模板即最终提示词；总结锁定 DSH", () => {
+test("命令与总结：无参数模板即最终提示词；总结不锁定任何引擎（Agent 由 Host 决定）", () => {
   expect(renderAgentFeaturePrompt("command")).toBe(VOICE_COMMAND_SYSTEM_PROMPT);
   expect(renderAgentFeaturePrompt("summary")).toBe(VOICE_SUMMARY_SYSTEM_PROMPT);
   const summary = VOICE_AGENT_FEATURES.find((feature) => feature.id === "summary");
-  expect(summary?.runtime).toBe("dsh");
+  expect(summary?.runtime).toBeUndefined();
 });
 
 test("命令功能的工具基集 = 基础 + 范围执行全集", () => {

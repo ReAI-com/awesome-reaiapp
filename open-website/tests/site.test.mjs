@@ -11,8 +11,11 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const output = process.env.REAI_OPEN_OUTPUT ? resolve(process.env.REAI_OPEN_OUTPUT) : join(root, 'dist');
 test('legacy app routes preserve IDs without a local plugin checkout', async () => {
   const ids = JSON.parse(await readFile(join(root, 'scripts/legacy-app-ids.json'), 'utf8'));
-  assert.equal(ids.length, 15);
+  assert.equal(ids.length, 12);
   assert.equal(new Set(ids).size, ids.length);
+  for (const hidden of ['com.reai.pi-agent', 'com.reai.dsh-agent', 'com.reai.codex-app']) {
+    assert.ok(!ids.includes(hidden), hidden);
+  }
   for (const id of ids) {
     assert.match(id, /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/);
     assert.ok((await stat(join(output, 'apps', id, 'index.html'))).isFile());

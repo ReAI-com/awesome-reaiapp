@@ -52,6 +52,7 @@ interface Harness {
   acknowledgedResults: string[];
   browserInstallRetries: VoiceCommandHistoryItem[];
   openedSourceLinks: string[];
+  markedCommands: string[];
   /** 控制「发送」什么时候算发起成功（命令工作流起跑）。 */
   releaseSend: (taskId?: string) => void;
   rejectSend: (cause: unknown) => void;
@@ -80,6 +81,7 @@ function mount(overrides: Partial<VoiceViewState> = {}, openSource?: (url: strin
     acknowledgedResults: [],
     browserInstallRetries: [],
     openedSourceLinks: [],
+    markedCommands: [],
     releaseSend: () => undefined,
     rejectSend: () => undefined,
     resolveDictation: () => undefined,
@@ -132,7 +134,7 @@ function mount(overrides: Partial<VoiceViewState> = {}, openSource?: (url: strin
     onRegenerateDayDigest: async () => undefined,
     onSendDayDigestToAgent: async () => undefined,
     onSummarizeSegment: async () => undefined,
-    onMarkCommandRead: async () => undefined,
+    onMarkCommandRead: async (id: string) => { harness.markedCommands.push(id); },
     onSendCommandFollowUp: async (text: string) => {
       harness.sent.push(text);
       return await new Promise<string>((resolve, reject) => {
@@ -352,13 +354,72 @@ describe("Chat detail（A3-15）：命令任务详情页", () => {
     const other = commandItem({ id: "c3", agentSessionId: "s2", transcript: "别的会话", reply: "无关", createdAt: "2026-08-18T03:06:00.000Z" });
     const harness = mount({ commandHistory: [other, second, first] });
     (harness.root.querySelector('[data-voice-tab="command"]') as HTMLButtonElement).click();
-    // 点开第二轮那条：看到的是整段会话。
+    // 同一会话只有一条列表入口，点开仍能看到整段会话。
+    expect(harness.root.querySelectorAll(".command-history-item")).toHaveLength(2);
     (harness.root.querySelectorAll(".command-history-item")[1] as HTMLButtonElement).click();
     const bubbles = Array.from(harness.root.querySelectorAll(".chat-bubble")).map((node) => node.textContent);
     expect(bubbles).toEqual(["第一轮", "回一", "第二轮", "回二"]);
     expect(harness.root.querySelector(".chat-who-name")?.textContent).toBe("第一轮");
     expect(harness.root.querySelector(".chat-who-ava")?.textContent).toBe("✨");
     expect(harness.root.querySelector(".chat-who-role")?.textContent).toBe("Agent 提问");
+    harness.dispose();
+  });
+
+  test("全部和命令列表按对话归组，首句标题稳定，摘要、日期和排序跟随最新回合", () => {
+    const first = commandItem({ id: "first", conversationId: "conversation-a", agentSessionId: "session-old", commandId: "voice.command.agent", transcript: "现在桌面上有多少个文件？", reply: "请确认位置", createdAt: new Date(2026, 7, 17, 12).toISOString(), unread: true });
+    const next = commandItem({ id: "next", conversationId: "conversation-a", agentSessionId: "session-new", commandId: "voice.command.agent", transcript: "桌面上", reply: "桌面上有一个文件", createdAt: new Date(2026, 7, 18, 12, 5).toISOString() });
+    const other = commandItem({ id: "other", agentSessionId: "session-b", transcript: "另一个任务", createdAt: new Date(2026, 7, 18, 12, 1).toISOString() });
+    const history = [first, other, next]; // 不依赖存储数组的顺序。
+    const original = structuredClone(history);
+    const harness = mount({ commandHistory: history });
+    for (const tab of ["all", "command"]) {
+      harness.root.querySelector<HTMLButtonElement>(`[data-voice-tab="${tab}"]`)!.click();
+      const rows = harness.root.querySelectorAll(".command-history-item");
+      expect(rows).toHaveLength(2);
+      expect(rows[0]!.querySelector(".task-name")?.textContent).toBe("“现在桌面上有多少个文件？”");
+      expect(rows[0]!.querySelector(".task-preview")?.textContent).toBe("桌面上有一个文件");
+      expect(rows[0]!.querySelector(".task-dot")).not.toBeNull();
+      expect(harness.root.querySelectorAll(".day-hd")).toHaveLength(1);
+      expect(harness.root.querySelector(".day-hd")?.getAttribute("data-day")).toBe("2026-08-18");
+      expect(harness.root.querySelector(".day-hd-m")?.textContent).toContain("2 条");
+    }
+    harness.root.querySelector<HTMLElement>(".command-history-item")!.click();
+    expect(Array.from(harness.root.querySelectorAll(".chat-bubble"), node => node.textContent)).toEqual([
+      "现在桌面上有多少个文件？", "请确认位置", "桌面上", "桌面上有一个文件",
+    ]);
+    // 最新一轮本来已读，仍需清理同一段对话里较早轮次的未读点。
+    expect(harness.markedCommands).toEqual(["next"]);
+    expect(history).toEqual(original);
+    harness.dispose();
+  });
+
+  test("新一轮运行、失败和完成只更新原任务行，详情仍保留原轮次", () => {
+    const first = commandItem({ id: "first", conversationId: "conversation-a", commandId: "voice.command.agent", transcript: "查文件", createdAt: "2026-08-18T03:00:00.000Z" });
+    const next = commandItem({ id: "next", conversationId: "conversation-a", commandId: "voice.command.agent", transcript: "继续查", createdAt: "2026-08-18T03:01:00.000Z", status: "running", reply: undefined });
+    const harness = mount({ commandHistory: [first] });
+    for (const status of ["running", "failed", "completed"] as const) {
+      harness.update(createDefaultVoiceViewState({ commandHistory: [
+        { ...next, status, ...(status === "failed" ? { userMessage: "无法读取目录" } : status === "completed" ? { reply: "已经查完" } : {}) }, first,
+      ] }));
+      expect(harness.root.querySelectorAll(".command-history-item")).toHaveLength(1);
+      expect(harness.root.querySelector(".task-name")?.textContent).toBe("“查文件”");
+      expect(harness.root.querySelector(`.task-type.command-${status}`)).not.toBeNull();
+      if (status !== "running") expect(harness.root.querySelector(".task-preview")?.textContent).toBe(status === "failed" ? "无法读取目录" : "已经查完");
+    }
+    openChat(harness);
+    expect(harness.root.querySelectorAll(".chat-msg.from-user")).toHaveLength(2);
+    harness.dispose();
+  });
+
+  test("旧 Agent 会话也归组，同文案独立任务和单次翻译不会误合并", () => {
+    const harness = mount({ commandHistory: [
+      commandItem({ id: "legacy-1", dshSessionId: "old-session" }),
+      commandItem({ id: "legacy-2", dshSessionId: "old-session", createdAt: "2026-08-18T03:01:00.000Z" }),
+      commandItem({ id: "standalone-1" }), commandItem({ id: "standalone-2" }),
+      commandItem({ id: "translate-1", commandId: "voice.command.translate", agentSessionId: "translation-session" }),
+      commandItem({ id: "translate-2", commandId: "voice.command.translate", agentSessionId: "translation-session" }),
+    ] });
+    expect(harness.root.querySelectorAll(".command-history-item")).toHaveLength(5);
     harness.dispose();
   });
 

@@ -1,5 +1,11 @@
 # ReAI App 平台规范更新日志
 
+## 2026-10-28 · 刷新发布状态
+
+- 刷新 `docs/deployment-status.md`：记录日期改为 2026-10-28，仓库路径改为 `ReAI-com/awesome-reaiapp`。对照线上 `https://open.reai.com/release.json`，`gitCommit` 为 `0ccb9348bb111dee2bcc0002a4e2f3613b676d7f`（`0ccb934`，构建于 2026-10-26，`workingTree` 为 `modified`）。main HEAD `2cb17afee3b27f6b73908293615069204319b193`（`2cb17af`）比该提交超前 14 个提交。
+- #37 已把开放站 legacy 应用列表中的 Pi Agent、DSH Agent、Codex App 去掉，源码仍留在仓库。该改动在 main 上，线上 `release.json` 仍停在 `0ccb934`，这次没有部署 open.reai.com。
+- 补上 Browser `1.0.5` 与 Codex Link `0.5.13` / `0.5.12` 的插件更新日志，分别在 `plugins/browser/CHANGELOG.md` 与 `plugins/codex-link/CHANGELOG.md`。公开目录里 Browser `1.0.5` 与 Codex Link `0.5.12` 已批准；`0.5.13` 只增加 Windows 安装目标，尚未上架。
+
 ## 2026-10-26 · 开放平台首页发布记录
 
 - 更新仓库 `docs/deployment-status.md` 的发布状态与默认目标，记录已验收首页的公开版本 `20261026T101300Z-55e2b53dfabf`、静态文件校验与线上浏览器验证范围。

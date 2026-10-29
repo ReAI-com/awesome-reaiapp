@@ -26,7 +26,7 @@ import type {
 } from "@reai/app-sdk/v1";
 import { isAudioSourceMode } from "./voice-audio-source";
 import type { VoiceDayDigest } from "./voice-digest";
-import type { VoiceConversationOptions } from "./agent-conversation";
+import { conversationKey, type VoiceConversationOptions } from "./agent-conversation";
 
 export type { VoiceDayDigest };
 
@@ -90,13 +90,6 @@ export const DEFAULT_VOICE_FEATURE_SETTINGS: VoiceFeatureSettings = {
   summaryMode: "manual",
   summaryConsent: false,
 };
-export interface VoiceAgentExperimentSettings {
-  backend: "pi" | "dsh" | "auto";
-}
-type StoredVoiceAgentExperimentSettings = VoiceAgentExperimentSettings & {
-  /** 1 = 这条值由支持 auto 的新版 UI 明确保存，不是旧版遗留的 pi 默认值。 */
-  selectionVersion?: 1;
-};
 export interface CommandAgentSessionLedgerItem {
   sessionId: string;
   createdMs: number;
@@ -136,9 +129,6 @@ export type VoiceAgentConversationRef =
   | { agentSessionId: string; dshSessionId?: never; conversationId?: string }
   | { agentSessionId?: never; dshSessionId: string; conversationId?: string }
   | { agentSessionId?: never; dshSessionId?: never; conversationId: string };
-export const DEFAULT_AGENT_EXPERIMENT: VoiceAgentExperimentSettings = {
-  backend: "auto",
-};
 
 // 这里限制的是 JSON string 的序列化体积，而不是原始 UTF-8。换行、引号、反斜杠等字符
 // 会在 JSON 中转义膨胀，必须按 Host 最终收到的 value 口径计算。
@@ -521,11 +511,8 @@ export interface VoiceViewState {
   /** 最近一次读取失败的稳定码（只用于选人话文案与恢复动作，不上屏）。 */
   cloudModelsFailureCode?: string;
   cloudModelsErrorDetail?: VoiceErrorDetail;
-  agentExperiment: VoiceAgentExperimentSettings;
   /** F02/F04：按对话保存的 Agent / 工作目录选择（不改全局默认）。 */
   conversationOptions?: Record<string, VoiceConversationOptions>;
-  /** 打开范围面板时刷新的 backend 快照；只呈现 Host 明确宣称的能力。 */
-  agentBackends?: AgentBackendStatus[];
   /** F03：本插件会话的越界审批状态；批准入口在 Host 主窗口，这里只显示等待。 */
   agentApprovals?: AgentApprovalSummary[];
   /** 进行中的命令回合正在等你拍板的事（Host `wait.started` / `wait.ended`）；回合结束即清掉。 */
@@ -773,7 +760,6 @@ export function createDefaultVoiceViewState(
     settings: { ...DEFAULT_SETTINGS },
     featureSettings: { ...DEFAULT_VOICE_FEATURE_SETTINGS },
     cloudModels: [],
-    agentExperiment: { ...DEFAULT_AGENT_EXPERIMENT },
     history: [],
     models: [],
     // 这个 helper 只给测试/演示 fixture 用：默认是一条可用链路。真正的 App 首帧
@@ -804,7 +790,6 @@ interface StoredVoiceState {
   commandHistory?: VoiceCommandHistoryItem[];
   dayDigests: Record<string, VoiceDayDigest>;
   dayDigestAttempts: Record<string, number>;
-  agentExperiment?: VoiceAgentExperimentSettings;
   conversationOptions: Record<string, VoiceConversationOptions>;
   commandAgentSessionLedger: CommandAgentSessionLedgerItem[];
   legacySourceMigration: boolean;
@@ -895,7 +880,6 @@ export class VoiceStateRepository {
     const sourceMigrationNotice = await this.store.get<string>(SOURCE_MIGRATION_NOTICE_KEY);
     const dayDigests = await this.store.get<Record<string, VoiceDayDigest>>(DAY_DIGESTS_KEY);
     const dayDigestAttempts = await this.store.get<Record<string, number>>(DAY_DIGEST_ATTEMPTS_KEY);
-    const agentExperiment = await this.store.get<StoredVoiceAgentExperimentSettings>("agent-experiment-v0");
     const storedLedger = sanitizeCommandAgentSessionLedger(
       await this.store.get<CommandAgentSessionLedgerItem[]>(COMMAND_AGENT_SESSION_LEDGER_KEY),
     );
@@ -944,7 +928,6 @@ export class VoiceStateRepository {
       commandHistory: sanitizeCommandHistory(commandHistory),
       dayDigests: sanitizeDayDigests(dayDigests),
       dayDigestAttempts: sanitizeDayDigestAttempts(dayDigestAttempts),
-      agentExperiment: migrateAgentExperimentSettings(agentExperiment),
       conversationOptions: sanitizeConversationOptions(await this.store.get(CONVERSATION_OPTIONS_KEY)),
       commandAgentSessionLedger,
       // v2 的产品裁定优先；同一轮绝不能再让 v1 legacy hint 保留旧 SystemDevice。
@@ -991,12 +974,15 @@ export class VoiceStateRepository {
     await this.store.set(DAY_DIGEST_ATTEMPTS_KEY, {});
   }
 
-  /** 命令详情被打开：清掉未读点。找不到那条（已被挤出上限）就原样返回。 */
+  /** 命令详情展示整段对话：一并清掉其未读点；找不到入口条目就原样返回。 */
   async markCommandRead(id: string): Promise<VoiceCommandHistoryItem[]> {
     return this.editCommandHistory((current) => {
-      if (!current.some((entry) => entry.id === id && entry.unread === true)) return { result: current };
+      const opened = current.find((entry) => entry.id === id);
+      if (!opened) return { result: current };
+      const key = conversationKey(opened);
+      if (!current.some((entry) => conversationKey(entry) === key && entry.unread === true)) return { result: current };
       const next = current.map((entry) => {
-        if (entry.id !== id) return entry;
+        if (conversationKey(entry) !== key) return entry;
         const { unread: _unread, ...rest } = entry;
         return rest;
       });
@@ -1273,10 +1259,6 @@ export class VoiceStateRepository {
     await this.store.set(VOICE_FEATURE_SETTINGS_KEY, sanitizeVoiceFeatureSettings(settings));
   }
 
-  async saveAgentExperiment(settings: VoiceAgentExperimentSettings): Promise<void> {
-    const normalized = migrateAgentExperimentSettings({ ...settings, selectionVersion: 1 });
-    await this.store.set("agent-experiment-v0", { ...normalized, selectionVersion: 1 });
-  }
 
   private writeInputHistory(change: (items: VoiceHistoryItem[]) => VoiceHistoryItem[]): Promise<VoiceHistoryItem[]> {
     const write = async () => {
@@ -1322,7 +1304,6 @@ function sanitizeConversationOptions(value: unknown): Record<string, VoiceConver
       : source.workspace?.kind === "direct" && typeof source.workspace.path === "string" && source.workspace.path.length > 0 && source.workspace.path.length <= 4096
         ? { kind: "direct" as const, path: source.workspace.path } : undefined;
     const entry: VoiceConversationOptions = {
-      ...(source.backend === "pi" || source.backend === "dsh" || source.backend === "codex" ? { backend: source.backend } : {}),
       ...(workspace ? { workspace } : {}),
       ...(typeof source.sessionId === "string" && source.sessionId.length > 0 && source.sessionId.length <= 200 ? { sessionId: source.sessionId } : {}),
       ...(typeof source.workspaceRoot === "string" && source.workspaceRoot.length <= 4096 ? { workspaceRoot: source.workspaceRoot } : {}),
@@ -1546,19 +1527,6 @@ function sanitizeDayDigestAttempts(
       .sort((left, right) => right[1] - left[1])
       .slice(0, MAX_DAY_DIGEST_ATTEMPTS),
   );
-}
-
-export function migrateAgentExperimentSettings(
-  value: StoredVoiceAgentExperimentSettings | undefined,
-): VoiceAgentExperimentSettings {
-  const migrateLegacyPi = value?.backend === "pi" && value.selectionVersion !== 1;
-  return {
-    backend: value?.backend === "dsh"
-      ? "dsh"
-      : value?.backend === "auto" || migrateLegacyPi || value?.backend === undefined
-        ? "auto"
-        : "pi",
-  };
 }
 
 function sanitizeIdentity(value: unknown): { identity?: VoiceCommandIdentity } {
