@@ -1,6 +1,6 @@
-# ReAI Open · 第一版站点
+# ReAI Open · 开放平台站点
 
-目标域名：`open.reai.com`。沿用已确认的暖白、墨黑、朱橙首页和现有品牌 Logo，扩展为可独立导航的中英文站点。2026-10-03 已发布到 [open.reai.com](https://open.reai.com/)；[英文入口](https://open.reai.com/en/)。已接入现有匿名公共 Catalog。首版定位为公开的文档与插件介绍网站，无注册、登录、用户中心或投稿后台。
+目标域名：`open.reai.com`。站点具有独立导航的中英文页面，保留已确认品牌 Logo。2026-10-26 已发布浅色与绿色的新首页，首屏展示官方设计动效，目录和详情页沿用原有样式。访问 [open.reai.com](https://open.reai.com/) 或[英文入口](https://open.reai.com/en/)。已接入现有匿名公共 Catalog。站点定位为公开的文档与插件介绍网站，无注册、登录、用户中心或投稿后台。
 
 ## 页面与内容
 
@@ -42,12 +42,12 @@ bun run preview
 
 打开 [本地站点](http://127.0.0.1:4318/)。预览仅监听 `127.0.0.1`，服务 `dist/`，支持文档 clean URL、插件深链接刷新和真正的404状态。新增公开 appId 可由静态通用详情页读取目录并展示；正式部署需为 `/apps/<appId>/` 与其日志路径配置静态模板回退，不能把整个网站的未知地址回退为首页。不要直接打开源码 `index.html`，它依赖构建生成的目录数据。
 
-`bun run prepare:preview` 可额外在源码目录生成预览路由与目录数据，文件由 `.gitignore` 忽略。交付构建统一使用 `dist/`。构建不会执行远端发布，也不包含候选 Logo 对照页。
+`bun run prepare:preview` 与构建命令相同，预览和交付统一使用 `dist/`，不向源码模板写入生成页面。构建不会执行远端发布，也不包含候选 Logo 对照页。
 
 ## 维护位置
 
 - 公开数据适配与详情：`public-catalog.js`；页面模板：`scripts/templates.mjs`；场景：`scripts/content.mjs`。
-- 首页与交互：`index.html`、`app.js`；样式：`styles.css`、`pages.css`。
+- 首页：`index.html`、`home.css`、`home.js`；首屏播放从官方设计稿直接渲染的动效；公开目录等共用交互：`app.js`；其余页面共用样式：`styles.css`、`pages.css`。
 - 文档事实源：仓库 `docs/`，复用 `website/` 构建，避免内容分叉。
 - [设计调研与方向取舍](design-direction.md)保留首版视觉依据。
 
@@ -68,3 +68,49 @@ bun run preview
 ## 验证
 
 2026-10-02：构建和6项测试通过，覆盖本地规范数据校验、公开 Catalog 字段隔离/无凭据请求/接口失败、内容转义、整站链接及文档返回/锚点回归。真实浏览器确认公共接口刷新成功、7个远端图标加载、公开详情、手机目录定位及文档客户端换页后返回首页；375 / 768 / 1024 / 1440px 的20次页面布局检查无整页横向溢出。详细验收材料保留于本地。VitePress 保留已有部分 chunk 超过500kB的构建提示。
+
+## 已发布首页与动效
+
+新首页采用集中首屏、公开插件目录、使用场景、开发入口、常见问题与探索入口。使用 Manrope 可变字体并从本站加载，中文使用本机中文字体；字体许可证见 `legal/Manrope-OFL.txt`，也随构建进入 `THIRD-PARTY-NOTICES.txt`。
+
+- 首屏直接展示官方语音输入法的设计预览：保留主稿的窗口、侧栏、配色、控件、演示记录与回听交互。没有自绘工具箱，也没有自绘语音笔记/研究面板。
+- 动效进入视野后自动播放；移出视野、切到后台或用户手动暂停时停止。系统减少动态效果或 `?still` 显示官方原稿的静态帧，不请求视频。
+- 桌面采用左右排版，手机采用紧凑单列，使动效本体在首次打开的可见区域内出现。
+- 下方应用场景只保留文字入口。手机导航继续使用原生对话框，FAQ 使用原生折叠组件。
+- 页面标记「官方设计预览」；设计稿演示数据不作为实机录屏、已发布功能或真实操作结果的证明。
+
+## 首屏动效导出
+
+参照关联项目 `ai-vibe-board/design/README.md` 指定的唯一标准 `VoiceType_UI_Designs.html`，不使用同目录尚未确认的新皮肤尝试稿。主稿保持只读。导出用独立 Chromium 打开原始 HTML、进入现有输入详情并点击原有回听控件；只对原稿 DOM 内容添加进出场，不重画产品界面。
+
+需要 Node.js 可解析的 `playwright` 包及专用 Chromium、Python 3 的 Pillow 和 `ffmpeg`。
+
+```sh
+REAI_DESIGN_ROOT=/path/to/ai-vibe-board/design node scripts/export-motion.mjs
+```
+
+12 秒循环：内容逐步进入 → 回听进度 → 恢复原始状态 → 内容淡出；窗口和背景始终保留。网站使用 `assets/hero-motion.mp4` 和 `assets/hero-poster.png`。其他材料写入仓库忽略的 `.artifacts/hero-motion/`：
+
+- `reai-home-hero.mp4`：最大 1920px、60fps、H.264 / yuv420p。
+- `reai-home-hero.gif`：800×500、20fps、无限循环。
+- `reference.png`、`verification.json`、`contact-sheet.jpg`：原稿静态对照、像素检查与关键帧。原稿来源摘要留在本地证据中。
+
+`--proof` 只生成原稿对照和首帧；`REAI_MOTION_OUTPUT` 指定本地产物目录，`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 可指定专用测试浏览器。
+
+2026-10-26 发布标识为 `20261026T101300Z-55e2b53dfabf`。候选构建和 8 项测试通过；374 个线上文件摘要与候选一致。线上浏览器验证中英文桌面与手机首屏、视频自动播放与暂停恢复、减少动态效果、手机导航；HTTPS 路由、视频分段请求和未知地址 404 正常。保留旧版本与旧文档静态资源。发布记录中的 `workingTree: modified` 表示本次使用已验收的工作区产物，网站上线不代表 GitHub 源码已推送或合并。
+
+## 插件切换版（本地验收，未发布）
+
+顶部选择 Typezero、浏览器或 Terminal，查看各自的动效、说明和详情入口。选项由公共 Catalog 过滤，默认展示 Typezero 语音胶囊的完整故事：语音键唤起，短句转写后写入光标；接着说一件任务，胶囊退到角落后台处理，完成时弹出系统提醒。四步演示流程对应视频时间点。键盘唤起、胶囊转写、后台任务与完成提醒都属于 Typezero 语音输入的交互，不再作为 Codex Link 的展示内容；Codex Link 的详情页继续在目录中介绍。视频不是实机录屏，也不证明当前安装版本已提供全部演示能力。
+
+`home-previews.js` 管理插件映射与步骤时间；`scripts/hero-preview.mjs` 生成首屏。`home.js` 支持点击、方向键、Home/End、暂停、重播及 `?plugin=voice|browser|terminal` 直达。切换语言保留选项，一次只加载当前视频；系统减少动态效果与 `?still` 只加载海报。
+
+素材使用正式设计与原插件界面：胶囊来自主稿嵌入的 `global-task-capsule.html` / `voice-flow-embed.js`，终端来自主稿原生工作区控件，浏览器直接渲染 `plugins/browser/src/browser-view.ts` 与原样式。终端只替换样例中的私人账号与路径；浏览器注入公开样例标签。未启动 Host、访问用户会话或执行终端命令。
+
+```sh
+REAI_DESIGN_ROOT=/path/to/ai-vibe-board/design node scripts/export-plugin-previews.mjs
+```
+
+输出至 `assets/previews/`。voice 为 24 秒合并故事（语音输入写入 + 语音任务后台与完成提醒），browser 与 terminal 为 10 秒；均为 1920×1200、60fps。帧、原稿摘要、像素检查与接缝检查留在本地忽略目录。`--only=terminal` 可仅重导一条；`--proof` 只生成关键帧，不发布或替换站点视频。
+
+2026-10-26 本地验证：构建和 9 项测试通过；四条视频的原稿首帧、循环首尾、空闲段及内容边界检查通过。独立 Chromium 检查中英文、4 种屏幕尺寸与4个选项，共32种首屏状态，无横向溢出，视频完整进入首屏；切换、方向键、暂停/恢复、重播、离屏暂停、减少动态效果、语言切换保留选项、加载失败后重试和手机导航通过。动效仍为设计与样例数据预览，未验证实机硬件或真实任务执行；本版尚未生产发布。

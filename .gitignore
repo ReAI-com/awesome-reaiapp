@@ -31,3 +31,8 @@ submission.identity.json
 .cindy-worktrees/
 .worktree/
 .worktrees/
+
+# Project-local, manually invoked development skills
+/.agents/skills/
+/.claude/skills/landing-page-design
+/.claude/skills/design-to-motion

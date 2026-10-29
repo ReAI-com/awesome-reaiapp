@@ -6,6 +6,11 @@
 - #37 已把开放站 legacy 应用列表中的 Pi Agent、DSH Agent、Codex App 去掉，源码仍留在仓库。该改动在 main 上，线上 `release.json` 仍停在 `0ccb934`，这次没有部署 open.reai.com。
 - 补上 Browser `1.0.5` 与 Codex Link `0.5.13` / `0.5.12` 的插件更新日志，分别在 `plugins/browser/CHANGELOG.md` 与 `plugins/codex-link/CHANGELOG.md`。公开目录里 Browser `1.0.5` 与 Codex Link `0.5.12` 已批准；`0.5.13` 只增加 Windows 安装目标，尚未上架。
 
+## 2026-10-26 · 开放平台首页发布记录
+
+- 更新仓库 `docs/deployment-status.md` 的发布状态与默认目标，记录已验收首页的公开版本 `20261026T101300Z-55e2b53dfabf`、静态文件校验与线上浏览器验证范围。
+- 明确网站静态发布与 GitHub 推送、PR 合并、插件上架分别验收；插件切换动效版仍在本地验收，未从上一版继承发布状态。该版本初版含 Codex Link 选项，经用户指正「键盘唤起与胶囊交互属于 Typezero 语音输入」后已撤下该选项，默认展示 Typezero；随后按用户要求把该段「语音任务」动效（任务转后台处理、完成时系统提醒）合并进 Typezero 预览，成为四步完整故事。
+
 ## 2026-10-22 · Agent 电脑原型与电脑操控插件送审修补
 
 - 新增 [Agent 电脑原型 v0](agent-computer-prototype-v0.md)：每个 Agent 一台与宿主同系统的后台虚拟机，Agent 的鼠标键盘只作用于虚拟机，文件经用户批准才进入用户目录。原型代码在 `prototypes/agent-computer/`，独立依赖，不属于平台包；本次只实现 macOS 客体，接口按平台无关设计。文档记录方案、方法支持矩阵、文件出口与分权合同、真机验收及已知风险。
