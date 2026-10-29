@@ -1,0 +1,60 @@
+{
+  "demo": "finance-cash-and-receivables",
+  "synthetic": true,
+  "as_of": "2026-10-28",
+  "cash_period": { "from": "2026-10-01", "to": "2026-10-28" },
+  "receivables_scope": "all invoices and linked receipts on or before as_of",
+  "currency": "CNY",
+  "source_amount_unit": "yuan",
+  "b_amount_unit": "fen",
+  "counts": { "bank_transactions": 8, "invoices": 3, "receipts": 3, "payments": 5 },
+  "metrics_fen": {
+    "cash_receipts": 4800000,
+    "cash_payments": 3628000,
+    "net_cash_flow": 1172000,
+    "invoiced_amount": 6000000,
+    "receivables_outstanding": 1200000,
+    "receivables_overdue": 200000
+  },
+  "transactions": [
+    { "transaction_id": "T001", "transaction_date": "2026-10-01", "direction": "receipt", "amount_fen": 2400000, "invoice_id": "INV-A", "source_row": 2 },
+    { "transaction_id": "T002", "transaction_date": "2026-10-02", "direction": "payment", "amount_fen": 1200000, "invoice_id": "", "source_row": 3 },
+    { "transaction_id": "T003", "transaction_date": "2026-10-03", "direction": "receipt", "amount_fen": 1800000, "invoice_id": "INV-B", "source_row": 4 },
+    { "transaction_id": "T004", "transaction_date": "2026-10-04", "direction": "payment", "amount_fen": 800000, "invoice_id": "", "source_row": 5 },
+    { "transaction_id": "T005", "transaction_date": "2026-10-05", "direction": "payment", "amount_fen": 1500000, "invoice_id": "", "source_row": 6 },
+    { "transaction_id": "T006", "transaction_date": "2026-10-06", "direction": "payment", "amount_fen": 120000, "invoice_id": "", "source_row": 7 },
+    { "transaction_id": "T007", "transaction_date": "2026-10-07", "direction": "receipt", "amount_fen": 600000, "invoice_id": "INV-A", "source_row": 8 },
+    { "transaction_id": "T008", "transaction_date": "2026-10-08", "direction": "payment", "amount_fen": 8000, "invoice_id": "", "source_row": 9 }
+  ],
+  "invoices": [
+    { "invoice_id": "INV-A", "customer": "客户A", "invoice_date": "2026-09-20", "due_date": "2026-10-15", "amount_fen": 3000000, "collected_fen": 3000000, "outstanding_fen": 0, "overdue_fen": 0, "receipt_ids": ["T001", "T007"], "source_row": 2 },
+    { "invoice_id": "INV-B", "customer": "客户B", "invoice_date": "2026-09-25", "due_date": "2026-10-20", "amount_fen": 2000000, "collected_fen": 1800000, "outstanding_fen": 200000, "overdue_fen": 200000, "receipt_ids": ["T003"], "source_row": 3 },
+    { "invoice_id": "INV-C", "customer": "客户C", "invoice_date": "2026-10-01", "due_date": "2026-11-15", "amount_fen": 1000000, "collected_fen": 0, "outstanding_fen": 1000000, "overdue_fen": 0, "receipt_ids": [], "source_row": 4 }
+  ],
+  "cleaning_expectations": {
+    "schema_generated_by_agent": true,
+    "schema_top_level_type": "object",
+    "schema_additional_properties": false,
+    "schema_amount_fen_type": "integer",
+    "schema_field_types_are_single_strings": true,
+    "retain_source_row": true,
+    "system_source_reference_fields": ["sourceFileId", "sourceRevisionId"],
+    "system_source_references_immutable_revision": true,
+    "raw_text_optional": true,
+    "expected_issues": [],
+    "empty_payment_invoice_ids_are_valid": true
+  },
+  "question_checks": [
+    { "question": "截至2026年10月28日，现金收款、付款和净现金流各是多少？", "expected_yuan": { "receipts": "48,000.00", "payments": "36,280.00", "net_cash_flow": "11,720.00" } },
+    { "question": "截至2026年10月28日，哪些客户还没付清，多少已经逾期？", "expected_outstanding_fen": { "INV-B": 200000, "INV-C": 1000000 }, "expected_overdue_invoice_ids": ["INV-B"] },
+    { "question": "客户A的发票是否收齐？请列出依据。", "expected_invoice_id": "INV-A", "expected_receipt_ids": ["T001", "T007"], "expected_outstanding_fen": 0 },
+    { "question": "这家公司本月利润是多少？", "expected_behavior": "说明银行流水与发票不足以确定利润；不能将净现金流1172000分等同利润。" }
+  ],
+  "runtime_checks": [
+    "看板通过当前B的REST API分页取数，指标随B变化而变化，不硬编码expected.json",
+    "岗位问答先调用read_schema和query_records，引用真实系统记录ID及版本",
+    "应收统计包含九月发票，不被十月现金期间筛选截断",
+    "Schema由真实模型根据原件自动生成并通过系统校验"
+  ],
+  "not_asserted": ["opening_balance", "closing_balance", "profit", "tax", "budget_variance"]
+}

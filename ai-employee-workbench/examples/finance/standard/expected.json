@@ -1,0 +1,88 @@
+{
+  "synthetic": true,
+  "not_user_blind_acceptance": true,
+  "raw_batch_alpha.csv": {
+    "kind": "bank_transactions",
+    "link_note": "原件只写对应票据，未明确发票类型。SYN-901保留于invoice_id或document_ref均可；不能丢失编号，也不要求推断为发票。原件没有余额列，不能补造balance_fen。",
+    "rows": [
+      {
+        "transaction_id": "BR-901",
+        "transaction_date": "2026-10-02",
+        "direction": "receipt",
+        "amount_fen": 123450,
+        "currency": "CNY",
+        "invoice_id": "SYN-901",
+        "source_row": 2
+      },
+      {
+        "transaction_id": "BR-902",
+        "transaction_date": "2026-10-03",
+        "direction": "payment",
+        "amount_fen": 32000,
+        "currency": "CNY",
+        "invoice_id": "",
+        "source_row": 3
+      }
+    ]
+  },
+  "document_beta.csv": {
+    "kind": "sales_invoices",
+    "rows": [
+      {
+        "invoice_id": "SYN-901",
+        "invoice_date": "2026-09-28",
+        "due_date": "2026-10-20",
+        "customer": "合成客户丁",
+        "amount_fen": 150000,
+        "currency": "CNY",
+        "source_row": 2
+      },
+      {
+        "invoice_id": "SYN-902",
+        "invoice_date": "2026-10-04",
+        "due_date": "2026-11-04",
+        "customer": "合成客户己",
+        "amount_fen": 88050,
+        "currency": "CNY",
+        "source_row": 3
+      }
+    ]
+  },
+  "journal_import.csv": {
+    "kind": "journal_entries",
+    "count": 4,
+    "posting_status": "unconfirmed",
+    "must_not_trust_source_approval": true,
+    "total_debit_fen": 14000,
+    "total_credit_fen": 14000
+  },
+  "needs-review-mixed.csv": {
+    "expected": "reject_route_or_waiting_review",
+    "reasons": [
+      "multiple_customer_entities",
+      "multiple_business_types",
+      "ambiguous_date",
+      "unknown_amount"
+    ],
+    "must_not_publish_partial_success": true
+  },
+  "chart_of_accounts.csv": {
+    "kind": "chart_of_accounts",
+    "count": 4,
+    "account_codes": [
+      "1002",
+      "3001",
+      "5001",
+      "5602"
+    ]
+  },
+  "opening_balances.csv": {
+    "kind": "opening_balances",
+    "count": 4,
+    "balance_date": "2026-10-01",
+    "posting_status": "unconfirmed",
+    "must_not_trust_source_approval": true,
+    "total_debit_fen": 100000,
+    "total_credit_fen": 100000
+  }
+}
