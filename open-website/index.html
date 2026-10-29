@@ -3,57 +3,71 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="ReAI Open 开放平台：发现插件、探索应用案例、阅读文档并开始开发。">
-  <title>ReAI Open · 让能力连接更多可能</title>
+  <meta name="description" content="ReAI Open 开放平台：发现好用的 AI 插件，探索工作场景，也把你的想法构建成下一件好工具。">
+  <meta property="og:title" content="ReAI Open · 让好工具接住每一个想法">
+  <meta property="og:description" content="ReAI Open 开放平台：发现好用的 AI 插件，探索工作场景，也把你的想法构建成下一件好工具。">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://open.reai.com/assets/reai-app-icon.svg">
+  <title>ReAI Open · 让好工具接住每一个想法</title>
   <link rel="icon" href="/assets/reai-app-icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/styles.css?v=20261002-hero4">
+  <link rel="stylesheet" href="/styles.css">
   <link rel="stylesheet" href="/pages.css">
+  <link rel="stylesheet" href="/home.css">
   <script src="/catalog.js" defer></script>
   <script src="/app.js" type="module"></script>
+  <script src="/home.js" type="module"></script>
 </head>
-<body>
+<body class="home">
   <a class="skip" href="#main">跳到主要内容</a>
-  <div class="preview-bar">ReAI Open · 开放插件、文档与应用场景</div>
-  <header class="site-header wrap">
-    <a class="brand" href="/" aria-label="ReAI Open 首页"><img class="brand-logo" src="/assets/reai-logo.svg" alt="" width="36" height="36"><strong>ReAI <span>Open</span></strong></a>
-    <nav aria-label="主导航"><a href="/apps/">插件</a><a href="/showcase/">应用案例</a><a href="/developers/">开发者</a><a href="/docs/">文档 <span aria-hidden="true">↗</span></a><a href="https://ai-board.reai.com/zh/download">下载</a></nav>
-    <div class="header-actions"><!--LANGUAGE_SWITCH--><a class="header-cta" href="/docs/plugin-development-v1">开始构建 <span aria-hidden="true">↗</span></a></div>
+  <header class="home-nav wrap">
+    <a class="brand" href="/" aria-label="ReAI Open 首页" aria-current="page"><img class="brand-logo" src="/assets/reai-logo.svg" alt="" width="36" height="36"><strong>ReAI <span>Open</span></strong></a>
+    <nav class="desktop-nav" aria-label="主导航"><a href="/apps/">插件</a><a href="/showcase/">应用案例</a><a href="/developers/">开发者</a><a href="/docs/">文档 <span aria-hidden="true">↗</span></a></nav>
+    <div class="home-nav-actions"><!--LANGUAGE_SWITCH--><a class="download-link" href="https://ai-board.reai.com/zh/download">下载 ReAI <span aria-hidden="true">↗</span></a><button class="menu-toggle" type="button" aria-label="打开导航" aria-controls="mobile-menu" aria-expanded="false"><span></span><span></span></button></div>
   </header>
+  <dialog class="mobile-menu" id="mobile-menu" aria-labelledby="menu-title">
+    <div class="mobile-menu-top"><strong id="menu-title">ReAI Open</strong><button type="button" class="menu-close" aria-label="关闭导航">×</button></div>
+    <nav aria-label="主导航"><a href="/apps/">插件 <span aria-hidden="true">↗</span></a><a href="/showcase/">应用案例 <span aria-hidden="true">↗</span></a><a href="/developers/">开发者 <span aria-hidden="true">↗</span></a><a href="/docs/">文档 <span aria-hidden="true">↗</span></a><a href="https://ai-board.reai.com/zh/download">下载 ReAI <span aria-hidden="true">↗</span></a></nav>
+    <p>连接能力，也连接创造者。</p>
+  </dialog>
   <main id="main">
-    <section class="hero wrap" aria-labelledby="hero-title">
-      <div class="hero-copy">
-        <p class="eyebrow"><span class="dot"></span> THE OPEN REAI ECOSYSTEM</p>
-        <h1 id="hero-title">让 AI 的能力，<br>走进每一种<span class="accent">工作。</span></h1>
-        <p class="hero-description">发现好用的插件，探索真实的应用方式。<br>也把你的想法，构建成下一个可用的工具。</p>
-        <div class="hero-actions"><a class="button primary" href="/apps/">探索插件 <span aria-hidden="true">↗</span></a><a class="button text-button" href="/developers/">开发你的插件 <span aria-hidden="true">→</span></a></div>
-        <div class="hero-note"><span class="mini-symbol" aria-hidden="true">＋</span><span>独立插件 · 开放能力 · 更多工作方式</span></div>
-      </div>
-      <div class="ecosystem-art" aria-label="语音、浏览器和终端组成的能力演示，非真实插件截图">
-        <div class="art-grid" aria-hidden="true"></div>
-        <span class="art-label label-top">SMALL TOOLS. BIG POSSIBILITIES.</span>
-        <article class="demo-panel terminal-demo"><div class="demo-top"><span class="demo-icon demo-icon-terminal" aria-hidden="true"><img src="/assets/terminal.png" alt="" width="28" height="28"></span><span>Terminal</span><span class="demo-status">LOCAL</span></div><div class="terminal-code"><span>~/your-next-idea</span><br><b>❯</b> reai build<br><span class="code-green">✓ 一点想法，无限可能。</span><br><b>❯</b> <span class="cursor-block"></span></div></article>
-        <article class="demo-panel voice-demo"><div class="demo-top"><img class="demo-icon" src="/assets/voice.png" alt="" width="28" height="28"><span>语音输入法</span><span class="demo-status">VOICE</span></div><div class="waveform" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><p>说出想法，让文字落进工作。</p><div class="demo-bottom"><span class="dot"></span> 从声音到行动 <span aria-hidden="true">↗</span></div></article>
-        <article class="demo-panel browser-demo"><div class="demo-top"><img class="demo-icon" src="/assets/browser.png" alt="" width="28" height="28"><span>Browser</span><span aria-hidden="true">↗</span></div><div class="browser-lines" aria-hidden="true"><div></div><div></div><div></div></div><p>连接网页与灵感。</p></article>
-        <span class="art-label label-bottom">CONNECTED BY REAI <span aria-hidden="true">↗</span></span>
-      </div>
+    <section class="home-hero wrap" aria-labelledby="hero-title">
+      <!--PLUGIN_PREVIEWS-->
     </section>
-    <div class="principles wrap"><span>为日常工作而造</span><span>用插件拓展你的工具箱</span><span>从灵感到应用</span><span class="principle-end">Built to connect <span aria-hidden="true">↗</span></span></div>
-    <section class="section wrap" id="plugins" aria-labelledby="plugins-title">
-      <div class="section-head"><div><p class="eyebrow">01 / DISCOVER</p><h2 id="plugins-title">找到你的下一件好工具。</h2><p class="section-description">从语音输入到浏览器、终端，让每一步工作都有合适的能力。</p></div><a class="inline-link" href="/apps/">浏览全部插件 <span aria-hidden="true">↗</span></a></div>
-      <div class="discovery-toolbar"><div class="filters" role="group" aria-label="按类别筛选插件"><button class="filter active" data-filter="all" aria-pressed="true">全部</button><button class="filter" data-filter="productivity" aria-pressed="false">效率工具</button><button class="filter" data-filter="agent" aria-pressed="false">AI 与 Agent</button><button class="filter" data-filter="developer" aria-pressed="false">开发工具</button></div><label class="search"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="plugin-search" type="search" placeholder="搜索插件与能力" aria-label="搜索插件与能力"><kbd>/</kbd></label></div>
+    <section class="home-section wrap" id="plugins" aria-labelledby="plugins-title" data-reveal>
+      <div class="home-section-head"><div><p class="home-kicker">01 / DISCOVER</p><h2 id="plugins-title">下一件好工具，<br>就在这里。</h2></div><div class="head-aside"><p>为日常工作，多添一种可能。<br>从公开目录中，找到你需要的能力。</p><a class="home-text-link" href="/apps/">浏览全部插件 <span aria-hidden="true">↗</span></a></div></div>
+      <div class="discovery-toolbar"><div class="filters" role="group" aria-label="按类别筛选插件"><button class="filter active" data-filter="all" aria-pressed="true">全部</button><button class="filter" data-filter="productivity" aria-pressed="false">效率工具</button><button class="filter" data-filter="agent" aria-pressed="false">AI 与 Agent</button><button class="filter" data-filter="developer" aria-pressed="false">开发工具</button></div><label class="search"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><input id="plugin-search" type="search" placeholder="搜索插件与能力" aria-label="搜索插件与能力"><kbd>/</kbd></label></div>
       <div id="plugin-grid" class="plugin-grid"></div><p id="search-status" class="search-status" role="status" aria-live="polite"></p>
+      <noscript><p>插件索引需要启用 JavaScript；具体插件页面仍可直接打开。</p></noscript>
     </section>
-    <section class="showcase-section" id="showcase" aria-labelledby="showcase-title"><div class="wrap section">
-      <div class="section-head"><div><p class="eyebrow">02 / IN PRACTICE</p><h2 id="showcase-title">能力连接起来，<br>工作就有了新方式。</h2></div><p class="section-side">从一个具体任务出发，<br>探索插件可以怎样一起工作。</p></div>
-      <div class="case-grid">
-        <a class="case-card" href="/showcase/writing/"><div class="case-art writing-art" aria-hidden="true"><span class="paper-label">A THOUGHT, CAPTURED.</span><div class="writing-paper"><small>灵感笔记</small><p>把刚才的想法<br>变成下一步行动。</p><div></div><div></div><span>语音 → 文字 → 编辑</span></div><span class="case-stamp">Voice + Editor</span></div><div class="case-copy"><span class="tag">内容创作 · 场景示例</span><h3>说出来，再把它打磨好。 <span aria-hidden="true">↗</span></h3><p>语音输入与文本编辑，让灵感从声音变成文字。</p></div></a>
-        <a class="case-card" href="/showcase/research/"><div class="case-art research-art" aria-hidden="true"><span class="paper-label">FROM EXPLORING TO MAKING.</span><div class="research-window"><span>research / your-next-idea</span><div class="research-nodes"><b>网页</b><i>→</i><b>Agent</b><i>→</i><b>行动</b></div><div class="research-line"></div><div class="research-line short"></div></div><span class="case-stamp">Browser + Agent</span></div><div class="case-copy"><span class="tag">研究与开发 · 场景示例</span><h3>让发现，成为下一步。 <span aria-hidden="true">↗</span></h3><p>从网页获取信息，用 Agent 辅助理解与构建。</p></div></a>
+    <section class="home-section scenarios wrap" id="showcase" aria-labelledby="showcase-title" data-reveal>
+      <div class="home-section-head"><div><p class="home-kicker">02 / EVERYDAY POSSIBILITIES</p><h2 id="showcase-title">从「我想」，<br>到「我来试试」。</h2></div><div class="head-aside"><p>从一个具体任务出发，<br>探索插件可以怎样一起工作。</p></div></div>
+      <div class="scenario-links">
+        <a href="/showcase/writing/"><span class="home-kicker">01 / VOICE &amp; TEXT</span><h3>先说出来，再慢慢打磨。 <span aria-hidden="true">↗</span></h3><p>接住一闪而过的灵感，用文字把它变得清楚。</p></a>
+        <a href="/showcase/research/"><span class="home-kicker">02 / BROWSE &amp; BUILD</span><h3>顺着好奇，走得更远。 <span aria-hidden="true">↗</span></h3><p>在网页中发现信息，用 Agent 辅助理解与构建。</p></a>
       </div>
-    </div></section>
-    <section class="developer-section wrap section" id="developers" aria-labelledby="developers-title"><div class="developer-copy"><p class="eyebrow">03 / FOR BUILDERS</p><h2 id="developers-title">下一个好工具，<br>可以由你来构建。</h2><p class="section-description">从开发规范到接口与审核提交，<br>把一个想法带进 ReAI 的插件生态。</p><a class="button primary" href="/docs/plugin-development-v1">阅读开发指南 <span aria-hidden="true">↗</span></a><p class="migration-note">开发文档已整合；原文档入口继续保留</p></div><div class="developer-links"><a href="/docs/plugin-development-v1"><span class="step-number">01</span><div><h3>从第一个插件开始</h3><p>项目结构、生命周期与最小权限</p></div><span aria-hidden="true">↗</span></a><a href="/docs/plugin-api-reference-v1"><span class="step-number">02</span><div><h3>连接平台能力</h3><p>SDK、接口合同与可复用服务</p></div><span aria-hidden="true">↗</span></a><a href="/docs/plugin-submission-v1"><span class="step-number">03</span><div><h3>准备审核与发布</h3><p>独立打包、版本介绍与交付检查</p></div><span aria-hidden="true">↗</span></a></div></section>
-    <section class="closing wrap"><p>Good ideas deserve good tools.</p><a href="/apps/">从这里，开始探索 <span aria-hidden="true">↗</span></a></section>
+    </section>
+    <section class="manifesto wrap" aria-label="开放平台理念" data-tagline>
+      <p class="home-kicker">SMALL TOOLS. OPEN POSSIBILITIES.</p>
+      <h2><span>好工具，</span><span>让想法</span><span>有处可去。</span><br><span>开放，</span><span>让创造</span><span>不断发生。</span></h2>
+      <img src="/assets/reai-logo.svg" alt="" width="64" height="64" loading="lazy">
+    </section>
+    <section class="builder-section wrap" id="developers" aria-labelledby="developers-title" data-reveal>
+      <div class="builder-copy"><p class="home-kicker">03 / MADE BY YOU</p><h2 id="developers-title">下一件好工具，<br>也可以出自你手。</h2><p>从一个解决小问题的想法开始。<br>用开放的文档与接口，构建自己的 ReAI 插件。</p><a class="home-button" href="/docs/plugin-development-v1">阅读开发指南 <span aria-hidden="true">↗</span></a></div>
+      <div class="builder-steps"><a href="/docs/plugin-development-v1"><span class="step-index">01</span><div><h3>从第一个插件开始</h3><p>项目结构、生命周期与最小权限</p></div><span aria-hidden="true">↗</span></a><a href="/docs/plugin-api-reference-v1"><span class="step-index">02</span><div><h3>连接平台能力</h3><p>SDK、接口合同与可复用服务</p></div><span aria-hidden="true">↗</span></a><a href="/docs/plugin-submission-v1"><span class="step-index">03</span><div><h3>准备审核与发布</h3><p>独立打包、版本介绍与交付检查</p></div><span aria-hidden="true">↗</span></a></div>
+    </section>
+    <section class="faq-section wrap home-section" aria-labelledby="faq-title" data-reveal>
+      <div><p class="home-kicker">A FEW GOOD QUESTIONS</p><h2 id="faq-title">开始之前，<br>你可能想知道。</h2></div>
+      <div class="faq-list">
+        <details><summary>如何开始使用 ReAI 和插件？</summary><p>先从官网下载 ReAI，再在应用内查看和安装可用插件。这个网站提供插件介绍、应用场景与开发文档。</p><a href="https://ai-board.reai.com/zh/download">下载 ReAI ↗</a></details>
+        <details><summary>这里的插件都已发布了吗？</summary><p>插件目录只展示公共 Catalog 中已审核通过的公开记录。具体版本和可用状态，请查看插件详情及应用内商店。</p></details>
+        <details><summary>页面中的动画是真实产品截图吗？</summary><p>动画取自官方设计稿或插件原有界面，并使用演示数据。对话胶囊和完成提醒由 ReAI 平台承载；各插件展示各自的流程。实际界面与可用功能，请以当前插件说明和安装版本为准。</p></details>
+        <details><summary>插件如何使用我的数据和权限？</summary><p>不同插件需要的权限和服务不同，请在安装与使用时查看对应说明。开放平台网页只匿名读取公开目录，不需要登录。</p></details>
+        <details><summary>我可以开发自己的插件吗？</summary><p>可以。从开发指南开始，按平台规范完成本地开发、打包和验证，再准备审核提交。</p><a href="/docs/plugin-development-v1">阅读开发指南 ↗</a></details>
+        <details><summary>有英文版本和英文文档吗？</summary><p>可以通过页面右上角切换中英文。英文文档目前为阅读指南，完整字段与示例请参照中文文档。</p></details>
+      </div>
+    </section>
+    <section class="home-closing wrap" data-reveal><p class="home-kicker">YOUR NEXT IDEA STARTS HERE</p><h2>带着想法来，<br>找到你的下一步。</h2><a class="home-button" href="/apps/">探索插件 <span aria-hidden="true">↗</span></a></section>
   </main>
-  <footer class="wrap"><a class="brand" href="/" aria-label="ReAI Open 首页"><img class="brand-logo" src="/assets/reai-logo.svg" alt="" width="36" height="36"><strong>ReAI <span>Open</span></strong></a><p>连接能力，也连接创造者。</p><div><a href="/apps/">插件</a><a href="/showcase/">案例</a><a href="/docs/">文档 ↗</a><span>© 2026 ReAI</span></div></footer>
-
+  <footer class="home-footer wrap"><div><a class="brand" href="/" aria-label="ReAI Open 首页"><img class="brand-logo" src="/assets/reai-logo.svg" alt="" width="36" height="36"><strong>ReAI <span>Open</span></strong></a><p>连接能力，也连接创造者。</p></div><nav aria-label="页脚导航"><a href="/apps/">插件</a><a href="/showcase/">应用案例</a><a href="/docs/">文档 ↗</a><a href="https://github.com/kongkang/awesome-reaiapp">GitHub ↗</a></nav><span>© 2026 ReAI</span></footer>
 </body>
 </html>
