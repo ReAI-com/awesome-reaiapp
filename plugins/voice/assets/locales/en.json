@@ -1163,7 +1163,7 @@
     "title": "Voice is installed. Choose recognition",
     "description": "Download a local model or use cloud recognition. You can change this later in Voice settings.",
     "localTitle": "Local recognition",
-    "localDescription": "Download a speech model to recognize speech on this Mac. The download continues in the background; local dictation is unavailable until it finishes.",
+    "localDescription": "Download a speech model to recognize speech on this computer. The download continues in the background; local dictation is unavailable until it finishes.",
     "localAction": "Download local model",
     "cloudTitle": "Cloud recognition",
     "cloudDescription": "No model download. Recognition uploads speech and uses account credits. This step only saves settings and does not transcribe audio.",
