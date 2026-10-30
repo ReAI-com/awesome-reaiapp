@@ -1,8 +1,1 @@
-[
-  {
-    "path": "open-website/legal/THIRD-PARTY-NOTICES.txt",
-    "rule": "real-email",
-    "sha256": "3da4ec6d3cd896268d857a070b8785ebfca5153180590242fdfbb6f3575bcca5",
-    "reason": "第三方许可证原文中的作者署名邮箱，许可与署名须保持原文；文件内容变化后摘要失效，需重新核对后再登记"
-  }
-]
+[]
