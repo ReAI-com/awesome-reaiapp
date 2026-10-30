@@ -116,3 +116,7 @@ REAI_DESIGN_ROOT=/path/to/ai-vibe-board/design node scripts/export-plugin-previe
 输出至 `assets/previews/`。voice 为 24 秒合并故事（语音输入写入 + 语音任务后台与完成提醒），browser 与 terminal 为 10 秒；均为 1920×1200、60fps。帧、原稿摘要、像素检查与接缝检查留在本地忽略目录。`--only=terminal` 可仅重导一条；`--proof` 只生成关键帧，不发布或替换站点视频。
 
 2026-10-26 本地验证：构建和 9 项测试通过；四条视频的原稿首帧、循环首尾、空闲段及内容边界检查通过。独立 Chromium 检查中英文、4 种屏幕尺寸与4个选项，共32种首屏状态，无横向溢出，视频完整进入首屏；切换、方向键、暂停/恢复、重播、离屏暂停、减少动态效果、语言切换保留选项、加载失败后重试和手机导航通过。动效仍为设计与样例数据预览，未验证实机硬件或真实任务执行；本版尚未生产发布。
+
+## 第三方声明邮箱
+
+`legal/THIRD-PARTY-NOTICES.txt` 再生后须跑 `node open-website/scripts/scrub-notices-emails.mjs`，把作者邮箱 scrub 成 `author@example.com`，否则 Public gate `[real-email]` 会红（署名保留姓名即可）。
