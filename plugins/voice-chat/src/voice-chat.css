@@ -1,0 +1,643 @@
+/* 严格基于 Host 注入的语义 Token 派生，绝不覆盖 :root 上的 39 个平台变量名 */
+.vc-view-host {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vc-view-host[hidden] {
+  display: none;
+}
+
+.vc-fallback-back {
+  align-self: flex-start;
+  margin: 8px 16px 0;
+  padding: 6px 12px;
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.vc-fallback-back[hidden] {
+  display: none;
+}
+
+/* =========================================================================
+   主界面：《她》(Her) OS1 极简语音对话空间
+   外框保持 var(--bg) 与 44px 原生标题栏无接缝衔接；内嵌圆角舞台承载 OS1 氛围
+   ========================================================================= */
+.vc-stage-shell {
+  --vc-stage-bg: color-mix(in srgb, var(--bg, #f7f7fb) 91%, #e86b54 9%);
+  --vc-stage-border: color-mix(in srgb, var(--divider, rgba(0, 0, 0, 0.08)) 74%, rgba(217, 83, 63, 0.32) 26%);
+  --vc-stage-fg: var(--text-primary, #1f1a18);
+  --vc-stage-muted: var(--text-secondary, #6e5f5a);
+  --vc-stage-subtle: var(--text-tertiary, #8f7e78);
+  --vc-orb: #d9533f;
+  --vc-orb-soft: rgba(217, 83, 63, 0.24);
+  --vc-cta-bg: #d9533f;
+  --vc-cta-fg: #fffaf6;
+
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 4px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.vc-stage-shell[data-mood="os1-crimson"] {
+  --vc-stage-bg: #c84635;
+  --vc-stage-border: rgba(255, 246, 240, 0.22);
+  --vc-stage-fg: #fff8f4;
+  --vc-stage-muted: rgba(255, 246, 240, 0.84);
+  --vc-stage-subtle: rgba(255, 246, 240, 0.68);
+  --vc-orb: #fff7f2;
+  --vc-orb-soft: rgba(255, 247, 242, 0.28);
+  --vc-cta-bg: #fff7f2;
+  --vc-cta-fg: #b83b2b;
+}
+
+.vc-stage-shell[data-mood="host"] {
+  --vc-stage-bg: var(--card-bg);
+  --vc-stage-border: var(--divider);
+  --vc-stage-fg: var(--text-primary);
+  --vc-stage-muted: var(--text-secondary);
+  --vc-stage-subtle: var(--text-tertiary);
+  --vc-orb: var(--accent, #d9533f);
+  --vc-orb-soft: var(--accent-soft, rgba(217, 83, 63, 0.2));
+  --vc-cta-bg: var(--accent, #d9533f);
+  --vc-cta-fg: #ffffff;
+}
+
+.vc-stage-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  border-radius: 22px;
+  border: 1px solid var(--vc-stage-border);
+  background: var(--vc-stage-bg);
+  color: var(--vc-stage-fg);
+  padding: 24px 24px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease;
+}
+
+.vc-stage-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.vc-stage-badges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vc-live-pill,
+.vc-brain-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--vc-stage-border);
+  color: var(--vc-stage-muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.vc-live-pill[hidden] {
+  display: none;
+}
+
+.vc-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vc-orb);
+}
+
+.vc-state-whisper {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  letter-spacing: 0.04em;
+  color: var(--vc-stage-subtle);
+}
+
+.vc-orb-zone {
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.vc-orb-trigger {
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s ease;
+}
+
+.vc-orb-trigger:hover {
+  transform: scale(1.02);
+}
+
+.vc-orb-trigger:active {
+  transform: scale(0.985);
+}
+
+.vc-orb-trigger:focus-visible {
+  outline: 2px solid var(--vc-orb);
+  outline-offset: 6px;
+}
+
+.vc-orb-canvas {
+  width: 320px;
+  height: 320px;
+  max-width: min(68vw, 320px);
+  max-height: min(46vh, 320px);
+  display: block;
+}
+
+.vc-subtitle {
+  margin: 0;
+  min-height: 22px;
+  max-width: 460px;
+  padding: 0 12px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 22px;
+  color: var(--vc-stage-muted);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.vc-subtitle[data-visible="true"] {
+  opacity: 1;
+}
+
+.vc-stage-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vc-call-cta {
+  min-height: 42px;
+  padding: 0 24px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: var(--vc-cta-bg);
+  color: var(--vc-cta-fg);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: var(--card-shadow, 0 4px 14px rgba(0, 0, 0, 0.08));
+  transition: opacity 0.16s ease, transform 0.16s ease, background-color 0.25s ease;
+}
+
+.vc-call-cta[data-active="true"] {
+  background: transparent;
+  color: var(--vc-stage-fg);
+  border-color: var(--vc-stage-border);
+  box-shadow: none;
+}
+
+.vc-call-cta:hover {
+  opacity: 0.9;
+}
+
+.vc-call-cta:focus-visible {
+  outline: 2px solid var(--vc-orb);
+  outline-offset: 3px;
+}
+
+.vc-call-cta-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* =========================================================================
+   设置页：严格遵循 plugin-design-system-v1 §6.1 单列居中 680px 与底部合规区
+   ========================================================================= */
+.vc-settings-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  background: var(--bg);
+  color: var(--text-primary);
+}
+
+.vc-settings-container {
+  box-sizing: border-box;
+  max-width: 680px;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 20px 28px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.vc-settings-header h1 {
+  margin: 0;
+  font-size: 20px;
+  line-height: 26px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.vc-settings-header p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-tertiary);
+}
+
+.vc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vc-section-label {
+  padding-left: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--text-secondary);
+}
+
+.vc-card {
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  background: var(--card-bg);
+  box-shadow: var(--card-shadow);
+  overflow: hidden;
+}
+
+.vc-row {
+  min-height: 54px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--divider);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.vc-row[hidden] {
+  display: none;
+}
+
+.vc-card > .vc-row:first-child {
+  border-top: 0;
+}
+
+.vc-row-stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.vc-stack-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vc-row-copy {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vc-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 19px;
+  color: var(--text-primary);
+}
+
+.vc-row-hint {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 17px;
+  color: var(--text-tertiary);
+}
+
+.vc-select,
+.vc-input,
+.vc-textarea {
+  box-sizing: border-box;
+  border: 1px solid var(--card-border, var(--divider));
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 18px;
+  font-family: inherit;
+}
+
+.vc-select,
+.vc-input {
+  height: 32px;
+  padding: 0 10px;
+  min-width: 190px;
+  max-width: 250px;
+}
+
+.vc-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  resize: vertical;
+  min-height: 68px;
+}
+
+.vc-select:focus-visible,
+.vc-input:focus-visible,
+.vc-textarea:focus-visible,
+.vc-toggle:focus-visible,
+.vc-ghost-btn:focus-visible,
+.vc-mood-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.vc-toggle {
+  width: 38px;
+  height: 22px;
+  flex-shrink: 0;
+  padding: 2px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--divider);
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  transition: background-color 0.16s ease;
+}
+
+.vc-toggle i {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--card-bg, #ffffff);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.22);
+  transition: transform 0.16s ease;
+}
+
+.vc-toggle.on {
+  background: #d9533f;
+}
+
+.vc-toggle.on i {
+  transform: translateX(16px);
+}
+
+.vc-ghost-btn {
+  min-height: 30px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--divider);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.vc-ghost-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.vc-status-tag {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--bound-line, var(--divider));
+  background: var(--bound-soft, var(--accent-soft));
+  color: var(--bound, var(--accent));
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.vc-mood-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.vc-mood-card {
+  min-height: 44px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--divider);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.vc-mood-card:hover {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.vc-mood-card.active {
+  border-color: #d9533f;
+  background: color-mix(in srgb, #d9533f 10%, var(--card-bg));
+  color: var(--text-primary);
+}
+
+.vc-mood-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid rgba(127, 127, 127, 0.28);
+}
+
+.vc-swatch-auto {
+  background: linear-gradient(135deg, #fbf6f0 48%, #d9533f 52%);
+}
+
+.vc-swatch-crimson {
+  background: #c84635;
+}
+
+.vc-swatch-host {
+  background: var(--accent);
+}
+
+.vc-feedback {
+  margin: -8px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--bound);
+}
+
+.vc-feedback[hidden] {
+  display: none;
+}
+
+.vc-feedback.error {
+  color: var(--alert);
+}
+
+.vc-settings-footer {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--divider);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+
+.vc-settings-footer[hidden] {
+  display: none;
+}
+
+.vc-footer-link {
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.vc-footer-link:hover,
+.vc-footer-link:focus-visible {
+  background: var(--accent-soft);
+  outline: none;
+}
+
+.vc-info-card {
+  padding: 14px 16px;
+}
+
+.vc-info-card[hidden] {
+  display: none;
+}
+
+.vc-info-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.vc-info-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.vc-changelog-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 19px;
+  color: var(--text-primary);
+}
+
+.vc-info-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--text-tertiary);
+}
+
+.vc-about-dl {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 16px;
+  font-size: 12px;
+  line-height: 19px;
+}
+
+.vc-about-dl dt {
+  color: var(--text-secondary);
+}
+
+.vc-about-dl dd {
+  margin: 0;
+  color: var(--text-primary);
+  word-break: break-all;
+  user-select: text;
+}
+
+@media (max-width: 600px) {
+  .vc-settings-container {
+    padding: 16px 16px 32px;
+  }
+  .vc-row {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .vc-select,
+  .vc-input {
+    width: 100%;
+    max-width: none;
+  }
+  .vc-mood-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vc-stage-card,
+  .vc-orb-trigger,
+  .vc-subtitle,
+  .vc-call-cta,
+  .vc-toggle,
+  .vc-toggle i {
+    transition: none;
+  }
+}
