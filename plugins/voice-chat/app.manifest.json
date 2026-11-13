@@ -1,0 +1,273 @@
+{
+  "manifestVersion": "1.1",
+  "appId": "com.reai.voice-chat",
+  "version": "0.1.0",
+  "publisherId": "4d8a4ddb-2293-4b11-9ef4-3f24f117998c",
+  "name": "语音对话",
+  "description": "极简全双工实时语音对话空间，支持复用本地语音模型、对接底层 Agent 服务与流式语音合成",
+  "icon": "assets/icon.png",
+  "storeListing": {
+    "category": "Official",
+    "tagline": "只有一个随声音揉动的圆环，与 AI 自然实时交谈",
+    "longDescription": "官方实时语音对话插件。界面灵感源自电影《她》（Her）的 OS1 设计：克制一切多余控件，仅以一个随声音韵律揉动、思考时扭转为 ∞ 丝带的有机圆环承载对话。底层将语音识别（优先复用本地 SenseVoice 模型与语音输入法设置）、对话大脑（支持统一 Agent 服务 Pi / DSH / Codex 与外脑流式接口）及流式语音合成彻底解耦，支持随时打断与多轮自然续听。",
+    "capabilities": [
+      {
+        "label": "极简语音空间",
+        "detail": "OS1 风格有机圆环与思考丝带，专注纯声音实时互动与随时打断"
+      },
+      {
+        "label": "本地语音识别优先",
+        "detail": "复用本机 SenseVoice 模型与语音输入法的收音路由，减少云端依赖"
+      },
+      {
+        "label": "Agent 大脑解耦",
+        "detail": "对接底层统一 Agent 服务（Pi / DSH / Codex）或外脑极速流式模型"
+      }
+    ],
+    "screenshots": [
+      {
+        "gradient": "linear-gradient(135deg,#c84635,#e86b54)",
+        "caption": "OS1 极简语音对话：随声音揉动的圆环与随时打断",
+        "hasVideo": false
+      },
+      {
+        "gradient": "linear-gradient(135deg,#fbf6f0,#f2e6db)",
+        "caption": "解耦设置页：大脑 Agent、本地语音识别与流式语音合成独立配置",
+        "hasVideo": false
+      }
+    ]
+  },
+  "targets": [
+    {
+      "platform": "macos",
+      "architectures": [
+        "aarch64",
+        "x86_64"
+      ]
+    },
+    {
+      "platform": "windows",
+      "architectures": [
+        "aarch64",
+        "x86_64"
+      ]
+    }
+  ],
+  "hostApi": {
+    "range": ">=1.25.0 <2.0.0"
+  },
+  "requires": {
+    "hostCapabilities": [
+      "surface.main@1",
+      "surface.navigation@1",
+      "sidebar.item@1",
+      "storage.kv@1",
+      "commands@1",
+      "titlebar.action@1",
+      "metadata.i18n@1"
+    ],
+    "hardwareServices": [],
+    "appIntents": [],
+    "services": []
+  },
+  "runtime": {
+    "components": [
+      {
+        "id": "ui",
+        "kind": "web-surface",
+        "protocol": "web-surface@1",
+        "required": true,
+        "headless": false,
+        "activation": "on-demand",
+        "entry": "dist/app.js",
+        "dependsOn": [],
+        "lifecycle": {
+          "activate": "default.activate",
+          "deactivate": "default.deactivate"
+        }
+      }
+    ]
+  },
+  "permissions": [],
+  "network": {
+    "policyVersion": 1,
+    "endpoints": []
+  },
+  "billing": {
+    "mode": "none"
+  },
+  "data": {
+    "privateStores": [
+      {
+        "id": "voice-chat-settings",
+        "schemaVersion": 1
+      }
+    ],
+    "imports": [],
+    "exports": []
+  },
+  "dataCompatibility": {
+    "rollbackFloor": "0.1.0"
+  },
+  "contributes": {
+    "surfaces": [
+      {
+        "id": "main",
+        "componentId": "ui",
+        "location": "app.main",
+        "title": "语音对话"
+      }
+    ],
+    "sidebarItems": [
+      {
+        "id": "voice-chat",
+        "label": "语音对话",
+        "icon": "assets/icon.png",
+        "opens": "surface:main"
+      }
+    ],
+    "titlebarActions": [
+      {
+        "id": "new-session",
+        "label": "新对话",
+        "icon": "rotate-cw",
+        "showOnTitlebarHover": false,
+        "intent": {
+          "type": "new-session"
+        }
+      },
+      {
+        "id": "settings",
+        "label": "语音对话设置",
+        "icon": "settings",
+        "showOnTitlebarHover": false,
+        "intent": {
+          "type": "open-settings"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "id": "com.reai.voice-chat.toggle-call",
+        "componentId": "ui",
+        "title": "开启或打断语音对话",
+        "bindingPickerTitle": "语音对话：开启 / 打断",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "timeoutMs": 5000,
+        "supportsCancellation": false,
+        "concurrency": "serial",
+        "idempotency": "not-idempotent",
+        "callers": [
+          "host",
+          "user"
+        ]
+      },
+      {
+        "id": "com.reai.voice-chat.back-to-root",
+        "componentId": "ui",
+        "title": "返回语音对话",
+        "bindingPickerVisible": false,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "timeoutMs": 3000,
+        "supportsCancellation": false,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host"
+        ]
+      },
+      {
+        "id": "com.reai.voice-chat.open-settings",
+        "componentId": "ui",
+        "title": "打开语音对话设置",
+        "bindingPickerVisible": false,
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "timeoutMs": 3000,
+        "supportsCancellation": false,
+        "concurrency": "serial",
+        "idempotency": "idempotent",
+        "callers": [
+          "host"
+        ]
+      }
+    ],
+    "intents": []
+  },
+  "i18n": {
+    "locales": [
+      "zh",
+      "en"
+    ],
+    "messages": [
+      {
+        "target": "name",
+        "key": "metadata.name"
+      },
+      {
+        "target": "description",
+        "key": "metadata.description"
+      },
+      {
+        "target": "surface.title",
+        "id": "main",
+        "key": "metadata.surfaceTitle"
+      },
+      {
+        "target": "sidebar.label",
+        "id": "voice-chat",
+        "key": "metadata.sidebarLabel"
+      },
+      {
+        "target": "titlebarAction.label",
+        "id": "new-session",
+        "key": "metadata.newSessionAction"
+      },
+      {
+        "target": "titlebarAction.label",
+        "id": "settings",
+        "key": "metadata.settingsAction"
+      },
+      {
+        "target": "command.title",
+        "id": "com.reai.voice-chat.toggle-call",
+        "key": "metadata.toggleCallCommand"
+      },
+      {
+        "target": "command.bindingPickerTitle",
+        "id": "com.reai.voice-chat.toggle-call",
+        "key": "metadata.toggleCallBinding"
+      },
+      {
+        "target": "command.title",
+        "id": "com.reai.voice-chat.back-to-root",
+        "key": "metadata.backCommand"
+      },
+      {
+        "target": "command.title",
+        "id": "com.reai.voice-chat.open-settings",
+        "key": "metadata.openSettingsCommand"
+      }
+    ]
+  }
+}

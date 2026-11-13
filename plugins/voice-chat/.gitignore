@@ -1,0 +1,8 @@
+# 构建产物：由 `reai-app-i18n build/pack` 全量重建，不进版本库
+node_modules/
+dist/
+build-manifest.json
+reai-build-manifest.json
+*.reaiapp
+*.reaiapp.submission.json
+submission.identity.json

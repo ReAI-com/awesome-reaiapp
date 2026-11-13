@@ -150,6 +150,7 @@ jobs:
           - terminal
           - text-editor
           - voice
+          - voice-chat
           - wishing-wall
     env:
       # 受控插件的当前候选尚未通过源码审核：只要求按审批门被拒。审核通过、平台包带上批准记录后从这里移除。
